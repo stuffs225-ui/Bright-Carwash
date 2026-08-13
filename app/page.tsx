@@ -1,12 +1,43 @@
+"use client";
+
+export const dynamic = "force-dynamic";
+
+import { useState } from "react";
+import { CarEntryTab } from "./components/CarEntryTab";
+import { ExpensesTab } from "./components/ExpensesTab";
+import { AnalysisTab } from "./components/AnalysisTab";
+
+type Tab = "car" | "expenses" | "analysis";
+
 export default function Home() {
+  const [tab, setTab] = useState<Tab>("car");
+
   return (
-    <main style={{ fontFamily: "sans-serif", padding: "2rem", textAlign: "center" }}>
-      <h1>مغسلة سيارتك اللامعة</h1>
-      <p>الموقع قيد الإنشاء</p>
-      <p>
-        تحقق من حالة الاتصال بقاعدة البيانات:{" "}
-        <a href="/api/health">/api/health</a>
-      </p>
-    </main>
+    <div className="app-shell">
+      <header className="app-header">
+        <h1 className="text-2xl sm:text-3xl font-extrabold">لوحة التحكم الرئيسية</h1>
+        <p className="text-sm sm:text-base opacity-90 mt-1">نظام موحد لإدارة السيارات والمصروفات وتحليل الأداء</p>
+      </header>
+
+      <nav className="tabs-bar">
+        <button type="button" className={`tab-button ${tab === "car" ? "active" : ""}`} onClick={() => setTab("car")}>
+          🚗 تسجيل السيارات
+        </button>
+        <button type="button" className={`tab-button ${tab === "expenses" ? "active" : ""}`} onClick={() => setTab("expenses")}>
+          💳 المصروفات
+        </button>
+        <button type="button" className={`tab-button ${tab === "analysis" ? "active" : ""}`} onClick={() => setTab("analysis")}>
+          📊 تحليل البيانات
+        </button>
+      </nav>
+
+      <div className="content-section-wrapper">
+        {tab === "car" && <CarEntryTab />}
+        {tab === "expenses" && <ExpensesTab />}
+        {tab === "analysis" && <AnalysisTab />}
+      </div>
+
+      <div id="toast-container" />
+    </div>
   );
 }
