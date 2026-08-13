@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { Resend } from "resend";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 
 const TABLES = ["entries", "expenses", "car_types", "service_types", "expense_types", "settings"] as const;
+const BACKUP_RECIPIENT = "Aburaykah@gmail.com";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -20,15 +22,30 @@ export async function GET(request: Request) {
     dump[table] = data;
   }
 
+  const json = JSON.stringify(dump, null, 2);
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `backup-${timestamp}.json`;
-  const { error: uploadError } = await supabase.storage
-    .from("backups")
-    .upload(filename, JSON.stringify(dump, null, 2), { contentType: "application/json" });
 
-  if (uploadError) {
-    return NextResponse.json({ ok: false, error: uploadError.message }, { status: 500 });
+  // نسخة احتياطية بالتخزين (نسخة إضافية بجانب الإيميل)
+  await supabase.storage.from("backups").upload(filename, json, { contentType: "application/json" });
+
+  const rowCounts = Object.fromEntries(Object.entries(dump).map(([t, rows]) => [t, (rows as unknown[]).length]));
+
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const { error: emailError } = await resend.emails.send({
+    from: "نظام مغسلة سيارتك اللامعة <onboarding@resend.dev>",
+    to: BACKUP_RECIPIENT,
+    subject: `نسخة احتياطية - مغسلة سيارتك اللامعة - ${timestamp.slice(0, 10)}`,
+    html: `<div dir="rtl">
+      <p>نسخة احتياطية تلقائية مرفقة بهذا الإيميل.</p>
+      <ul>${Object.entries(rowCounts).map(([t, c]) => `<li>${t}: ${c} سجل</li>`).join("")}</ul>
+    </div>`,
+    attachments: [{ filename, content: Buffer.from(json).toString("base64") }],
+  });
+
+  if (emailError) {
+    return NextResponse.json({ ok: false, error: emailError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, filename, tables: Object.keys(dump).map((t) => ({ table: t, rows: (dump[t] as unknown[]).length })) });
+  return NextResponse.json({ ok: true, filename, rowCounts });
 }

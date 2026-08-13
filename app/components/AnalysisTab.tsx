@@ -9,6 +9,7 @@ import { showToast } from "@/lib/toast";
 import { exportDailyReportToExcel } from "@/lib/exportReport";
 import type { Entry, Expense } from "@/lib/types";
 import { MetricCard } from "./MetricCard";
+import { Modal } from "./Modal";
 
 const PALETTE = ["#2563eb", "#7c3aed", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#9333ea"];
 
@@ -73,6 +74,7 @@ export function AnalysisTab() {
   const [showDaily, setShowDaily] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [granularity, setGranularity] = useState<Granularity>("daily");
+  const [activePeriod, setActivePeriod] = useState<"today" | "week" | "month" | "year" | null>(null);
 
   const load = useCallback(async (start: string, end: string, carFilter: string, serviceFilter: string) => {
     setLoading(true);
@@ -206,7 +208,7 @@ export function AnalysisTab() {
       allExpenses.forEach((x) => {
         if (new Date(x.occurred_at) >= since) expensesTotal += Number(x.amount);
       });
-      return { revenue, cars, expenses: expensesTotal, net: revenue - expensesTotal };
+      return { revenue, cars, expenses: expensesTotal, net: revenue - expensesTotal, since };
     }
 
     return {
@@ -331,14 +333,23 @@ export function AnalysisTab() {
     window.print();
   }
 
+  const periodLabels: Record<string, string> = { today: "اليوم", week: "هذا الأسبوع", month: "هذا الشهر", year: "هذي السنة" };
+  const periodEntries = useMemo(() => {
+    if (!activePeriod) return [];
+    const since = quickGlance[activePeriod].since;
+    return allEntries
+      .filter((e) => new Date(e.occurred_at) >= since)
+      .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
+  }, [activePeriod, quickGlance, allEntries]);
+
   return (
     <div className="space-y-6">
-      {/* نظرة سريعة */}
+      {/* نظرة سريعة — دوس على أي بطاقة لتفاصيل السيارات بهذي الفترة */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <QuickCard label="دخل اليوم" net={quickGlance.today.net} sub={`${quickGlance.today.cars} سيارة`} bg="bg-blue-50" color="text-blue-700" />
-        <QuickCard label="ربح الأسبوع" net={quickGlance.week.net} sub={formatCurrency(quickGlance.week.revenue)} bg="bg-emerald-50" color="text-emerald-700" />
-        <QuickCard label="ربح الشهر" net={quickGlance.month.net} sub={formatCurrency(quickGlance.month.revenue)} bg="bg-purple-50" color="text-purple-700" />
-        <QuickCard label="ربح السنة" net={quickGlance.year.net} sub={formatCurrency(quickGlance.year.revenue)} bg="bg-indigo-50" color="text-indigo-700" />
+        <QuickCard label="دخل اليوم" net={quickGlance.today.net} sub={`${quickGlance.today.cars} سيارة`} bg="bg-blue-50" color="text-blue-700" onClick={() => setActivePeriod("today")} />
+        <QuickCard label="ربح الأسبوع" net={quickGlance.week.net} sub={formatCurrency(quickGlance.week.revenue)} bg="bg-emerald-50" color="text-emerald-700" onClick={() => setActivePeriod("week")} />
+        <QuickCard label="ربح الشهر" net={quickGlance.month.net} sub={formatCurrency(quickGlance.month.revenue)} bg="bg-purple-50" color="text-purple-700" onClick={() => setActivePeriod("month")} />
+        <QuickCard label="ربح السنة" net={quickGlance.year.net} sub={formatCurrency(quickGlance.year.revenue)} bg="bg-indigo-50" color="text-indigo-700" onClick={() => setActivePeriod("year")} />
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -547,17 +558,62 @@ export function AnalysisTab() {
           </div>
         </div>
       </section>
+
+      {activePeriod && (
+        <Modal title={`سيارات ${periodLabels[activePeriod]} (${periodEntries.length})`} onClose={() => setActivePeriod(null)}>
+          <div className="overflow-x-auto">
+            <table className="app-table">
+              <thead>
+                <tr><th>التاريخ</th><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>الإجمالي</th></tr>
+              </thead>
+              <tbody>
+                {periodEntries.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center text-gray-500 py-5">لا توجد سيارات بهذي الفترة.</td></tr>
+                ) : (
+                  periodEntries.map((entry) => {
+                    const d = new Date(entry.occurred_at);
+                    return (
+                      <tr key={entry.id}>
+                        <td>{toDateKey(d)}</td>
+                        <td>{d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}</td>
+                        <td>{entry.car_type}</td>
+                        <td>{entry.service_type}</td>
+                        <td>{entry.payment_method}</td>
+                        <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function QuickCard({ label, net, sub, bg, color }: { label: string; net: number; sub: string; bg: string; color: string }) {
+function QuickCard({
+  label,
+  net,
+  sub,
+  bg,
+  color,
+  onClick,
+}: {
+  label: string;
+  net: number;
+  sub: string;
+  bg: string;
+  color: string;
+  onClick: () => void;
+}) {
   return (
-    <div className={`metric-card ${bg}`}>
+    <button type="button" onClick={onClick} className={`metric-card ${bg} w-full cursor-pointer hover:brightness-95 transition`}>
       <span className="metric-label">{label}</span>
       <strong className={`metric-value ${net < 0 ? "text-red-700" : color}`}>{formatCurrency(net)}</strong>
       <span className="text-xs text-gray-500 mt-1">{sub}</span>
-    </div>
+    </button>
   );
 }
 

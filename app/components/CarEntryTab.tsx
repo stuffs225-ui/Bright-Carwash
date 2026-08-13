@@ -9,6 +9,7 @@ import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
 import { MetricCard } from "./MetricCard";
+import { Modal } from "./Modal";
 
 function pendingEntriesFromQueue(): Entry[] {
   return getQueueByTable("entries").map((item) => {
@@ -38,6 +39,12 @@ function dayBounds(date: Date) {
   return { start, end };
 }
 
+type BulkRow = { carType: string; serviceType: string; cash: string; card: string; notes: string };
+
+function emptyBulkRow(prefill?: Partial<BulkRow>): BulkRow {
+  return { carType: "", serviceType: "", cash: "", card: "", notes: "", ...prefill };
+}
+
 export function CarEntryTab() {
   const [carTypes, setCarTypes] = useState<string[]>([]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
@@ -50,15 +57,19 @@ export function CarEntryTab() {
   const [showSettings, setShowSettings] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [showToday, setShowToday] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [showTodayModal, setShowTodayModal] = useState(false);
 
   const [carType, setCarType] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [cashPaid, setCashPaid] = useState("");
   const [cardPaid, setCardPaid] = useState("");
   const [notes, setNotes] = useState("");
+
+  const [bulkMode, setBulkMode] = useState(false);
+  const [bulkRows, setBulkRows] = useState<BulkRow[]>([emptyBulkRow()]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
 
   const loadLists = useCallback(async () => {
     const [{ data: cars }, { data: services }] = await Promise.all([
@@ -251,6 +262,67 @@ export function CarEntryTab() {
     refreshAll(settingsRef.current);
   }
 
+  function updateBulkRow(index: number, patch: Partial<BulkRow>) {
+    setBulkRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+
+  function addBulkRow() {
+    setBulkRows((rows) => {
+      const last = rows[rows.length - 1];
+      return [...rows, emptyBulkRow({ carType: last?.carType, serviceType: last?.serviceType })];
+    });
+  }
+
+  function removeBulkRow(index: number) {
+    setBulkRows((rows) => (rows.length <= 1 ? rows : rows.filter((_, i) => i !== index)));
+  }
+
+  async function handleBulkSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const now = new Date().toISOString();
+    const payloads = bulkRows.map((row) => ({
+      car_type: row.carType,
+      service_type: row.serviceType,
+      cash_paid: Number(row.cash) || 0,
+      card_paid: Number(row.card) || 0,
+      notes: row.notes || null,
+      occurred_at: now,
+    }));
+
+    const invalid = payloads.find((p) => !p.car_type || !p.service_type || p.cash_paid + p.card_paid <= 0);
+    if (invalid) {
+      showToast("تأكد إن كل سطر فيه نوع سيارة، نوع خدمة، ومبلغ أكبر من صفر.", "warning");
+      return;
+    }
+
+    setBulkSubmitting(true);
+
+    if (!navigator.onLine) {
+      payloads.forEach((p) => enqueue("entries", p));
+      setBulkSubmitting(false);
+      showToast(`لا يوجد اتصال — تم حفظ ${payloads.length} سيارة محلياً وستُرفع تلقائياً عند رجوع النت.`, "warning");
+      setBulkRows([emptyBulkRow()]);
+      return;
+    }
+
+    const { error } = await supabase.from("entries").insert(payloads);
+    setBulkSubmitting(false);
+    if (error) {
+      if (isNetworkError(error)) {
+        payloads.forEach((p) => enqueue("entries", p));
+        showToast(`تعذر الاتصال — تم حفظ ${payloads.length} سيارة محلياً وستُرفع تلقائياً عند رجوع النت.`, "warning");
+        setBulkRows([emptyBulkRow()]);
+        return;
+      }
+      showToast("خطأ في حفظ السيارات: " + error.message, "error");
+      return;
+    }
+
+    showToast(`تمت إضافة ${payloads.length} سيارة بنجاح!`);
+    setBulkRows([emptyBulkRow()]);
+    refreshAll(settingsRef.current);
+  }
+
   async function handleDelete(id: string) {
     if (!confirm("هل أنت متأكد من حذف هذا السجل؟")) return;
     const { error } = await supabase.from("entries").update({ deleted_at: new Date().toISOString() }).eq("id", id);
@@ -293,56 +365,118 @@ export function CarEntryTab() {
   return (
     <div className="space-y-6">
       <section className="card">
-        <h2 className="section-title">إدخال سيارة جديدة</h2>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">نوع السيارة</label>
-              <div className="select-wrapper">
-                <select value={carType} onChange={(e) => setCarType(e.target.value)} required>
-                  <option value="">اختر...</option>
-                  {carTypes.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div>
-              <label className="form-label">نوع الخدمة</label>
-              <div className="select-wrapper">
-                <select value={serviceType} onChange={(e) => setServiceType(e.target.value)} required>
-                  <option value="">اختر...</option>
-                  {serviceTypes.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="form-label">كاش</label>
-              <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cashPaid} onChange={(e) => setCashPaid(e.target.value)} />
-            </div>
-            <div>
-              <label className="form-label">بطاقة</label>
-              <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cardPaid} onChange={(e) => setCardPaid(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="form-label">ملاحظات</label>
-            <input type="text" placeholder="أي تفاصيل إضافية..." value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <button type="submit" disabled={submitting} className="btn-add-car w-full">
-            {submitting ? <span className="spinner" /> : "إضافة السيارة"}
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <h2 className="section-title mb-0">{bulkMode ? "إضافة عدة سيارات دفعة وحدة" : "إدخال سيارة جديدة"}</h2>
+          <button type="button" className="btn-secondary" onClick={() => setBulkMode((v) => !v)}>
+            {bulkMode ? "رجوع لإدخال سيارة واحدة" : "➕ إضافة عدة سيارات"}
           </button>
-        </form>
+        </div>
+
+        {!bulkMode ? (
+          <form onSubmit={handleSubmit} className="space-y-5 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">نوع السيارة</label>
+                <div className="select-wrapper">
+                  <select value={carType} onChange={(e) => setCarType(e.target.value)} required>
+                    <option value="">اختر...</option>
+                    {carTypes.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="form-label">نوع الخدمة</label>
+                <div className="select-wrapper">
+                  <select value={serviceType} onChange={(e) => setServiceType(e.target.value)} required>
+                    <option value="">اختر...</option>
+                    {serviceTypes.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">كاش</label>
+                <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cashPaid} onChange={(e) => setCashPaid(e.target.value)} />
+              </div>
+              <div>
+                <label className="form-label">بطاقة</label>
+                <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cardPaid} onChange={(e) => setCardPaid(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="form-label">ملاحظات</label>
+              <input type="text" placeholder="أي تفاصيل إضافية..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+            </div>
+            <button type="submit" disabled={submitting} className="btn-add-car w-full">
+              {submitting ? <span className="spinner" /> : "إضافة السيارة"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleBulkSubmit} className="space-y-4 mt-4">
+            <div className="space-y-3">
+              {bulkRows.map((row, index) => (
+                <div key={index} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
+                    <div>
+                      <label className="form-label">نوع السيارة</label>
+                      <select value={row.carType} onChange={(e) => updateBulkRow(index, { carType: e.target.value })} required>
+                        <option value="">اختر...</option>
+                        {carTypes.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">نوع الخدمة</label>
+                      <select value={row.serviceType} onChange={(e) => updateBulkRow(index, { serviceType: e.target.value })} required>
+                        <option value="">اختر...</option>
+                        {serviceTypes.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label">كاش</label>
+                      <input type="number" min="0" step="0.01" placeholder="0.00" value={row.cash} onChange={(e) => updateBulkRow(index, { cash: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="form-label">بطاقة</label>
+                      <input type="number" min="0" step="0.01" placeholder="0.00" value={row.card} onChange={(e) => updateBulkRow(index, { card: e.target.value })} />
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className="form-label">ملاحظات</label>
+                        <input type="text" value={row.notes} onChange={(e) => updateBulkRow(index, { notes: e.target.value })} />
+                      </div>
+                      <button
+                        type="button"
+                        className="action-button delete-button"
+                        onClick={() => removeBulkRow(index)}
+                        disabled={bulkRows.length <= 1}
+                        title="حذف السطر"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-secondary" onClick={addBulkRow}>+ إضافة سطر</button>
+            </div>
+            <button type="submit" disabled={bulkSubmitting} className="btn-add-car w-full">
+              {bulkSubmitting ? <span className="spinner" /> : `حفظ الكل (${bulkRows.length})`}
+            </button>
+          </form>
+        )}
       </section>
 
       <section className="card text-center">
-        <h2 className="section-title text-center">
+        <button type="button" className="section-title text-center w-full underline decoration-dotted" onClick={() => setShowTodayModal(true)}>
           اليوم - {new Date().toLocaleDateString("ar-SA", { weekday: "long" })} ({new Date().toLocaleDateString("en-GB")})
-        </h2>
+        </button>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard label="السيارات" value={dailyTotals.count} bg="bg-blue-50" color="text-blue-700" />
           <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} bg="bg-green-50" color="text-green-700" />
@@ -372,43 +506,6 @@ export function CarEntryTab() {
       </section>
 
       <section className="card overflow-hidden p-0">
-        <button type="button" className={`accordion-button ${showToday ? "active" : ""}`} onClick={() => setShowToday((v) => !v)}>
-          <span>تفاصيل إدخالات اليوم</span>
-          <span>⌄</span>
-        </button>
-        <div className="accordion-content" style={{ maxHeight: showToday ? "3000px" : undefined }}>
-          <div className="p-4 overflow-x-auto">
-            {todayEntriesWithPending.length === 0 ? (
-              <p className="py-5 text-gray-500 text-center">لا توجد إدخالات لليوم.</p>
-            ) : (
-              <table className="app-table">
-                <thead>
-                  <tr>
-                    <th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th><th>إجراءات</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {todayEntriesWithPending.map((entry) => (
-                    <EntryRow
-                      key={entry.id}
-                      entry={entry}
-                      carTypes={carTypes}
-                      serviceTypes={serviceTypes}
-                      editing={editingId === entry.id}
-                      onEdit={() => setEditingId(entry.id)}
-                      onCancel={() => setEditingId(null)}
-                      onSave={(patch) => handleUpdate(entry, patch)}
-                      onDelete={() => handleDelete(entry.id)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="card overflow-hidden p-0">
         <button type="button" className={`accordion-button ${showMonthly ? "active" : ""}`} onClick={() => setShowMonthly((v) => !v)}>
           <span>الدخل الشهري</span>
           <span>⌄</span>
@@ -428,7 +525,7 @@ export function CarEntryTab() {
                     return (
                       <tr key={row.date}>
                         <td>
-                          <button type="button" className="text-blue-700 font-bold underline" onClick={() => setSelectedDay(selectedDay === row.date ? null : row.date)}>
+                          <button type="button" className="text-blue-700 font-bold underline" onClick={() => setSelectedDay(row.date)}>
                             {day} - {row.date}
                           </button>
                         </td>
@@ -442,35 +539,71 @@ export function CarEntryTab() {
                 </tbody>
               </table>
             )}
-
-            {selectedDay && (
-              <div className="mt-5 border-t pt-4">
-                <h4 className="subsection-title">إدخالات {selectedDay}</h4>
-                <table className="app-table">
-                  <thead>
-                    <tr><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th><th>إجراءات</th></tr>
-                  </thead>
-                  <tbody>
-                    {dayEntries.map((entry) => (
-                      <EntryRow
-                        key={entry.id}
-                        entry={entry}
-                        carTypes={carTypes}
-                        serviceTypes={serviceTypes}
-                        editing={editingId === entry.id}
-                        onEdit={() => setEditingId(entry.id)}
-                        onCancel={() => setEditingId(null)}
-                        onSave={(patch) => handleUpdate(entry, patch)}
-                        onDelete={() => handleDelete(entry.id)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </div>
       </section>
+
+      {selectedDay && (
+        <Modal title={`إدخالات ${selectedDay}`} onClose={() => setSelectedDay(null)}>
+          <div className="overflow-x-auto">
+            <table className="app-table">
+              <thead>
+                <tr><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th><th>إجراءات</th></tr>
+              </thead>
+              <tbody>
+                {dayEntries.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center text-gray-500 py-5">لا توجد إدخالات بهذا اليوم.</td></tr>
+                ) : (
+                  dayEntries.map((entry) => (
+                    <EntryRow
+                      key={entry.id}
+                      entry={entry}
+                      carTypes={carTypes}
+                      serviceTypes={serviceTypes}
+                      editing={editingId === entry.id}
+                      onEdit={() => setEditingId(entry.id)}
+                      onCancel={() => setEditingId(null)}
+                      onSave={(patch) => handleUpdate(entry, patch)}
+                      onDelete={() => handleDelete(entry.id)}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Modal>
+      )}
+
+      {showTodayModal && (
+        <Modal title={`إدخالات اليوم - ${new Date().toLocaleDateString("ar-SA", { weekday: "long" })}`} onClose={() => setShowTodayModal(false)}>
+          <div className="overflow-x-auto">
+            <table className="app-table">
+              <thead>
+                <tr><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th><th>إجراءات</th></tr>
+              </thead>
+              <tbody>
+                {todayEntriesWithPending.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center text-gray-500 py-5">لا توجد إدخالات لليوم.</td></tr>
+                ) : (
+                  todayEntriesWithPending.map((entry) => (
+                    <EntryRow
+                      key={entry.id}
+                      entry={entry}
+                      carTypes={carTypes}
+                      serviceTypes={serviceTypes}
+                      editing={editingId === entry.id}
+                      onEdit={() => setEditingId(entry.id)}
+                      onCancel={() => setEditingId(null)}
+                      onSave={(patch) => handleUpdate(entry, patch)}
+                      onDelete={() => handleDelete(entry.id)}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
