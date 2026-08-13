@@ -43,7 +43,7 @@ export function ExpensesTab() {
   }, []);
 
   const loadExpenses = useCallback(async () => {
-    const { data } = await supabase.from("expenses").select("*").order("occurred_at", { ascending: false });
+    const { data } = await supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: false });
     setExpenses((data as Expense[]) || []);
   }, []);
 
@@ -143,7 +143,7 @@ export function ExpensesTab() {
 
   async function handleDelete(id: string) {
     if (!confirm("هل أنت متأكد من حذف هذا المصروف؟")) return;
-    const { error } = await supabase.from("expenses").delete().eq("id", id);
+    const { error } = await supabase.from("expenses").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) {
       showToast("فشل الحذف: " + error.message, "error");
       return;

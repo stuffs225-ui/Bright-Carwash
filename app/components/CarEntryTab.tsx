@@ -74,6 +74,7 @@ export function CarEntryTab() {
     const { data } = await supabase
       .from("entries")
       .select("*")
+      .is("deleted_at", null)
       .gte("occurred_at", start.toISOString())
       .lt("occurred_at", end.toISOString())
       .order("occurred_at", { ascending: false });
@@ -85,6 +86,7 @@ export function CarEntryTab() {
     const { count } = await supabase
       .from("entries")
       .select("id", { count: "exact", head: true })
+      .is("deleted_at", null)
       .gte("occurred_at", start.toISOString())
       .lt("occurred_at", end.toISOString());
     setShiftCount(count || 0);
@@ -97,6 +99,7 @@ export function CarEntryTab() {
     const { data } = await supabase
       .from("entries")
       .select("*")
+      .is("deleted_at", null)
       .gte("occurred_at", start.toISOString())
       .lt("occurred_at", end.toISOString())
       .order("occurred_at", { ascending: false });
@@ -250,7 +253,7 @@ export function CarEntryTab() {
 
   async function handleDelete(id: string) {
     if (!confirm("هل أنت متأكد من حذف هذا السجل؟")) return;
-    const { error } = await supabase.from("entries").delete().eq("id", id);
+    const { error } = await supabase.from("entries").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) {
       showToast("فشل الحذف: " + error.message, "error");
       return;

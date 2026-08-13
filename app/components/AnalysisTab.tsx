@@ -82,6 +82,7 @@ export function AnalysisTab() {
     let entryQuery = supabase
       .from("entries")
       .select("*")
+      .is("deleted_at", null)
       .gte("occurred_at", startDt.toISOString())
       .lte("occurred_at", endDt.toISOString());
     if (carFilter) entryQuery = entryQuery.eq("car_type", carFilter);
@@ -89,7 +90,7 @@ export function AnalysisTab() {
 
     const [{ data: entryRows, error: e1 }, { data: expenseRows, error: e2 }] = await Promise.all([
       entryQuery,
-      supabase.from("expenses").select("*").gte("occurred_at", startDt.toISOString()).lte("occurred_at", endDt.toISOString()),
+      supabase.from("expenses").select("*").is("deleted_at", null).gte("occurred_at", startDt.toISOString()).lte("occurred_at", endDt.toISOString()),
     ]);
     setLoading(false);
     if (e1 || e2) {
@@ -102,8 +103,8 @@ export function AnalysisTab() {
 
   const loadHistory = useCallback(async () => {
     const [{ data: e }, { data: x }] = await Promise.all([
-      supabase.from("entries").select("*"),
-      supabase.from("expenses").select("*"),
+      supabase.from("entries").select("*").is("deleted_at", null),
+      supabase.from("expenses").select("*").is("deleted_at", null),
     ]);
     setAllEntries((e as Entry[]) || []);
     setAllExpenses((x as Expense[]) || []);
