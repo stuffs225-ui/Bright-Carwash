@@ -3,7 +3,7 @@ import { Resend } from "resend";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 
 const TABLES = ["entries", "expenses", "car_types", "service_types", "expense_types", "settings"] as const;
-const BACKUP_RECIPIENT = "Aburaykah@gmail.com";
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -12,8 +12,21 @@ export async function GET(request: Request) {
   }
 
   const supabase = createAdminClient();
-  const dump: Record<string, unknown> = {};
 
+  const { data: settingsRows } = await supabase.from("settings").select("key, value");
+  const settingsMap = Object.fromEntries((settingsRows || []).map((r) => [r.key, r.value]));
+  const backupEmail = String(settingsMap.backup_email || "Aburaykah@gmail.com");
+  const intervalDays = Number(settingsMap.backup_interval_days) || 10;
+  const lastSentAt = settingsMap.backup_last_sent_at ? new Date(String(settingsMap.backup_last_sent_at)) : null;
+
+  // ما نرسل إلا لما تمر المدة المحددة بالإعدادات — الـ cron نفسه يشتغل يومياً
+  // بس هذا يقرر فعلياً إذا حان وقت الإرسال أو لا.
+  if (lastSentAt && Date.now() - lastSentAt.getTime() < intervalDays * DAY_MS) {
+    const nextDue = new Date(lastSentAt.getTime() + intervalDays * DAY_MS);
+    return NextResponse.json({ ok: true, skipped: true, nextDue: nextDue.toISOString() });
+  }
+
+  const dump: Record<string, unknown> = {};
   for (const table of TABLES) {
     const { data, error } = await supabase.from(table).select("*");
     if (error) {
@@ -26,7 +39,6 @@ export async function GET(request: Request) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `backup-${timestamp}.json`;
 
-  // نسخة احتياطية بالتخزين (نسخة إضافية بجانب الإيميل)
   await supabase.storage.from("backups").upload(filename, json, { contentType: "application/json" });
 
   const rowCounts = Object.fromEntries(Object.entries(dump).map(([t, rows]) => [t, (rows as unknown[]).length]));
@@ -34,7 +46,7 @@ export async function GET(request: Request) {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const { error: emailError } = await resend.emails.send({
     from: "نظام مغسلة سيارتك اللامعة <onboarding@resend.dev>",
-    to: BACKUP_RECIPIENT,
+    to: backupEmail,
     subject: `نسخة احتياطية - مغسلة سيارتك اللامعة - ${timestamp.slice(0, 10)}`,
     html: `<div dir="rtl">
       <p>نسخة احتياطية تلقائية مرفقة بهذا الإيميل.</p>
@@ -47,5 +59,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: emailError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, filename, rowCounts });
+  await supabase.from("settings").upsert({ key: "backup_last_sent_at", value: new Date().toISOString() });
+
+  return NextResponse.json({ ok: true, filename, rowCounts, sentTo: backupEmail });
 }

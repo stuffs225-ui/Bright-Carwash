@@ -30,14 +30,19 @@ export function bonusPerWorker(shiftCarCount: number, threshold = 15, rate = 2):
   return shiftCarCount > threshold ? Number(((shiftCarCount - threshold) * rate).toFixed(2)) : 0;
 }
 
+// نستخدم en-US قصداً (مو ar-SA) عشان الأرقام تطلع بالأرقام الإنجليزية
+// المعتادة (210.00) مو الأرقام الهندية العربية (٢١٠٫٠٠) يلي ar-SA يرجعها افتراضياً.
 export function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "SAR",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value) || 0);
 }
+
+// لتنسيق أي تاريخ بأسماء أشهر/أيام عربية بس بأرقام إنجليزية وتقويم ميلادي
+export const AR_GREGORIAN_LOCALE = "ar-SA-u-ca-gregory-nu-latn";
 
 export function toDateKey(date: Date): string {
   const y = date.getFullYear();

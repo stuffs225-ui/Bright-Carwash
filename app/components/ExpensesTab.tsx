@@ -4,7 +4,7 @@ import "@/lib/chartRegistry";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Doughnut } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
-import { formatCurrency } from "@/lib/business";
+import { AR_GREGORIAN_LOCALE, formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Expense } from "@/lib/types";
 import { enqueue } from "@/lib/offlineQueue";
@@ -66,7 +66,7 @@ export function ExpensesTab() {
       const d = new Date(exp.occurred_at);
       const key = monthKey(d);
       if (!map.has(key)) {
-        map.set(key, { monthName: d.toLocaleDateString("ar-SA", { month: "long", year: "numeric" }), total: 0, entries: [], types: {} });
+        map.set(key, { monthName: d.toLocaleDateString(AR_GREGORIAN_LOCALE, { month: "long", year: "numeric" }), total: 0, entries: [], types: {} });
       }
       const bucket = map.get(key)!;
       bucket.total += Number(exp.amount);
