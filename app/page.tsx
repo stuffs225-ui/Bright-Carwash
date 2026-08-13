@@ -6,6 +6,8 @@ import { useState } from "react";
 import { CarEntryTab } from "./components/CarEntryTab";
 import { ExpensesTab } from "./components/ExpensesTab";
 import { AnalysisTab } from "./components/AnalysisTab";
+import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
+import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 
 type Tab = "car" | "expenses" | "analysis";
 
@@ -38,6 +40,8 @@ export default function Home() {
       </div>
 
       <div id="toast-container" />
+      <OfflineStatusBadge />
+      <ServiceWorkerRegister />
     </div>
   );
 }

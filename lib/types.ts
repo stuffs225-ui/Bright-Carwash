@@ -9,6 +9,7 @@ export type Entry = {
   notes: string | null;
   occurred_at: string;
   worker_name: string | null;
+  pending?: boolean;
 };
 
 export type Expense = {

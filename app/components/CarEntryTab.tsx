@@ -2,10 +2,33 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { bonusPerWorker, formatCurrency, getCurrentShiftWindow, toDateKey } from "@/lib/business";
+import { bonusPerWorker, formatCurrency, getCurrentShiftWindow, getPaymentMethod, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Entry } from "@/lib/types";
+import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
+import { isNetworkError } from "@/lib/offlineSync";
 import { MetricCard } from "./MetricCard";
+
+function pendingEntriesFromQueue(): Entry[] {
+  return getQueueByTable("entries").map((item) => {
+    const p = item.payload as Record<string, string | number | null>;
+    const cash = Number(p.cash_paid) || 0;
+    const card = Number(p.card_paid) || 0;
+    return {
+      id: `pending-${item.id}`,
+      car_type: String(p.car_type || ""),
+      service_type: String(p.service_type || ""),
+      cash_paid: cash,
+      card_paid: card,
+      gross: cash + card,
+      payment_method: getPaymentMethod(cash, card),
+      notes: (p.notes as string | null) ?? null,
+      occurred_at: String(p.occurred_at),
+      worker_name: null,
+      pending: true,
+    };
+  });
+}
 
 function dayBounds(date: Date) {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -20,6 +43,7 @@ export function CarEntryTab() {
   const [todayEntries, setTodayEntries] = useState<Entry[]>([]);
   const [shiftCount, setShiftCount] = useState(0);
   const [monthEntries, setMonthEntries] = useState<Entry[]>([]);
+  const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showToday, setShowToday] = useState(false);
@@ -84,27 +108,60 @@ export function CarEntryTab() {
   useEffect(() => {
     loadLists();
     refreshAll();
+    setPendingEntries(pendingEntriesFromQueue());
+    const refreshPending = () => setPendingEntries(pendingEntriesFromQueue());
+    window.addEventListener("offline-queue-changed", refreshPending);
     const channel = supabase
       .channel("entries-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => refreshAll())
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener("offline-queue-changed", refreshPending);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const dailyTotals = useMemo(() => {
-    const cash = todayEntries.reduce((s, e) => s + Number(e.cash_paid), 0);
-    const card = todayEntries.reduce((s, e) => s + Number(e.card_paid), 0);
-    return { count: todayEntries.length, cash, card, total: cash + card };
-  }, [todayEntries]);
+  const todayEntriesWithPending = useMemo(() => {
+    const { start, end } = dayBounds(new Date());
+    const relevant = pendingEntries.filter((e) => {
+      const t = new Date(e.occurred_at);
+      return t >= start && t < end;
+    });
+    return [...relevant, ...todayEntries];
+  }, [todayEntries, pendingEntries]);
 
-  const bonus = useMemo(() => bonusPerWorker(shiftCount), [shiftCount]);
+  const monthEntriesWithPending = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const relevant = pendingEntries.filter((e) => {
+      const t = new Date(e.occurred_at);
+      return t >= start && t < end;
+    });
+    return [...relevant, ...monthEntries];
+  }, [monthEntries, pendingEntries]);
+
+  const dailyTotals = useMemo(() => {
+    const cash = todayEntriesWithPending.reduce((s, e) => s + Number(e.cash_paid), 0);
+    const card = todayEntriesWithPending.reduce((s, e) => s + Number(e.card_paid), 0);
+    return { count: todayEntriesWithPending.length, cash, card, total: cash + card };
+  }, [todayEntriesWithPending]);
+
+  const shiftCountWithPending = useMemo(() => {
+    const { start, end } = getCurrentShiftWindow(new Date());
+    const extra = pendingEntries.filter((e) => {
+      const t = new Date(e.occurred_at);
+      return t >= start && t < end;
+    }).length;
+    return shiftCount + extra;
+  }, [shiftCount, pendingEntries]);
+
+  const bonus = useMemo(() => bonusPerWorker(shiftCountWithPending), [shiftCountWithPending]);
 
   const monthlyByDay = useMemo(() => {
     const map = new Map<string, { cars: number; cash: number; card: number; total: number }>();
-    monthEntries.forEach((e) => {
+    monthEntriesWithPending.forEach((e) => {
       const key = toDateKey(new Date(e.occurred_at));
       const row = map.get(key) || { cars: 0, cash: 0, card: 0, total: 0 };
       row.cars += 1;
@@ -131,15 +188,32 @@ export function CarEntryTab() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from("entries").insert({
+    const payload = {
       car_type: carType,
       service_type: serviceType,
       cash_paid: cash,
       card_paid: card,
       notes: notes || null,
-    });
+      occurred_at: new Date().toISOString(),
+    };
+
+    if (!navigator.onLine) {
+      enqueue("entries", payload);
+      setSubmitting(false);
+      showToast("لا يوجد اتصال — تم حفظ السيارة محلياً وستُرفع تلقائياً عند رجوع النت.", "warning");
+      setCarType(""); setServiceType(""); setCashPaid(""); setCardPaid(""); setNotes("");
+      return;
+    }
+
+    const { error } = await supabase.from("entries").insert(payload);
     setSubmitting(false);
     if (error) {
+      if (isNetworkError(error)) {
+        enqueue("entries", payload);
+        showToast("تعذر الاتصال — تم حفظ السيارة محلياً وستُرفع تلقائياً عند رجوع النت.", "warning");
+        setCarType(""); setServiceType(""); setCashPaid(""); setCardPaid(""); setNotes("");
+        return;
+      }
       showToast("خطأ في حفظ السيارة: " + error.message, "error");
       return;
     }
@@ -189,7 +263,7 @@ export function CarEntryTab() {
     refreshAll();
   }
 
-  const dayEntries = selectedDay ? monthEntries.filter((e) => toDateKey(new Date(e.occurred_at)) === selectedDay) : [];
+  const dayEntries = selectedDay ? monthEntriesWithPending.filter((e) => toDateKey(new Date(e.occurred_at)) === selectedDay) : [];
 
   return (
     <div className="space-y-6">
@@ -253,7 +327,7 @@ export function CarEntryTab() {
         <hr className="my-5 border-gray-200" />
         <h3 className="subsection-title text-center">الوردية الحالية</h3>
         <div className="grid grid-cols-2 gap-4">
-          <MetricCard label="سيارات الوردية" value={shiftCount} bg="bg-cyan-50" color="text-cyan-700" />
+          <MetricCard label="سيارات الوردية" value={shiftCountWithPending} bg="bg-cyan-50" color="text-cyan-700" />
           <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} bg="bg-emerald-50" color="text-emerald-700" />
         </div>
       </section>
@@ -265,7 +339,7 @@ export function CarEntryTab() {
         </button>
         <div className="accordion-content" style={{ maxHeight: showToday ? "3000px" : undefined }}>
           <div className="p-4 overflow-x-auto">
-            {todayEntries.length === 0 ? (
+            {todayEntriesWithPending.length === 0 ? (
               <p className="py-5 text-gray-500 text-center">لا توجد إدخالات لليوم.</p>
             ) : (
               <table className="app-table">
@@ -275,7 +349,7 @@ export function CarEntryTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {todayEntries.map((entry) => (
+                  {todayEntriesWithPending.map((entry) => (
                     <EntryRow
                       key={entry.id}
                       entry={entry}
@@ -388,6 +462,21 @@ function EntryRow({
   const [notes, setNotes] = useState(entry.notes || "");
 
   const time = new Date(entry.occurred_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+
+  if (entry.pending) {
+    return (
+      <tr style={{ opacity: 0.65 }}>
+        <td>{time}</td>
+        <td>{entry.car_type}</td>
+        <td>{entry.service_type}</td>
+        <td>{entry.payment_method}</td>
+        <td className="text-green-700 font-bold">{formatCurrency(entry.cash_paid)}</td>
+        <td className="text-purple-700 font-bold">{formatCurrency(entry.card_paid)}</td>
+        <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
+        <td className="text-amber-600 font-bold text-sm">⏳ بانتظار الرفع</td>
+      </tr>
+    );
+  }
 
   if (!editing) {
     return (

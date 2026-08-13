@@ -7,6 +7,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Expense } from "@/lib/types";
+import { enqueue } from "@/lib/offlineQueue";
+import { isNetworkError } from "@/lib/offlineSync";
 import { MetricCard } from "./MetricCard";
 
 const DEFAULT_COLORS = ["#3b82f6", "#8b5cf6", "#ef4444", "#f59e0b", "#10b981", "#6366f1", "#ec4899", "#6d28d9", "#06b6d4", "#eab308"];
@@ -110,9 +112,25 @@ export function ExpensesTab() {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from("expenses").insert({ expense_type: expenseType, amount: amt, notes: notes || null });
+    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: new Date().toISOString() };
+
+    if (!navigator.onLine) {
+      enqueue("expenses", payload);
+      setSubmitting(false);
+      showToast("لا يوجد اتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
+      setExpenseType(""); setAmount(""); setNotes("");
+      return;
+    }
+
+    const { error } = await supabase.from("expenses").insert(payload);
     setSubmitting(false);
     if (error) {
+      if (isNetworkError(error)) {
+        enqueue("expenses", payload);
+        showToast("تعذر الاتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
+        setExpenseType(""); setAmount(""); setNotes("");
+        return;
+      }
       showToast("خطأ في حفظ المصروف: " + error.message, "error");
       return;
     }
