@@ -9,9 +9,11 @@ import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
 import { loadPresets, suggestionsFor } from "@/lib/presets";
+import { BREAKEVEN_WINDOW_DAYS, computeBreakEven, type BreakEven } from "@/lib/breakeven";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 import { PresetGrid } from "./PresetGrid";
+import { BreakEvenMeter } from "./BreakEvenMeter";
 import { SettingsPanel } from "./SettingsPanel";
 import { EntryRow } from "./EntryRow";
 
@@ -72,6 +74,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [notes, setNotes] = useState("");
 
   const [presets, setPresets] = useState<EntryPreset[]>([]);
+  const [goal, setGoal] = useState<BreakEven | null>(null);
 
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([emptyBulkRow()]);
@@ -124,11 +127,34 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     setMonthEntries((data as Entry[]) || []);
   }, []);
 
+  const loadGoal = useCallback(async (currentSettings: AppSettings) => {
+    const since = new Date();
+    since.setDate(since.getDate() - BREAKEVEN_WINDOW_DAYS);
+    const sinceIso = since.toISOString();
+
+    const [{ data: exp }, { data: ent }] = await Promise.all([
+      supabase.from("expenses").select("amount").is("deleted_at", null).gte("occurred_at", sinceIso),
+      supabase.from("entries").select("gross").is("deleted_at", null).gte("occurred_at", sinceIso),
+    ]);
+
+    const windowExpenses = (exp || []).reduce((sum, r) => sum + Number(r.amount), 0);
+    const windowRevenue = (ent || []).reduce((sum, r) => sum + Number(r.gross), 0);
+
+    setGoal(computeBreakEven({
+      windowExpenses,
+      windowRevenue,
+      windowEntries: (ent || []).length,
+      windowDays: BREAKEVEN_WINDOW_DAYS,
+      manualDailyTarget: currentSettings.daily_expense_target,
+    }));
+  }, []);
+
   const refreshAll = useCallback((currentSettings: AppSettings) => {
     loadToday();
     loadShift(currentSettings);
     loadMonth();
-  }, [loadToday, loadShift, loadMonth]);
+    loadGoal(currentSettings);
+  }, [loadToday, loadShift, loadMonth, loadGoal]);
 
   useEffect(() => {
     loadLists();
@@ -402,6 +428,15 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   return (
     <div className="space-y-6">
+      {goal && (
+        <BreakEvenMeter
+          goal={goal}
+          carsToday={dailyTotals.count}
+          revenueToday={dailyTotals.total}
+          ownerView={ownerView}
+        />
+      )}
+
       {!bulkMode && presets.length > 0 && (
         <section className="card">
           <h2 className="section-title">تسجيل سريع</h2>

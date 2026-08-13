@@ -18,6 +18,8 @@ export function SettingsPanel({
   const [endHour, setEndHour] = useState(String(settings.shift_end_hour));
   const [backupEmail, setBackupEmail] = useState(settings.backup_email);
   const [backupIntervalDays, setBackupIntervalDays] = useState(String(settings.backup_interval_days));
+  const [dailyTarget, setDailyTarget] = useState(String(settings.daily_expense_target));
+  const [ownerPin, setOwnerPin] = useState(settings.owner_pin);
 
   return (
     <div className="mt-5 border-t pt-4 text-right">
@@ -38,6 +40,18 @@ export function SettingsPanel({
         <div>
           <label className="form-label">نهاية الوردية (الساعة 0-23)</label>
           <input type="number" min="0" max="23" value={endHour} onChange={(e) => setEndHour(e.target.value)} />
+        </div>
+      </div>
+
+      <h4 className="subsection-title mt-5">هدف اليوم وقفل وضع المالك</h4>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">مصروف اليوم المستهدف (0 = احسبه تلقائياً)</label>
+          <input type="number" min="0" step="0.01" value={dailyTarget} onChange={(e) => setDailyTarget(e.target.value)} />
+        </div>
+        <div>
+          <label className="form-label">رقم سري لوضع المالك (فارغ = بدون قفل)</label>
+          <input type="text" inputMode="numeric" value={ownerPin} onChange={(e) => setOwnerPin(e.target.value)} />
         </div>
       </div>
 
@@ -65,6 +79,8 @@ export function SettingsPanel({
               shift_end_hour: Number(endHour) || 0,
               backup_email: backupEmail,
               backup_interval_days: Number(backupIntervalDays) || 1,
+              daily_expense_target: Number(dailyTarget) || 0,
+              owner_pin: ownerPin,
             })
           }
         >
