@@ -8,7 +8,7 @@ import { formatCurrency, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { exportDailyReportToExcel } from "@/lib/exportReport";
 import type { Entry, Expense } from "@/lib/types";
-import { MetricCard } from "./MetricCard";
+import { MetricCard, type Tone } from "./MetricCard";
 import { Modal } from "./Modal";
 
 const PALETTE = ["#2563eb", "#7c3aed", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#9333ea"];
@@ -346,20 +346,20 @@ export function AnalysisTab() {
     <div className="space-y-6">
       {/* نظرة سريعة — دوس على أي بطاقة لتفاصيل السيارات بهذي الفترة */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <QuickCard label="دخل اليوم" net={quickGlance.today.net} sub={`${quickGlance.today.cars} سيارة`} bg="bg-blue-50" color="text-blue-700" onClick={() => setActivePeriod("today")} />
-        <QuickCard label="ربح الأسبوع" net={quickGlance.week.net} sub={formatCurrency(quickGlance.week.revenue)} bg="bg-emerald-50" color="text-emerald-700" onClick={() => setActivePeriod("week")} />
-        <QuickCard label="ربح الشهر" net={quickGlance.month.net} sub={formatCurrency(quickGlance.month.revenue)} bg="bg-purple-50" color="text-purple-700" onClick={() => setActivePeriod("month")} />
-        <QuickCard label="ربح السنة" net={quickGlance.year.net} sub={formatCurrency(quickGlance.year.revenue)} bg="bg-indigo-50" color="text-indigo-700" onClick={() => setActivePeriod("year")} />
+        <QuickCard label="دخل اليوم" net={quickGlance.today.net} sub={`${quickGlance.today.cars} سيارة`} tone="blue" onClick={() => setActivePeriod("today")} />
+        <QuickCard label="ربح الأسبوع" net={quickGlance.week.net} sub={formatCurrency(quickGlance.week.revenue)} tone="emerald" onClick={() => setActivePeriod("week")} />
+        <QuickCard label="ربح الشهر" net={quickGlance.month.net} sub={formatCurrency(quickGlance.month.revenue)} tone="purple" onClick={() => setActivePeriod("month")} />
+        <QuickCard label="ربح السنة" net={quickGlance.year.net} sub={formatCurrency(quickGlance.year.revenue)} tone="indigo" onClick={() => setActivePeriod("year")} />
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="metric-card bg-cyan-50">
+        <div className="metric-card tone-cyan">
           <span className="metric-label">العائد على الاستثمار (سنوي) — مقارنة الربح بإجمالي المصروفات</span>
-          <strong className={`metric-value ${roi.yearly >= 0 ? "text-cyan-700" : "text-red-700"}`}>{roi.yearly.toFixed(1)}%</strong>
+          <strong className={`metric-value ${roi.yearly < 0 ? "txt-expense" : ""}`}>{roi.yearly.toFixed(1)}%</strong>
         </div>
-        <div className="metric-card bg-amber-50">
+        <div className="metric-card tone-amber">
           <span className="metric-label">العائد على الاستثمار (شهري) — مقارنة الربح بإجمالي المصروفات</span>
-          <strong className={`metric-value ${roi.monthly >= 0 ? "text-amber-700" : "text-red-700"}`}>{roi.monthly.toFixed(1)}%</strong>
+          <strong className={`metric-value ${roi.monthly < 0 ? "txt-expense" : ""}`}>{roi.monthly.toFixed(1)}%</strong>
         </div>
       </section>
 
@@ -368,7 +368,7 @@ export function AnalysisTab() {
         <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
           <div>
             <h2 className="section-title mb-1">تحليل البيانات</h2>
-            <p className="text-gray-500">تحليل الإيرادات، السيارات، المصروفات وصافي الدخل للفترة المحددة.</p>
+            <p className="txt-muted">تحليل الإيرادات، السيارات، المصروفات وصافي الدخل للفترة المحددة.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full xl:w-auto">
             <div>
@@ -422,14 +422,14 @@ export function AnalysisTab() {
 
       <div id="printable-report" className="space-y-6">
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard label="عدد السيارات" value={m.cars} bg="bg-blue-50" color="text-blue-700" />
-          <MetricCard label="الإيرادات" value={formatCurrency(m.revenue)} bg="bg-emerald-50" color="text-emerald-700" />
-          <MetricCard label="المصروفات" value={formatCurrency(m.expenses)} bg="bg-red-50" color="text-red-700" />
-          <MetricCard label="صافي الدخل" value={formatCurrency(m.net)} bg="bg-indigo-50" color="text-indigo-700" />
-          <MetricCard label="الكاش" value={formatCurrency(m.cash)} bg="bg-cyan-50" color="text-cyan-700" />
-          <MetricCard label="البطاقة" value={formatCurrency(m.card)} bg="bg-purple-50" color="text-purple-700" />
-          <MetricCard label="متوسط الفاتورة" value={formatCurrency(m.avgTicket)} bg="bg-amber-50" color="text-amber-700" />
-          <MetricCard label="متوسط السيارات / يوم عمل" value={m.avgCarsPerActiveDay.toFixed(2)} bg="bg-slate-50" color="text-slate-700" />
+          <MetricCard label="عدد السيارات" value={m.cars} tone="blue" />
+          <MetricCard label="الإيرادات" value={formatCurrency(m.revenue)} tone="emerald" />
+          <MetricCard label="المصروفات" value={formatCurrency(m.expenses)} tone="red" />
+          <MetricCard label="صافي الدخل" value={formatCurrency(m.net)} tone="indigo" />
+          <MetricCard label="الكاش" value={formatCurrency(m.cash)} tone="cyan" />
+          <MetricCard label="البطاقة" value={formatCurrency(m.card)} tone="purple" />
+          <MetricCard label="متوسط الفاتورة" value={formatCurrency(m.avgTicket)} tone="amber" />
+          <MetricCard label="متوسط السيارات / يوم عمل" value={m.avgCarsPerActiveDay.toFixed(2)} tone="slate" />
         </section>
 
         <section className="card">
@@ -495,7 +495,7 @@ export function AnalysisTab() {
                 </thead>
                 <tbody>
                   {analysis.daily.length === 0 ? (
-                    <tr><td colSpan={7} className="text-center text-gray-500 py-5">لا توجد بيانات في الفترة المحددة.</td></tr>
+                    <tr><td colSpan={7} className="text-center txt-muted py-5">لا توجد بيانات في الفترة المحددة.</td></tr>
                   ) : (
                     [...analysis.daily].reverse().map((d) => (
                       <tr key={d.date}>
@@ -503,9 +503,9 @@ export function AnalysisTab() {
                         <td>{d.cars}</td>
                         <td>{formatCurrency(d.cash)}</td>
                         <td>{formatCurrency(d.card)}</td>
-                        <td className="text-green-700 font-bold">{formatCurrency(d.revenue)}</td>
-                        <td className="text-red-700 font-bold">{formatCurrency(d.expenses)}</td>
-                        <td className={`font-extrabold ${d.net < 0 ? "text-red-700" : "text-blue-700"}`}>{formatCurrency(d.net)}</td>
+                        <td className="txt-cash">{formatCurrency(d.revenue)}</td>
+                        <td className="txt-expense">{formatCurrency(d.expenses)}</td>
+                        <td className={`txt-net ${d.net < 0 ? "is-negative" : ""}`}>{formatCurrency(d.net)}</td>
                       </tr>
                     ))
                   )}
@@ -547,9 +547,9 @@ export function AnalysisTab() {
                     <tr key={r.month}>
                       <td>{r.month}</td>
                       <td>{r.cars}</td>
-                      <td className="text-green-700 font-bold">{formatCurrency(r.revenue)}</td>
-                      <td className="text-red-700 font-bold">{formatCurrency(r.expenses)}</td>
-                      <td className={`font-extrabold ${r.net < 0 ? "text-red-700" : "text-blue-700"}`}>{formatCurrency(r.net)}</td>
+                      <td className="txt-cash">{formatCurrency(r.revenue)}</td>
+                      <td className="txt-expense">{formatCurrency(r.expenses)}</td>
+                      <td className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{formatCurrency(r.net)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -568,7 +568,7 @@ export function AnalysisTab() {
               </thead>
               <tbody>
                 {periodEntries.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center text-gray-500 py-5">لا توجد سيارات بهذي الفترة.</td></tr>
+                  <tr><td colSpan={6} className="text-center txt-muted py-5">لا توجد سيارات بهذي الفترة.</td></tr>
                 ) : (
                   periodEntries.map((entry) => {
                     const d = new Date(entry.occurred_at);
@@ -597,22 +597,20 @@ function QuickCard({
   label,
   net,
   sub,
-  bg,
-  color,
+  tone,
   onClick,
 }: {
   label: string;
   net: number;
   sub: string;
-  bg: string;
-  color: string;
+  tone: Tone;
   onClick: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className={`metric-card ${bg} w-full cursor-pointer hover:brightness-95 transition`}>
+    <button type="button" onClick={onClick} className={`metric-card tone-${tone}`}>
       <span className="metric-label">{label}</span>
-      <strong className={`metric-value ${net < 0 ? "text-red-700" : color}`}>{formatCurrency(net)}</strong>
-      <span className="text-xs text-gray-500 mt-1">{sub}</span>
+      <strong className={`metric-value ${net < 0 ? "txt-expense" : ""}`}>{formatCurrency(net)}</strong>
+      <span className="text-xs txt-muted mt-1">{sub}</span>
     </button>
   );
 }

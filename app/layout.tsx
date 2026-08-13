@@ -20,6 +20,12 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap"
           rel="stylesheet"
         />
+        {/* يطبّق المظهر المحفوظ قبل أول رسم، وإلا يومض الطيف الفاتح قبل الداكن */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("carwash_theme_v1");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})();`,
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>

@@ -10,6 +10,7 @@ import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
+import { ModeSwitch } from "./components/ModeSwitch";
 
 type Tab = "car" | "expenses" | "analysis";
 
@@ -21,6 +22,9 @@ export default function Home() {
       <ErrorMonitor />
       <div className="app-shell">
         <header className="app-header">
+          <div className="flex justify-end mb-2">
+            <ModeSwitch />
+          </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold">لوحة التحكم الرئيسية</h1>
           <p className="text-sm sm:text-base opacity-90 mt-1">نظام موحد لإدارة السيارات والمصروفات وتحليل الأداء</p>
         </header>

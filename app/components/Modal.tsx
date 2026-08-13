@@ -28,7 +28,7 @@ export function Modal({
     >
       <div className="modal-content">
         <button type="button" className="close-button" onClick={onClose} aria-label="إغلاق">&times;</button>
-        <h2 className="text-xl font-extrabold text-gray-800 mb-5 text-center">{title}</h2>
+        <h2 className="text-xl font-extrabold txt-strong mb-5 text-center">{title}</h2>
         {children}
       </div>
     </div>

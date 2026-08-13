@@ -204,7 +204,7 @@ export function ExpensesTab() {
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-5">
           <div>
             <h2 className="section-title mb-1">ملخص المصروفات</h2>
-            <p className="text-gray-500">اختر الشهر لعرض الملخص والتوزيع.</p>
+            <p className="txt-muted">اختر الشهر لعرض الملخص والتوزيع.</p>
           </div>
           <div className="w-full md:w-72">
             <label className="form-label">الشهر</label>
@@ -219,13 +219,12 @@ export function ExpensesTab() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <MetricCard label="إجمالي المصروفات" value={formatCurrency(currentMonth?.total || 0)} bg="bg-red-50" color="text-red-700" />
-          <MetricCard label="عدد العمليات" value={currentMonth?.entries.length || 0} bg="bg-indigo-50" color="text-indigo-700" />
+          <MetricCard label="إجمالي المصروفات" value={formatCurrency(currentMonth?.total || 0)} tone="red" />
+          <MetricCard label="عدد العمليات" value={currentMonth?.entries.length || 0} tone="indigo" />
           <MetricCard
             label="متوسط المصروف"
             value={formatCurrency(currentMonth && currentMonth.entries.length ? currentMonth.total / currentMonth.entries.length : 0)}
-            bg="bg-amber-50"
-            color="text-amber-700"
+            tone="amber"
           />
         </div>
 
@@ -242,7 +241,7 @@ export function ExpensesTab() {
         <div className="accordion-content" style={{ maxHeight: showEntries ? "5000px" : undefined }}>
           <div className="p-4 overflow-x-auto">
             {expenses.length === 0 ? (
-              <p className="text-center text-gray-500 py-5">لا توجد سجلات مصروفات.</p>
+              <p className="text-center txt-muted py-5">لا توجد سجلات مصروفات.</p>
             ) : (
               <table className="app-table">
                 <thead>
@@ -297,7 +296,7 @@ function ExpenseRow({
       <tr>
         <td>{new Date(expense.occurred_at).toLocaleDateString("en-GB")}</td>
         <td>{expense.expense_type}</td>
-        <td className="font-extrabold text-red-700">{formatCurrency(expense.amount)}</td>
+        <td className="txt-expense">{formatCurrency(expense.amount)}</td>
         <td>{expense.notes || ""}</td>
         <td className="flex gap-1.5">
           <button type="button" className="action-button edit-button" onClick={onEdit}>تعديل</button>

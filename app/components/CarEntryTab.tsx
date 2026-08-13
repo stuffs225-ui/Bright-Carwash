@@ -420,7 +420,7 @@ export function CarEntryTab() {
           <form onSubmit={handleBulkSubmit} className="space-y-4 mt-4">
             <div className="space-y-3">
               {bulkRows.map((row, index) => (
-                <div key={index} className="border border-gray-200 rounded-xl p-3 bg-gray-50">
+                <div key={index} className="bulk-row">
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
                     <div>
                       <label className="form-label">نوع السيارة</label>
@@ -478,17 +478,17 @@ export function CarEntryTab() {
           اليوم - {new Date().toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long" })} ({new Date().toLocaleDateString("en-GB")})
         </button>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="السيارات" value={dailyTotals.count} bg="bg-blue-50" color="text-blue-700" />
-          <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} bg="bg-green-50" color="text-green-700" />
-          <MetricCard label="بطاقة" value={formatCurrency(dailyTotals.card)} bg="bg-purple-50" color="text-purple-700" />
-          <MetricCard label="الإجمالي" value={formatCurrency(dailyTotals.total)} bg="bg-slate-50" color="text-slate-800" />
+          <MetricCard label="السيارات" value={dailyTotals.count} tone="blue" />
+          <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} tone="green" />
+          <MetricCard label="بطاقة" value={formatCurrency(dailyTotals.card)} tone="purple" />
+          <MetricCard label="الإجمالي" value={formatCurrency(dailyTotals.total)} tone="slate" />
         </div>
-        <hr className="my-5 border-gray-200" />
+        <hr className="my-5 rule" />
         <div className="flex items-center justify-center gap-2">
           <h3 className="subsection-title text-center mb-0">الوردية الحالية</h3>
           <button
             type="button"
-            className="text-gray-400 hover:text-gray-700 text-lg"
+            className="txt-muted text-lg"
             title="إعدادات الوردية والمكافأة"
             onClick={() => setShowSettings((v) => !v)}
           >
@@ -496,8 +496,8 @@ export function CarEntryTab() {
           </button>
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <MetricCard label="سيارات الوردية" value={shiftCountWithPending} bg="bg-cyan-50" color="text-cyan-700" />
-          <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} bg="bg-emerald-50" color="text-emerald-700" />
+          <MetricCard label="سيارات الوردية" value={shiftCountWithPending} tone="cyan" />
+          <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} tone="emerald" />
         </div>
 
         {showSettings && (
@@ -513,7 +513,7 @@ export function CarEntryTab() {
         <div className="accordion-content" style={{ maxHeight: showMonthly ? "5000px" : undefined }}>
           <div className="p-4 overflow-x-auto">
             {monthlyByDay.length === 0 ? (
-              <p className="py-5 text-gray-500 text-center">لا توجد بيانات دخل لهذا الشهر.</p>
+              <p className="py-5 txt-muted text-center">لا توجد بيانات دخل لهذا الشهر.</p>
             ) : (
               <table className="app-table">
                 <thead>
@@ -525,13 +525,13 @@ export function CarEntryTab() {
                     return (
                       <tr key={row.date}>
                         <td>
-                          <button type="button" className="text-blue-700 font-bold underline" onClick={() => setSelectedDay(row.date)}>
+                          <button type="button" className="link-inline" onClick={() => setSelectedDay(row.date)}>
                             {day} - {row.date}
                           </button>
                         </td>
                         <td>{row.cars}</td>
-                        <td className="text-green-700 font-bold">{formatCurrency(row.cash)}</td>
-                        <td className="text-purple-700 font-bold">{formatCurrency(row.card)}</td>
+                        <td className="txt-cash">{formatCurrency(row.cash)}</td>
+                        <td className="txt-card">{formatCurrency(row.card)}</td>
                         <td className="font-extrabold">{formatCurrency(row.total)}</td>
                       </tr>
                     );
@@ -552,7 +552,7 @@ export function CarEntryTab() {
               </thead>
               <tbody>
                 {dayEntries.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center text-gray-500 py-5">لا توجد إدخالات بهذا اليوم.</td></tr>
+                  <tr><td colSpan={8} className="text-center txt-muted py-5">لا توجد إدخالات بهذا اليوم.</td></tr>
                 ) : (
                   dayEntries.map((entry) => (
                     <EntryRow
@@ -583,7 +583,7 @@ export function CarEntryTab() {
               </thead>
               <tbody>
                 {todayEntriesWithPending.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center text-gray-500 py-5">لا توجد إدخالات لليوم.</td></tr>
+                  <tr><td colSpan={8} className="text-center txt-muted py-5">لا توجد إدخالات لليوم.</td></tr>
                 ) : (
                   todayEntriesWithPending.map((entry) => (
                     <EntryRow
@@ -715,10 +715,10 @@ function EntryRow({
         <td>{entry.car_type}</td>
         <td>{entry.service_type}</td>
         <td>{entry.payment_method}</td>
-        <td className="text-green-700 font-bold">{formatCurrency(entry.cash_paid)}</td>
-        <td className="text-purple-700 font-bold">{formatCurrency(entry.card_paid)}</td>
+        <td className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
+        <td className="txt-card">{formatCurrency(entry.card_paid)}</td>
         <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
-        <td className="text-amber-600 font-bold text-sm">⏳ بانتظار الرفع</td>
+        <td className="txt-warning font-bold text-sm">⏳ بانتظار الرفع</td>
       </tr>
     );
   }
@@ -730,8 +730,8 @@ function EntryRow({
         <td>{entry.car_type}</td>
         <td>{entry.service_type}</td>
         <td>{entry.payment_method}</td>
-        <td className="text-green-700 font-bold">{formatCurrency(entry.cash_paid)}</td>
-        <td className="text-purple-700 font-bold">{formatCurrency(entry.card_paid)}</td>
+        <td className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
+        <td className="txt-card">{formatCurrency(entry.card_paid)}</td>
         <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
         <td className="flex gap-1.5">
           <button type="button" className="action-button edit-button" onClick={onEdit}>تعديل</button>

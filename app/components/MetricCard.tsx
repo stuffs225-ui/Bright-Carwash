@@ -1,18 +1,27 @@
+export type Tone =
+  | "blue"
+  | "green"
+  | "purple"
+  | "slate"
+  | "cyan"
+  | "emerald"
+  | "red"
+  | "indigo"
+  | "amber";
+
 export function MetricCard({
   label,
   value,
-  bg,
-  color,
+  tone,
 }: {
   label: string;
   value: string | number;
-  bg: string;
-  color: string;
+  tone: Tone;
 }) {
   return (
-    <div className={`metric-card ${bg}`}>
+    <div className={`metric-card tone-${tone}`}>
       <span className="metric-label">{label}</span>
-      <strong className={`metric-value ${color}`}>{value}</strong>
+      <strong className="metric-value">{value}</strong>
     </div>
   );
 }

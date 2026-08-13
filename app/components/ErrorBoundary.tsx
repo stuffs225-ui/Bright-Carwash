@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="card text-center m-4">
-          <p className="text-red-600 font-bold mb-3">صار خطأ غير متوقع بالصفحة.</p>
+          <p className="txt-danger font-bold mb-3">صار خطأ غير متوقع بالصفحة.</p>
           <button type="button" className="btn-primary" onClick={() => window.location.reload()}>
             إعادة تحميل الصفحة
           </button>
