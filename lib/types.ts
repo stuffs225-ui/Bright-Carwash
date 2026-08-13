@@ -20,6 +20,15 @@ export type Expense = {
   occurred_at: string;
 };
 
+export type EntryPreset = {
+  id: string;
+  car_type: string;
+  service_type: string;
+  amount: number;
+  sort_order: number;
+  active?: boolean;
+};
+
 export type LookupItem = {
   id: string;
   name: string;

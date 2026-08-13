@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { AR_GREGORIAN_LOCALE, bonusPerWorker, formatCurrency, getCurrentShiftWindow, getPaymentMethod, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
-import type { Entry } from "@/lib/types";
+import type { Entry, EntryPreset } from "@/lib/types";
 import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
+import { loadPresets, suggestionsFor } from "@/lib/presets";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
+import { PresetGrid } from "./PresetGrid";
 import { SettingsPanel } from "./SettingsPanel";
 import { EntryRow } from "./EntryRow";
 
@@ -69,6 +71,8 @@ export function CarEntryTab() {
   const [cardPaid, setCardPaid] = useState("");
   const [notes, setNotes] = useState("");
 
+  const [presets, setPresets] = useState<EntryPreset[]>([]);
+
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([emptyBulkRow()]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
@@ -80,6 +84,7 @@ export function CarEntryTab() {
     ]);
     setCarTypes((cars || []).map((c) => c.name));
     setServiceTypes((services || []).map((s) => s.name));
+    setPresets(await loadPresets());
   }, []);
 
   const loadToday = useCallback(async () => {
@@ -213,6 +218,42 @@ export function CarEntryTab() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [monthEntriesWithPending]);
 
+  function clearForm() {
+    setCarType("");
+    setServiceType("");
+    setCashPaid("");
+    setCardPaid("");
+    setNotes("");
+  }
+
+  // مسار الحفظ الموحّد: يستخدمه النموذج اليدوي والأزرار الجاهزة معاً، فيمر
+  // الاثنان بنفس منطق الطابور المحلي عند انقطاع الشبكة.
+  async function saveEntry(payload: Record<string, unknown>, successMessage: string): Promise<boolean> {
+    const queueLocally = (reason: string) => {
+      enqueue("entries", payload);
+      showToast(`${reason} — تم الحفظ محلياً وسيُرفع تلقائياً عند رجوع النت.`, "warning");
+    };
+
+    if (!navigator.onLine) {
+      queueLocally("لا يوجد اتصال");
+      return true;
+    }
+
+    const { error } = await supabase.from("entries").insert(payload);
+    if (error) {
+      if (isNetworkError(error)) {
+        queueLocally("تعذر الاتصال");
+        return true;
+      }
+      showToast("خطأ في الحفظ: " + error.message, "error");
+      return false;
+    }
+
+    showToast(successMessage);
+    refreshAll(settingsRef.current);
+    return true;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const cash = Number(cashPaid) || 0;
@@ -226,42 +267,35 @@ export function CarEntryTab() {
       return;
     }
     setSubmitting(true);
-    const payload = {
-      car_type: carType,
-      service_type: serviceType,
-      cash_paid: cash,
-      card_paid: card,
-      notes: notes || null,
-      occurred_at: new Date().toISOString(),
-    };
-
-    if (!navigator.onLine) {
-      enqueue("entries", payload);
-      setSubmitting(false);
-      showToast("لا يوجد اتصال — تم حفظ السيارة محلياً وستُرفع تلقائياً عند رجوع النت.", "warning");
-      setCarType(""); setServiceType(""); setCashPaid(""); setCardPaid(""); setNotes("");
-      return;
-    }
-
-    const { error } = await supabase.from("entries").insert(payload);
+    const ok = await saveEntry(
+      {
+        car_type: carType,
+        service_type: serviceType,
+        cash_paid: cash,
+        card_paid: card,
+        notes: notes || null,
+        occurred_at: new Date().toISOString(),
+      },
+      "تمت إضافة السيارة بنجاح!"
+    );
     setSubmitting(false);
-    if (error) {
-      if (isNetworkError(error)) {
-        enqueue("entries", payload);
-        showToast("تعذر الاتصال — تم حفظ السيارة محلياً وستُرفع تلقائياً عند رجوع النت.", "warning");
-        setCarType(""); setServiceType(""); setCashPaid(""); setCardPaid(""); setNotes("");
-        return;
-      }
-      showToast("خطأ في حفظ السيارة: " + error.message, "error");
-      return;
-    }
-    showToast("تمت إضافة السيارة بنجاح!");
-    setCarType("");
-    setServiceType("");
-    setCashPaid("");
-    setCardPaid("");
-    setNotes("");
-    refreshAll(settingsRef.current);
+    if (ok) clearForm();
+  }
+
+  async function handlePresetPick(preset: EntryPreset, method: "cash" | "card") {
+    setSubmitting(true);
+    await saveEntry(
+      {
+        car_type: preset.car_type,
+        service_type: preset.service_type,
+        cash_paid: method === "cash" ? preset.amount : 0,
+        card_paid: method === "card" ? preset.amount : 0,
+        notes: null,
+        occurred_at: new Date().toISOString(),
+      },
+      `تم تسجيل ${preset.car_type} · ${formatCurrency(preset.amount)}`
+    );
+    setSubmitting(false);
   }
 
   function updateBulkRow(index: number, patch: Partial<BulkRow>) {
@@ -364,8 +398,17 @@ export function CarEntryTab() {
 
   const dayEntries = selectedDay ? monthEntriesWithPending.filter((e) => toDateKey(new Date(e.occurred_at)) === selectedDay) : [];
 
+  const priceSuggestions = suggestionsFor(presets, carType, serviceType);
+
   return (
     <div className="space-y-6">
+      {!bulkMode && presets.length > 0 && (
+        <section className="card">
+          <h2 className="section-title">تسجيل سريع</h2>
+          <PresetGrid presets={presets} disabled={submitting} onPick={handlePresetPick} />
+        </section>
+      )}
+
       <section className="card">
         <div className="flex items-center justify-between gap-3 mb-1">
           <h2 className="section-title mb-0">{bulkMode ? "إضافة عدة سيارات دفعة وحدة" : "إدخال سيارة جديدة"}</h2>
@@ -400,6 +443,31 @@ export function CarEntryTab() {
                 </div>
               </div>
             </div>
+            {priceSuggestions.length > 0 && (
+              <div>
+                <label className="form-label">الأسعار المعتادة لهذي التركيبة</label>
+                <div className="suggestion-row">
+                  {priceSuggestions.map((p) => (
+                    <span key={p.id} className="contents">
+                      <button
+                        type="button"
+                        className="suggestion-chip"
+                        onClick={() => { setCashPaid(String(p.amount)); setCardPaid(""); }}
+                      >
+                        {formatCurrency(p.amount)} كاش
+                      </button>
+                      <button
+                        type="button"
+                        className="suggestion-chip"
+                        onClick={() => { setCardPaid(String(p.amount)); setCashPaid(""); }}
+                      >
+                        {formatCurrency(p.amount)} بطاقة
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="form-label">كاش</label>
