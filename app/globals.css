@@ -611,6 +611,59 @@ button.metric-card:hover { filter: brightness(1.04); }
   .chart-box { height: 285px; }
   .chart-box-lg { height: 320px; }
   .preset-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+
+  /* ============================================================
+     الجداول تتحوّل بطاقات على الجوال
+     كل صف يصير بطاقة، وكل خلية تعرض عنوان عمودها من data-label.
+     السبب: 7 أعمدة بعرض أدنى 720px تعني تمريراً أفقياً مؤلماً بالجوال.
+     ============================================================ */
+  .app-table,
+  .app-table thead,
+  .app-table tbody,
+  .app-table tr,
+  .app-table td { display: block; width: 100%; }
+
+  .app-table { min-width: 0; }
+
+  /* الترويسة مخفية بصرياً — العناوين تنتقل لـ ::before بكل خلية */
+  .app-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .app-table tbody tr {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    padding: 4px 2px;
+    background: var(--surface);
+  }
+  .app-table tbody tr:nth-child(even) { background: var(--surface-2); }
+  .app-table tbody tr:hover { background: var(--surface); }
+
+  .app-table td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    border: 0;
+    padding: 8px 12px;
+    white-space: normal;
+    text-align: left;
+  }
+  .app-table tbody td + td { border-top: 1px dashed var(--border); }
+
+  .app-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 700;
+    font-size: .85rem;
+    flex-shrink: 0;
+  }
+  /* خلية بلا عنوان (أزرار الإجراءات) تأخذ العرض كاملاً */
+  .app-table td:not([data-label])::before { content: none; }
+  .app-table td:not([data-label]) { justify-content: flex-start; }
+
+  /* صف "لا توجد بيانات" الممتد */
+  .app-table td[colspan]::before { content: none; }
+  .app-table td[colspan] { justify-content: center; }
 }
 
 /* غلاف المحتوى بوضع الموظف — بدون شريط تبويبات فوقه */

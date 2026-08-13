@@ -499,13 +499,13 @@ export function AnalysisTab() {
                   ) : (
                     [...analysis.daily].reverse().map((d) => (
                       <tr key={d.date}>
-                        <td>{d.date}</td>
-                        <td>{d.cars}</td>
-                        <td>{formatCurrency(d.cash)}</td>
-                        <td>{formatCurrency(d.card)}</td>
-                        <td className="txt-cash">{formatCurrency(d.revenue)}</td>
-                        <td className="txt-expense">{formatCurrency(d.expenses)}</td>
-                        <td className={`txt-net ${d.net < 0 ? "is-negative" : ""}`}>{formatCurrency(d.net)}</td>
+                        <td data-label="التاريخ">{d.date}</td>
+                        <td data-label="السيارات">{d.cars}</td>
+                        <td data-label="كاش">{formatCurrency(d.cash)}</td>
+                        <td data-label="بطاقة">{formatCurrency(d.card)}</td>
+                        <td data-label="الإيراد" className="txt-cash">{formatCurrency(d.revenue)}</td>
+                        <td data-label="المصروفات" className="txt-expense">{formatCurrency(d.expenses)}</td>
+                        <td data-label="الصافي" className={`txt-net ${d.net < 0 ? "is-negative" : ""}`}>{formatCurrency(d.net)}</td>
                       </tr>
                     ))
                   )}
@@ -545,11 +545,11 @@ export function AnalysisTab() {
                 <tbody>
                   {monthlyHistory.map((r) => (
                     <tr key={r.month}>
-                      <td>{r.month}</td>
-                      <td>{r.cars}</td>
-                      <td className="txt-cash">{formatCurrency(r.revenue)}</td>
-                      <td className="txt-expense">{formatCurrency(r.expenses)}</td>
-                      <td className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{formatCurrency(r.net)}</td>
+                      <td data-label="الشهر">{r.month}</td>
+                      <td data-label="السيارات">{r.cars}</td>
+                      <td data-label="الإيراد" className="txt-cash">{formatCurrency(r.revenue)}</td>
+                      <td data-label="المصروفات" className="txt-expense">{formatCurrency(r.expenses)}</td>
+                      <td data-label="صافي الربح" className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{formatCurrency(r.net)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -574,12 +574,12 @@ export function AnalysisTab() {
                     const d = new Date(entry.occurred_at);
                     return (
                       <tr key={entry.id}>
-                        <td>{toDateKey(d)}</td>
-                        <td>{d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}</td>
-                        <td>{entry.car_type}</td>
-                        <td>{entry.service_type}</td>
-                        <td>{entry.payment_method}</td>
-                        <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
+                        <td data-label="التاريخ">{toDateKey(d)}</td>
+                        <td data-label="الوقت">{d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}</td>
+                        <td data-label="السيارة">{entry.car_type}</td>
+                        <td data-label="الخدمة">{entry.service_type}</td>
+                        <td data-label="الدفع">{entry.payment_method}</td>
+                        <td data-label="الإجمالي" className="font-extrabold">{formatCurrency(entry.gross)}</td>
                       </tr>
                     );
                   })

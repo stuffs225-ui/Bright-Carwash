@@ -294,10 +294,10 @@ function ExpenseRow({
   if (!editing) {
     return (
       <tr>
-        <td>{new Date(expense.occurred_at).toLocaleDateString("en-GB")}</td>
-        <td>{expense.expense_type}</td>
-        <td className="txt-expense">{formatCurrency(expense.amount)}</td>
-        <td>{expense.notes || ""}</td>
+        <td data-label="التاريخ">{new Date(expense.occurred_at).toLocaleDateString("en-GB")}</td>
+        <td data-label="نوع المصروف">{expense.expense_type}</td>
+        <td data-label="المبلغ" className="txt-expense">{formatCurrency(expense.amount)}</td>
+        <td data-label="ملاحظات">{expense.notes || ""}</td>
         <td className="flex gap-1.5">
           <button type="button" className="action-button edit-button" onClick={onEdit}>تعديل</button>
           <button type="button" className="action-button delete-button" onClick={onDelete}>حذف</button>

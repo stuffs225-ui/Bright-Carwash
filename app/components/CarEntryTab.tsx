@@ -608,15 +608,15 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                     const day = new Date(`${row.date}T12:00:00`).toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long" });
                     return (
                       <tr key={row.date}>
-                        <td>
+                        <td data-label="اليوم">
                           <button type="button" className="link-inline" onClick={() => setSelectedDay(row.date)}>
                             {day} - {row.date}
                           </button>
                         </td>
-                        <td>{row.cars}</td>
-                        <td className="txt-cash">{formatCurrency(row.cash)}</td>
-                        <td className="txt-card">{formatCurrency(row.card)}</td>
-                        <td className="font-extrabold">{formatCurrency(row.total)}</td>
+                        <td data-label="عدد السيارات">{row.cars}</td>
+                        <td data-label="كاش" className="txt-cash">{formatCurrency(row.cash)}</td>
+                        <td data-label="بطاقة" className="txt-card">{formatCurrency(row.card)}</td>
+                        <td data-label="الإجمالي" className="font-extrabold">{formatCurrency(row.total)}</td>
                       </tr>
                     );
                   })}

@@ -34,14 +34,14 @@ export function EntryRow({
   if (entry.pending) {
     return (
       <tr style={{ opacity: 0.65 }}>
-        <td>{time}</td>
-        <td>{entry.car_type}</td>
-        <td>{entry.service_type}</td>
-        <td>{entry.payment_method}</td>
-        <td className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
-        <td className="txt-card">{formatCurrency(entry.card_paid)}</td>
-        <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
-        <td className="txt-warning font-bold text-sm">⏳ بانتظار الرفع</td>
+        <td data-label="الوقت">{time}</td>
+        <td data-label="السيارة">{entry.car_type}</td>
+        <td data-label="الخدمة">{entry.service_type}</td>
+        <td data-label="الدفع">{entry.payment_method}</td>
+        <td data-label="كاش" className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
+        <td data-label="بطاقة" className="txt-card">{formatCurrency(entry.card_paid)}</td>
+        <td data-label="الإجمالي" className="font-extrabold">{formatCurrency(entry.gross)}</td>
+        <td data-label="الحالة" className="txt-warning font-bold text-sm">⏳ بانتظار الرفع</td>
       </tr>
     );
   }
@@ -49,13 +49,13 @@ export function EntryRow({
   if (!editing) {
     return (
       <tr>
-        <td>{time}</td>
-        <td>{entry.car_type}</td>
-        <td>{entry.service_type}</td>
-        <td>{entry.payment_method}</td>
-        <td className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
-        <td className="txt-card">{formatCurrency(entry.card_paid)}</td>
-        <td className="font-extrabold">{formatCurrency(entry.gross)}</td>
+        <td data-label="الوقت">{time}</td>
+        <td data-label="السيارة">{entry.car_type}</td>
+        <td data-label="الخدمة">{entry.service_type}</td>
+        <td data-label="الدفع">{entry.payment_method}</td>
+        <td data-label="كاش" className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
+        <td data-label="بطاقة" className="txt-card">{formatCurrency(entry.card_paid)}</td>
+        <td data-label="الإجمالي" className="font-extrabold">{formatCurrency(entry.gross)}</td>
         <td className="flex gap-1.5">
           <button type="button" className="action-button edit-button" onClick={onEdit}>تعديل</button>
           <button type="button" className="action-button delete-button" onClick={onDelete}>حذف</button>
