@@ -9,7 +9,15 @@ const CHOICES: { value: ThemeChoice; label: string; title: string }[] = [
   { value: "dark", label: "داكن", title: "وضع داكن دائماً" },
 ];
 
-export function ModeSwitch() {
+export function ModeSwitch({
+  mode,
+  onRequestOwner,
+  onLeaveOwner,
+}: {
+  mode: "worker" | "owner";
+  onRequestOwner: () => void;
+  onLeaveOwner: () => void;
+}) {
   const [theme, setThemeState] = useState<ThemeChoice>("auto");
 
   useEffect(() => {
@@ -24,19 +32,29 @@ export function ModeSwitch() {
   }
 
   return (
-    <div className="theme-switch" role="group" aria-label="مظهر الواجهة">
-      {CHOICES.map((c) => (
-        <button
-          key={c.value}
-          type="button"
-          title={c.title}
-          aria-pressed={theme === c.value}
-          className={`theme-switch-btn ${theme === c.value ? "is-active" : ""}`}
-          onClick={() => choose(c.value)}
-        >
-          {c.label}
-        </button>
-      ))}
+    <div className="flex items-center justify-between gap-3 flex-wrap">
+      <button
+        type="button"
+        className="theme-switch-btn is-active"
+        onClick={mode === "owner" ? onLeaveOwner : onRequestOwner}
+      >
+        {mode === "owner" ? "↩ رجوع لوضع الموظف" : "⚙ وضع المالك"}
+      </button>
+
+      <div className="theme-switch" role="group" aria-label="مظهر الواجهة">
+        {CHOICES.map((c) => (
+          <button
+            key={c.value}
+            type="button"
+            title={c.title}
+            aria-pressed={theme === c.value}
+            className={`theme-switch-btn ${theme === c.value ? "is-active" : ""}`}
+            onClick={() => choose(c.value)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

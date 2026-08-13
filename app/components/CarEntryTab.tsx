@@ -49,7 +49,7 @@ function emptyBulkRow(prefill?: Partial<BulkRow>): BulkRow {
   return { carType: "", serviceType: "", cash: "", card: "", notes: "", ...prefill };
 }
 
-export function CarEntryTab() {
+export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [carTypes, setCarTypes] = useState<string[]>([]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [todayEntries, setTodayEntries] = useState<Entry[]>([]);
@@ -547,35 +547,43 @@ export function CarEntryTab() {
         <button type="button" className="section-title text-center w-full underline decoration-dotted" onClick={() => setShowTodayModal(true)}>
           اليوم - {new Date().toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long" })} ({new Date().toLocaleDateString("en-GB")})
         </button>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard label="السيارات" value={dailyTotals.count} tone="blue" />
-          <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} tone="green" />
-          <MetricCard label="بطاقة" value={formatCurrency(dailyTotals.card)} tone="purple" />
-          <MetricCard label="الإجمالي" value={formatCurrency(dailyTotals.total)} tone="slate" />
-        </div>
+        {ownerView ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard label="السيارات" value={dailyTotals.count} tone="blue" />
+            <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} tone="green" />
+            <MetricCard label="بطاقة" value={formatCurrency(dailyTotals.card)} tone="purple" />
+            <MetricCard label="الإجمالي" value={formatCurrency(dailyTotals.total)} tone="slate" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            <MetricCard label="سيارات اليوم" value={dailyTotals.count} tone="blue" />
+          </div>
+        )}
         <hr className="my-5 rule" />
         <div className="flex items-center justify-center gap-2">
           <h3 className="subsection-title text-center mb-0">الوردية الحالية</h3>
-          <button
-            type="button"
-            className="txt-muted text-lg"
-            title="إعدادات الوردية والمكافأة"
-            onClick={() => setShowSettings((v) => !v)}
-          >
-            ⚙
-          </button>
+          {ownerView && (
+            <button
+              type="button"
+              className="txt-muted text-lg"
+              title="إعدادات الوردية والمكافأة"
+              onClick={() => setShowSettings((v) => !v)}
+            >
+              ⚙
+            </button>
+          )}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <MetricCard label="سيارات الوردية" value={shiftCountWithPending} tone="cyan" />
           <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} tone="emerald" />
         </div>
 
-        {showSettings && (
+        {ownerView && showSettings && (
           <SettingsPanel settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
         )}
       </section>
 
-      <section className="card overflow-hidden p-0">
+      <section className="card overflow-hidden p-0" hidden={!ownerView}>
         <button type="button" className={`accordion-button ${showMonthly ? "active" : ""}`} onClick={() => setShowMonthly((v) => !v)}>
           <span>الدخل الشهري</span>
           <span>⌄</span>

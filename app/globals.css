@@ -612,3 +612,9 @@ button.metric-card:hover { filter: brightness(1.04); }
   .chart-box-lg { height: 320px; }
   .preset-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 }
+
+/* غلاف المحتوى بوضع الموظف — بدون شريط تبويبات فوقه */
+.content-section-wrapper.is-standalone {
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 18px 18px;
+}

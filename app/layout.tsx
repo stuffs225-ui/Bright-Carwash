@@ -23,7 +23,7 @@ export default function RootLayout({
         {/* يطبّق المظهر المحفوظ قبل أول رسم، وإلا يومض الطيف الفاتح قبل الداكن */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem("carwash_theme_v1");if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t)}}catch(e){}})();`,
+            __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("carwash_theme_v1");if(t==="light"||t==="dark"){d.setAttribute("data-theme",t)}if(localStorage.getItem("carwash_mode_v1")!=="owner"){d.classList.add("touch-mode")}}catch(e){}})();`,
           }}
         />
       </head>

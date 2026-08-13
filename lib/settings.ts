@@ -7,6 +7,8 @@ export type AppSettings = {
   shift_end_hour: number;
   backup_email: string;
   backup_interval_days: number;
+  daily_expense_target: number;
+  owner_pin: string;
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -16,9 +18,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   shift_end_hour: 4,
   backup_email: "Aburaykah@gmail.com",
   backup_interval_days: 10,
+  daily_expense_target: 0,
+  owner_pin: "",
 };
 
-const STRING_KEYS = new Set<keyof AppSettings>(["backup_email"]);
+const STRING_KEYS = new Set<keyof AppSettings>(["backup_email", "owner_pin"]);
 
 export async function loadSettings(): Promise<AppSettings> {
   const { data } = await supabase.from("settings").select("key, value");
