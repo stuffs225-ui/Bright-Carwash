@@ -5,25 +5,14 @@ export function getPaymentMethod(cash: number, card: number): string {
   return "غير محدد";
 }
 
-// الوردية تمتد من ساعة البداية لين ساعة النهاية اليوم التالي، فتعبر منتصف الليل
-export function getCurrentShiftWindow(now: Date, startHour = 15, endHour = 4): { start: Date; end: Date } {
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, 0, 0, 0);
-
-  if (now < todayStart) {
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return {
-      start: new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), startHour, 0, 0, 0),
-      end: new Date(now.getFullYear(), now.getMonth(), now.getDate(), endHour, 0, 0, 0),
-    };
-  }
-
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return {
-    start: todayStart,
-    end: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), endHour, 0, 0, 0),
-  };
+// اليوم الطبيعي: من منتصف الليل لمنتصف الليل.
+// (استُبدل بها نظام الورديات 3ع–4ف السابق، لأنه كان يقسّم الليلة الواحدة
+// على صفّين بجداول التقويم ويشوّه 38% من الأيام.)
+export function getDayBounds(now: Date): { start: Date; end: Date } {
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { start, end };
 }
 
 export function bonusPerWorker(shiftCarCount: number, threshold = 15, rate = 2): number {

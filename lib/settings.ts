@@ -3,8 +3,6 @@ import { supabase } from "./supabaseClient";
 export type AppSettings = {
   shift_car_threshold: number;
   worker_bonus_rate: number;
-  shift_start_hour: number;
-  shift_end_hour: number;
   backup_email: string;
   backup_interval_days: number;
   daily_expense_target: number;
@@ -14,8 +12,6 @@ export type AppSettings = {
 export const DEFAULT_SETTINGS: AppSettings = {
   shift_car_threshold: 15,
   worker_bonus_rate: 2,
-  shift_start_hour: 15,
-  shift_end_hour: 4,
   backup_email: "Aburaykah@gmail.com",
   backup_interval_days: 10,
   daily_expense_target: 0,

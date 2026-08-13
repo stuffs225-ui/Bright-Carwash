@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bonusPerWorker, getCurrentShiftWindow, getPaymentMethod } from "./business";
+import { bonusPerWorker, getDayBounds, getPaymentMethod } from "./business";
 
 describe("getPaymentMethod", () => {
   it("returns كاش when only cash is paid", () => {
@@ -29,24 +29,27 @@ describe("bonusPerWorker", () => {
   });
 });
 
-describe("getCurrentShiftWindow", () => {
-  it("before the start hour belongs to yesterday's shift", () => {
-    const now = new Date(2026, 0, 15, 10, 0, 0); // 10am, before 3pm start
-    const { start, end } = getCurrentShiftWindow(now, 15, 4);
-    expect(start).toEqual(new Date(2026, 0, 14, 15, 0, 0));
-    expect(end).toEqual(new Date(2026, 0, 15, 4, 0, 0));
+describe("getDayBounds", () => {
+  it("spans midnight to midnight regardless of the time of day", () => {
+    const { start, end } = getDayBounds(new Date(2026, 0, 15, 23, 59, 59));
+    expect(start).toEqual(new Date(2026, 0, 15, 0, 0, 0));
+    expect(end).toEqual(new Date(2026, 0, 16, 0, 0, 0));
   });
 
-  it("after the start hour belongs to today's shift", () => {
-    const now = new Date(2026, 0, 15, 20, 0, 0); // 8pm, after 3pm start
-    const { start, end } = getCurrentShiftWindow(now, 15, 4);
-    expect(start).toEqual(new Date(2026, 0, 15, 15, 0, 0));
-    expect(end).toEqual(new Date(2026, 0, 16, 4, 0, 0));
+  it("puts an after-midnight entry on the new day, not the night before", () => {
+    // كانت هذي الحالة تُحسب على وردية اليوم السابق بالنظام القديم
+    const { start } = getDayBounds(new Date(2026, 0, 15, 2, 30, 0));
+    expect(start).toEqual(new Date(2026, 0, 15, 0, 0, 0));
   });
 
-  it("exactly at the start hour belongs to today's shift", () => {
-    const now = new Date(2026, 0, 15, 15, 0, 0);
-    const { start } = getCurrentShiftWindow(now, 15, 4);
-    expect(start).toEqual(new Date(2026, 0, 15, 15, 0, 0));
+  it("rolls over month boundaries", () => {
+    const { start, end } = getDayBounds(new Date(2026, 0, 31, 12, 0, 0));
+    expect(start).toEqual(new Date(2026, 0, 31, 0, 0, 0));
+    expect(end).toEqual(new Date(2026, 1, 1, 0, 0, 0));
+  });
+
+  it("rolls over year boundaries", () => {
+    const { end } = getDayBounds(new Date(2026, 11, 31, 12, 0, 0));
+    expect(end).toEqual(new Date(2027, 0, 1, 0, 0, 0));
   });
 });

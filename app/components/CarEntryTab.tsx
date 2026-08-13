@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { AR_GREGORIAN_LOCALE, bonusPerWorker, formatCurrency, getCurrentShiftWindow, getPaymentMethod, toDateKey } from "@/lib/business";
+import { AR_GREGORIAN_LOCALE, bonusPerWorker, formatCurrency, getDayBounds, getPaymentMethod, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Entry, EntryPreset } from "@/lib/types";
 import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
@@ -38,13 +38,6 @@ function pendingEntriesFromQueue(): Entry[] {
   });
 }
 
-function dayBounds(date: Date) {
-  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start, end };
-}
-
 type BulkRow = { carType: string; serviceType: string; cash: string; card: string; notes: string };
 
 function emptyBulkRow(prefill?: Partial<BulkRow>): BulkRow {
@@ -55,7 +48,6 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [carTypes, setCarTypes] = useState<string[]>([]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [todayEntries, setTodayEntries] = useState<Entry[]>([]);
-  const [shiftCount, setShiftCount] = useState(0);
   const [monthEntries, setMonthEntries] = useState<Entry[]>([]);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -91,7 +83,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }, []);
 
   const loadToday = useCallback(async () => {
-    const { start, end } = dayBounds(new Date());
+    const { start, end } = getDayBounds(new Date());
     const { data } = await supabase
       .from("entries")
       .select("*")
@@ -100,17 +92,6 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       .lt("occurred_at", end.toISOString())
       .order("occurred_at", { ascending: false });
     setTodayEntries((data as Entry[]) || []);
-  }, []);
-
-  const loadShift = useCallback(async (currentSettings: AppSettings) => {
-    const { start, end } = getCurrentShiftWindow(new Date(), currentSettings.shift_start_hour, currentSettings.shift_end_hour);
-    const { count } = await supabase
-      .from("entries")
-      .select("id", { count: "exact", head: true })
-      .is("deleted_at", null)
-      .gte("occurred_at", start.toISOString())
-      .lt("occurred_at", end.toISOString());
-    setShiftCount(count || 0);
   }, []);
 
   const loadMonth = useCallback(async () => {
@@ -151,10 +132,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   const refreshAll = useCallback((currentSettings: AppSettings) => {
     loadToday();
-    loadShift(currentSettings);
     loadMonth();
     loadGoal(currentSettings);
-  }, [loadToday, loadShift, loadMonth, loadGoal]);
+  }, [loadToday, loadMonth, loadGoal]);
 
   useEffect(() => {
     loadLists();
@@ -189,7 +169,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }
 
   const todayEntriesWithPending = useMemo(() => {
-    const { start, end } = dayBounds(new Date());
+    const { start, end } = getDayBounds(new Date());
     const relevant = pendingEntries.filter((e) => {
       const t = new Date(e.occurred_at);
       return t >= start && t < end;
@@ -214,18 +194,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     return { count: todayEntriesWithPending.length, cash, card, total: cash + card };
   }, [todayEntriesWithPending]);
 
-  const shiftCountWithPending = useMemo(() => {
-    const { start, end } = getCurrentShiftWindow(new Date(), settings.shift_start_hour, settings.shift_end_hour);
-    const extra = pendingEntries.filter((e) => {
-      const t = new Date(e.occurred_at);
-      return t >= start && t < end;
-    }).length;
-    return shiftCount + extra;
-  }, [shiftCount, pendingEntries, settings.shift_start_hour, settings.shift_end_hour]);
-
+  // بعد إلغاء الورديات صار عدّاد الوردية مطابقاً لعدّاد اليوم، فنعتمد واحداً.
   const bonus = useMemo(
-    () => bonusPerWorker(shiftCountWithPending, settings.shift_car_threshold, settings.worker_bonus_rate),
-    [shiftCountWithPending, settings.shift_car_threshold, settings.worker_bonus_rate]
+    () => bonusPerWorker(dailyTotals.count, settings.shift_car_threshold, settings.worker_bonus_rate),
+    [dailyTotals.count, settings.shift_car_threshold, settings.worker_bonus_rate]
   );
 
   const monthlyByDay = useMemo(() => {
@@ -596,20 +568,19 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         )}
         <hr className="my-5 rule" />
         <div className="flex items-center justify-center gap-2">
-          <h3 className="subsection-title text-center mb-0">الوردية الحالية</h3>
+          <h3 className="subsection-title text-center mb-0">مكافأة اليوم</h3>
           {ownerView && (
             <button
               type="button"
               className="txt-muted text-lg"
-              title="إعدادات الوردية والمكافأة"
+              title="إعدادات المكافأة"
               onClick={() => setShowSettings((v) => !v)}
             >
               ⚙
             </button>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <MetricCard label="سيارات الوردية" value={shiftCountWithPending} tone="cyan" />
+        <div className="grid grid-cols-1 gap-4">
           <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} tone="emerald" />
         </div>
 
