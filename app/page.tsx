@@ -9,6 +9,7 @@ import { CarEntryTab } from "./components/CarEntryTab";
 import { ExpensesTab } from "./components/ExpensesTab";
 import { AnalysisTab } from "./components/AnalysisTab";
 import { SettingsTab } from "./components/SettingsTab";
+import { WorkersTab } from "./components/WorkersTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -16,7 +17,7 @@ import { ErrorMonitor } from "./components/ErrorMonitor";
 import { ModeSwitch } from "./components/ModeSwitch";
 import { OwnerPinPrompt } from "./components/OwnerPinPrompt";
 
-type Tab = "car" | "expenses" | "analysis" | "settings";
+type Tab = "car" | "expenses" | "analysis" | "workers" | "settings";
 
 export default function Home() {
   const [tab, setTab] = useState<Tab>("car");
@@ -78,6 +79,9 @@ export default function Home() {
             <button type="button" className={`tab-button ${tab === "analysis" ? "active" : ""}`} onClick={() => setTab("analysis")}>
               📊 تحليل البيانات
             </button>
+            <button type="button" className={`tab-button ${tab === "workers" ? "active" : ""}`} onClick={() => setTab("workers")}>
+              👷 العمال
+            </button>
             <button type="button" className={`tab-button ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
               ⚙ الإعدادات
             </button>
@@ -88,6 +92,7 @@ export default function Home() {
           {tab === "car" && <CarEntryTab ownerView={isOwner} />}
           {isOwner && tab === "expenses" && <ExpensesTab />}
           {isOwner && tab === "analysis" && <AnalysisTab />}
+          {isOwner && tab === "workers" && <WorkersTab />}
           {isOwner && tab === "settings" && <SettingsTab />}
         </div>
 

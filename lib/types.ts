@@ -29,6 +29,33 @@ export type EntryPreset = {
   active?: boolean;
 };
 
+export type Worker = {
+  id: string;
+  name: string;
+  active: boolean;
+  sort_order: number;
+  notes: string | null;
+};
+
+export type LedgerEntry = {
+  id: string;
+  worker_id: string;
+  kind: "earning" | "payment";
+  amount: number;
+  occurred_at: string;
+  payment_source: string | null;
+  expense_id: string | null;
+  notes: string | null;
+};
+
+export type WorkerBalance = {
+  worker: Worker;
+  earned: number;
+  paid: number;
+  balance: number;
+  entries: number;
+};
+
 export type LookupItem = {
   id: string;
   name: string;

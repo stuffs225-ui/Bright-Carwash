@@ -10,6 +10,8 @@ import type { Expense } from "@/lib/types";
 import { enqueue } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { MetricCard } from "./MetricCard";
+import { PAYMENT_SOURCES, addLedgerEntry, loadWorkers } from "@/lib/workers";
+import type { Worker } from "@/lib/types";
 
 const DEFAULT_COLORS = ["#3b82f6", "#8b5cf6", "#ef4444", "#f59e0b", "#10b981", "#6366f1", "#ec4899", "#6d28d9", "#06b6d4", "#eab308"];
 
@@ -28,6 +30,12 @@ export function ExpensesTab() {
   const [expenseType, setExpenseType] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
+
+  // ربط مصروف الراتب بدفتر العامل
+  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [workerId, setWorkerId] = useState("");
+  const [paymentSource, setPaymentSource] = useState("cash");
+  const isSalary = expenseType === "راتب";
 
   const colorMap = useMemo(() => {
     const map: Record<string, string> = {};
@@ -50,6 +58,7 @@ export function ExpensesTab() {
   useEffect(() => {
     loadTypes();
     loadExpenses();
+    loadWorkers().then(setWorkers);
     const channel = supabase
       .channel("expenses-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => loadExpenses())
@@ -122,7 +131,7 @@ export function ExpensesTab() {
       return;
     }
 
-    const { error } = await supabase.from("expenses").insert(payload);
+    const { data: inserted, error } = await supabase.from("expenses").insert(payload).select("id").single();
     setSubmitting(false);
     if (error) {
       if (isNetworkError(error)) {
@@ -134,10 +143,24 @@ export function ExpensesTab() {
       showToast("خطأ في حفظ المصروف: " + error.message, "error");
       return;
     }
+
+    // المصروف هو مصدر الحقيقة للنقد الخارج؛ قيد الدفتر مرجع للرصيد ومربوط به.
+    if (isSalary && workerId && inserted?.id) {
+      await addLedgerEntry({
+        worker_id: workerId,
+        kind: "payment",
+        amount: amt,
+        payment_source: paymentSource,
+        expense_id: inserted.id,
+        notes: notes || null,
+      });
+    }
+
     showToast("تم حفظ المصروف بنجاح.");
     setExpenseType("");
     setAmount("");
     setNotes("");
+    setWorkerId("");
     loadExpenses();
   }
 
@@ -190,6 +213,31 @@ export function ExpensesTab() {
             <label className="form-label">المبلغ (ر.س)</label>
             <input type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} required />
           </div>
+          {isSalary && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="form-label">العامل (اختياري — يقيّد بدفتر حسابه)</label>
+                <div className="select-wrapper">
+                  <select value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
+                    <option value="">بدون ربط</option>
+                    {workers.map((w) => (
+                      <option key={w.id} value={w.id}>{w.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="form-label">مصدر الدفع</label>
+                <div className="select-wrapper">
+                  <select value={paymentSource} onChange={(e) => setPaymentSource(e.target.value)}>
+                    {PAYMENT_SOURCES.map((s) => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
           <div>
             <label className="form-label">ملاحظات</label>
             <input type="text" placeholder="اختياري..." value={notes} onChange={(e) => setNotes(e.target.value)} />
