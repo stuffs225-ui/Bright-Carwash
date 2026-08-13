@@ -7,14 +7,13 @@ import { showToast } from "@/lib/toast";
 import type { Entry, EntryPreset } from "@/lib/types";
 import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
-import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
+import { DEFAULT_SETTINGS, loadSettings, type AppSettings } from "@/lib/settings";
 import { loadPresets, suggestionsFor } from "@/lib/presets";
 import { BREAKEVEN_WINDOW_DAYS, computeBreakEven, type BreakEven } from "@/lib/breakeven";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 import { PresetGrid } from "./PresetGrid";
 import { BreakEvenMeter } from "./BreakEvenMeter";
-import { SettingsPanel } from "./SettingsPanel";
 import { EntryRow } from "./EntryRow";
 
 function pendingEntriesFromQueue(): Entry[] {
@@ -52,7 +51,6 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const settingsRef = useRef(settings);
-  const [showSettings, setShowSettings] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showMonthly, setShowMonthly] = useState(false);
@@ -156,17 +154,6 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  async function handleSaveSettings(patch: Partial<AppSettings>) {
-    const next = { ...settings, ...patch };
-    setSettings(next);
-    settingsRef.current = next;
-    for (const key of Object.keys(patch) as (keyof AppSettings)[]) {
-      await updateSetting(key, next[key]);
-    }
-    showToast("تم تحديث الإعدادات.");
-    refreshAll(next);
-  }
 
   const todayEntriesWithPending = useMemo(() => {
     const { start, end } = getDayBounds(new Date());
@@ -567,26 +554,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           </div>
         )}
         <hr className="my-5 rule" />
-        <div className="flex items-center justify-center gap-2">
-          <h3 className="subsection-title text-center mb-0">مكافأة اليوم</h3>
-          {ownerView && (
-            <button
-              type="button"
-              className="txt-muted text-lg"
-              title="إعدادات المكافأة"
-              onClick={() => setShowSettings((v) => !v)}
-            >
-              ⚙
-            </button>
-          )}
-        </div>
+        <h3 className="subsection-title text-center">مكافأة اليوم</h3>
         <div className="grid grid-cols-1 gap-4">
           <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} tone="emerald" />
         </div>
-
-        {ownerView && showSettings && (
-          <SettingsPanel settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
-        )}
       </section>
 
       <section className="card overflow-hidden p-0" hidden={!ownerView}>
