@@ -6,8 +6,10 @@ import { Bar, Doughnut, Line } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
 import { formatCurrency, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
-import { exportDailyReportToExcel } from "@/lib/exportReport";
-import type { Entry, Expense } from "@/lib/types";
+import { buildReportMarkdown, downloadMarkdown, exportReportToExcel, type ReportInput } from "@/lib/exportReport";
+import { computeDiagnostics } from "@/lib/diagnostics";
+import { loadPresets } from "@/lib/presets";
+import type { Entry, EntryPreset, Expense } from "@/lib/types";
 import { MetricCard, type Tone } from "./MetricCard";
 import { Modal } from "./Modal";
 
@@ -75,6 +77,7 @@ export function AnalysisTab() {
   const [showHistory, setShowHistory] = useState(false);
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [activePeriod, setActivePeriod] = useState<"today" | "week" | "month" | "year" | null>(null);
+  const [presets, setPresets] = useState<EntryPreset[]>([]);
 
   const load = useCallback(async (start: string, end: string, carFilter: string, serviceFilter: string) => {
     setLoading(true);
@@ -115,6 +118,7 @@ export function AnalysisTab() {
   useEffect(() => {
     load(startDate, endDate, carTypeFilter, serviceTypeFilter);
     loadHistory();
+    loadPresets().then(setPresets);
 
     supabase
       .from("car_types")
@@ -314,19 +318,33 @@ export function AnalysisTab() {
 
   const m = analysis.metrics;
 
-  async function handleExportExcel() {
-    await exportDailyReportToExcel(
-      `تقرير-${startDate}-الى-${endDate}`,
-      {
-        "من تاريخ": startDate,
-        "إلى تاريخ": endDate,
-        "عدد السيارات": m.cars,
-        الإيرادات: m.revenue,
-        المصروفات: m.expenses,
-        "صافي الدخل": m.net,
+  function buildReport(): ReportInput {
+    return {
+      startDate,
+      endDate,
+      daily: analysis.daily,
+      carTypes: analysis.carTypes,
+      serviceTypes: analysis.serviceTypes,
+      expenseTypes: analysis.expenseTypes,
+      metrics: {
+        cars: m.cars,
+        revenue: m.revenue,
+        cash: m.cash,
+        card: m.card,
+        expenses: m.expenses,
+        net: m.net,
+        avgTicket: m.avgTicket,
       },
-      analysis.daily
-    );
+      diagnostics: computeDiagnostics(entries, expenses, presets, startDate, endDate),
+    };
+  }
+
+  async function handleExportExcel() {
+    await exportReportToExcel(`تقرير-${startDate}-الى-${endDate}`, buildReport());
+  }
+
+  function handleExportMarkdown() {
+    downloadMarkdown(`تقرير-${startDate}-الى-${endDate}`, buildReportMarkdown(buildReport()));
   }
 
   function handleExportPdf() {
@@ -416,6 +434,7 @@ export function AnalysisTab() {
 
         <div className="flex flex-wrap gap-2 mt-4">
           <button type="button" className="btn-secondary" onClick={handleExportExcel}>⬇ تصدير Excel</button>
+          <button type="button" className="btn-secondary" onClick={handleExportMarkdown}>⬇ تصدير تقرير (Markdown)</button>
           <button type="button" className="btn-secondary" onClick={handleExportPdf}>🖨 طباعة / PDF</button>
         </div>
       </section>
