@@ -283,6 +283,9 @@ input[type="password"], select, textarea {
 input[type="number"] { font-variant-numeric: tabular-nums; }
 textarea { min-height: 90px; resize: vertical; }
 
+/* حقل التاريخ يرث dir="rtl" من الصفحة فيبعثر ترتيب اليوم/الشهر/السنة على iOS */
+input[type="date"] { direction: ltr; text-align: right; }
+
 input:focus, select:focus, textarea:focus,
 button:focus-visible, a:focus-visible {
   border-color: var(--primary);
@@ -391,7 +394,8 @@ button.metric-card:hover { filter: brightness(1.04); }
 .app-table tbody tr:nth-child(even) { background: var(--surface-2); }
 .app-table tbody tr:hover { background: var(--tone-blue-bg); }
 
-.chart-box { position: relative; width: 100%; height: 330px; }
+/* Chart.js يرث dir="rtl" من الصفحة فيقلب موضع علامة السالب بمحور الأرقام (200- بدل -200) */
+.chart-box { position: relative; width: 100%; height: 330px; direction: ltr; }
 .chart-box-lg { height: 380px; }
 
 .analysis-preset { background: var(--tone-blue-bg); color: var(--tone-blue-fg); padding: 8px 12px; font-size: .9rem; }
