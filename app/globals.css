@@ -248,6 +248,13 @@ button:disabled { opacity: .6; cursor: not-allowed; transform: none !important; 
 }
 .toast { border-radius: 12px; padding: 13px 16px; color: white; font-weight: 700; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,.18); }
 
+@media print {
+  body * { visibility: hidden; }
+  #printable-report, #printable-report * { visibility: visible; }
+  #printable-report { position: absolute; inset: 0; width: 100%; }
+  .no-print { display: none !important; }
+}
+
 @media (max-width: 760px) {
   .app-shell { width: min(100% - 12px, 1450px); margin-top: 6px; }
   .app-header { border-radius: 13px 13px 0 0; padding: 17px 10px; }

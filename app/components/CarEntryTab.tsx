@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { bonusPerWorker, formatCurrency, getCurrentShiftWindow, getPaymentMethod, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Entry } from "@/lib/types";
 import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
+import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
 import { MetricCard } from "./MetricCard";
 
 function pendingEntriesFromQueue(): Entry[] {
@@ -44,6 +45,9 @@ export function CarEntryTab() {
   const [shiftCount, setShiftCount] = useState(0);
   const [monthEntries, setMonthEntries] = useState<Entry[]>([]);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const settingsRef = useRef(settings);
+  const [showSettings, setShowSettings] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [showToday, setShowToday] = useState(false);
@@ -76,8 +80,8 @@ export function CarEntryTab() {
     setTodayEntries((data as Entry[]) || []);
   }, []);
 
-  const loadShift = useCallback(async () => {
-    const { start, end } = getCurrentShiftWindow(new Date());
+  const loadShift = useCallback(async (currentSettings: AppSettings) => {
+    const { start, end } = getCurrentShiftWindow(new Date(), currentSettings.shift_start_hour, currentSettings.shift_end_hour);
     const { count } = await supabase
       .from("entries")
       .select("id", { count: "exact", head: true })
@@ -99,21 +103,25 @@ export function CarEntryTab() {
     setMonthEntries((data as Entry[]) || []);
   }, []);
 
-  const refreshAll = useCallback(() => {
+  const refreshAll = useCallback((currentSettings: AppSettings) => {
     loadToday();
-    loadShift();
+    loadShift(currentSettings);
     loadMonth();
   }, [loadToday, loadShift, loadMonth]);
 
   useEffect(() => {
     loadLists();
-    refreshAll();
+    loadSettings().then((s) => {
+      setSettings(s);
+      settingsRef.current = s;
+      refreshAll(s);
+    });
     setPendingEntries(pendingEntriesFromQueue());
     const refreshPending = () => setPendingEntries(pendingEntriesFromQueue());
     window.addEventListener("offline-queue-changed", refreshPending);
     const channel = supabase
       .channel("entries-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => refreshAll())
+      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => refreshAll(settingsRef.current))
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -121,6 +129,17 @@ export function CarEntryTab() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function handleSaveSettings(patch: Partial<AppSettings>) {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    settingsRef.current = next;
+    for (const key of Object.keys(patch) as (keyof AppSettings)[]) {
+      await updateSetting(key, next[key]);
+    }
+    showToast("تم تحديث الإعدادات.");
+    refreshAll(next);
+  }
 
   const todayEntriesWithPending = useMemo(() => {
     const { start, end } = dayBounds(new Date());
@@ -149,15 +168,18 @@ export function CarEntryTab() {
   }, [todayEntriesWithPending]);
 
   const shiftCountWithPending = useMemo(() => {
-    const { start, end } = getCurrentShiftWindow(new Date());
+    const { start, end } = getCurrentShiftWindow(new Date(), settings.shift_start_hour, settings.shift_end_hour);
     const extra = pendingEntries.filter((e) => {
       const t = new Date(e.occurred_at);
       return t >= start && t < end;
     }).length;
     return shiftCount + extra;
-  }, [shiftCount, pendingEntries]);
+  }, [shiftCount, pendingEntries, settings.shift_start_hour, settings.shift_end_hour]);
 
-  const bonus = useMemo(() => bonusPerWorker(shiftCountWithPending), [shiftCountWithPending]);
+  const bonus = useMemo(
+    () => bonusPerWorker(shiftCountWithPending, settings.shift_car_threshold, settings.worker_bonus_rate),
+    [shiftCountWithPending, settings.shift_car_threshold, settings.worker_bonus_rate]
+  );
 
   const monthlyByDay = useMemo(() => {
     const map = new Map<string, { cars: number; cash: number; card: number; total: number }>();
@@ -173,7 +195,7 @@ export function CarEntryTab() {
     return Array.from(map.entries())
       .map(([date, totals]) => ({ date, ...totals }))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [monthEntries]);
+  }, [monthEntriesWithPending]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -223,7 +245,7 @@ export function CarEntryTab() {
     setCashPaid("");
     setCardPaid("");
     setNotes("");
-    refreshAll();
+    refreshAll(settingsRef.current);
   }
 
   async function handleDelete(id: string) {
@@ -234,7 +256,7 @@ export function CarEntryTab() {
       return;
     }
     showToast("تم حذف السجل بنجاح!");
-    refreshAll();
+    refreshAll(settingsRef.current);
   }
 
   async function handleUpdate(entry: Entry, patch: Partial<Entry>) {
@@ -260,7 +282,7 @@ export function CarEntryTab() {
     }
     showToast("تم تحديث السجل بنجاح!");
     setEditingId(null);
-    refreshAll();
+    refreshAll(settingsRef.current);
   }
 
   const dayEntries = selectedDay ? monthEntriesWithPending.filter((e) => toDateKey(new Date(e.occurred_at)) === selectedDay) : [];
@@ -325,11 +347,25 @@ export function CarEntryTab() {
           <MetricCard label="الإجمالي" value={formatCurrency(dailyTotals.total)} bg="bg-slate-50" color="text-slate-800" />
         </div>
         <hr className="my-5 border-gray-200" />
-        <h3 className="subsection-title text-center">الوردية الحالية</h3>
+        <div className="flex items-center justify-center gap-2">
+          <h3 className="subsection-title text-center mb-0">الوردية الحالية</h3>
+          <button
+            type="button"
+            className="text-gray-400 hover:text-gray-700 text-lg"
+            title="إعدادات الوردية والمكافأة"
+            onClick={() => setShowSettings((v) => !v)}
+          >
+            ⚙
+          </button>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <MetricCard label="سيارات الوردية" value={shiftCountWithPending} bg="bg-cyan-50" color="text-cyan-700" />
           <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} bg="bg-emerald-50" color="text-emerald-700" />
         </div>
+
+        {showSettings && (
+          <SettingsPanel settings={settings} onSave={handleSaveSettings} onClose={() => setShowSettings(false)} />
+        )}
       </section>
 
       <section className="card overflow-hidden p-0">
@@ -432,6 +468,62 @@ export function CarEntryTab() {
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function SettingsPanel({
+  settings,
+  onSave,
+  onClose,
+}: {
+  settings: AppSettings;
+  onSave: (patch: Partial<AppSettings>) => void;
+  onClose: () => void;
+}) {
+  const [threshold, setThreshold] = useState(String(settings.shift_car_threshold));
+  const [rate, setRate] = useState(String(settings.worker_bonus_rate));
+  const [startHour, setStartHour] = useState(String(settings.shift_start_hour));
+  const [endHour, setEndHour] = useState(String(settings.shift_end_hour));
+
+  return (
+    <div className="mt-5 border-t pt-4 text-right">
+      <h4 className="subsection-title">إعدادات الوردية والمكافأة</h4>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="form-label">حد سيارات الوردية للمكافأة</label>
+          <input type="number" min="0" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+        </div>
+        <div>
+          <label className="form-label">مكافأة كل سيارة زايدة (ر.س)</label>
+          <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
+        </div>
+        <div>
+          <label className="form-label">بداية الوردية (الساعة 0-23)</label>
+          <input type="number" min="0" max="23" value={startHour} onChange={(e) => setStartHour(e.target.value)} />
+        </div>
+        <div>
+          <label className="form-label">نهاية الوردية (الساعة 0-23)</label>
+          <input type="number" min="0" max="23" value={endHour} onChange={(e) => setEndHour(e.target.value)} />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 mt-4">
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() =>
+            onSave({
+              shift_car_threshold: Number(threshold) || 0,
+              worker_bonus_rate: Number(rate) || 0,
+              shift_start_hour: Number(startHour) || 0,
+              shift_end_hour: Number(endHour) || 0,
+            })
+          }
+        >
+          حفظ الإعدادات
+        </button>
+        <button type="button" className="btn-secondary" onClick={onClose}>إغلاق</button>
+      </div>
     </div>
   );
 }
