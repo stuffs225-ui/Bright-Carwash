@@ -8,6 +8,7 @@ import { OfflineStatusBadge } from "../components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ErrorMonitor } from "../components/ErrorMonitor";
+import { ThemeSwitch } from "../components/ModeSwitch";
 
 export default function WorkerPage() {
   // هذي الصفحة دائماً بوضع اللمس، بغض النظر عن الوضع المحفوظ بالجهاز
@@ -20,7 +21,8 @@ export default function WorkerPage() {
       <ErrorMonitor />
       <div className="app-shell">
         <header className="app-header">
-          <h1 className="text-2xl sm:text-3xl font-extrabold">تسجيل السيارات</h1>
+          <ThemeSwitch />
+          <h1 className="text-2xl sm:text-3xl font-extrabold mt-2">تسجيل السيارات</h1>
           <p className="text-sm sm:text-base opacity-90 mt-1">سجّل السيارة بضغطة — الأزرار السريعة بالأعلى</p>
         </header>
 
