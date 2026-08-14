@@ -4,6 +4,7 @@ import "@/lib/chartRegistry";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { formatCurrency, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { buildReportMarkdown, downloadMarkdown, exportReportToExcel, type ReportInput } from "@/lib/exportReport";
@@ -84,35 +85,52 @@ export function AnalysisTab() {
     const startDt = new Date(`${start}T00:00:00`);
     const endDt = new Date(`${end}T23:59:59.999`);
 
-    let entryQuery = supabase
-      .from("entries")
-      .select("*")
-      .is("deleted_at", null)
-      .gte("occurred_at", startDt.toISOString())
-      .lte("occurred_at", endDt.toISOString());
-    if (carFilter) entryQuery = entryQuery.eq("car_type", carFilter);
-    if (serviceFilter) entryQuery = entryQuery.eq("service_type", serviceFilter);
-
-    const [{ data: entryRows, error: e1 }, { data: expenseRows, error: e2 }] = await Promise.all([
-      entryQuery,
-      supabase.from("expenses").select("*").is("deleted_at", null).gte("occurred_at", startDt.toISOString()).lte("occurred_at", endDt.toISOString()),
-    ]);
-    setLoading(false);
-    if (e1 || e2) {
-      showToast("خطأ في تحليل البيانات: " + (e1?.message || e2?.message), "error");
-      return;
+    try {
+      const [entryRows, expenseRows] = await Promise.all([
+        fetchAllRows<Entry>((from, to) => {
+          let q = supabase
+            .from("entries")
+            .select("*")
+            .is("deleted_at", null)
+            .gte("occurred_at", startDt.toISOString())
+            .lte("occurred_at", endDt.toISOString())
+            .order("occurred_at", { ascending: true })
+            .range(from, to);
+          if (carFilter) q = q.eq("car_type", carFilter);
+          if (serviceFilter) q = q.eq("service_type", serviceFilter);
+          return q;
+        }),
+        fetchAllRows<Expense>((from, to) =>
+          supabase
+            .from("expenses")
+            .select("*")
+            .is("deleted_at", null)
+            .gte("occurred_at", startDt.toISOString())
+            .lte("occurred_at", endDt.toISOString())
+            .order("occurred_at", { ascending: true })
+            .range(from, to)
+        ),
+      ]);
+      setEntries(entryRows);
+      setExpenses(expenseRows);
+    } catch (err) {
+      showToast("خطأ في تحليل البيانات: " + (err instanceof Error ? err.message : String(err)), "error");
+    } finally {
+      setLoading(false);
     }
-    setEntries((entryRows as Entry[]) || []);
-    setExpenses((expenseRows as Expense[]) || []);
   }, []);
 
   const loadHistory = useCallback(async () => {
-    const [{ data: e }, { data: x }] = await Promise.all([
-      supabase.from("entries").select("*").is("deleted_at", null),
-      supabase.from("expenses").select("*").is("deleted_at", null),
+    const [e, x] = await Promise.all([
+      fetchAllRows<Entry>((from, to) =>
+        supabase.from("entries").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+      ),
+      fetchAllRows<Expense>((from, to) =>
+        supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+      ),
     ]);
-    setAllEntries((e as Entry[]) || []);
-    setAllExpenses((x as Expense[]) || []);
+    setAllEntries(e);
+    setAllExpenses(x);
   }, []);
 
   useEffect(() => {

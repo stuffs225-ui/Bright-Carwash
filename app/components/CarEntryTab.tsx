@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { AR_GREGORIAN_LOCALE, bonusPerWorker, formatCurrency, getDayBounds, getPaymentMethod, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Entry, EntryPreset } from "@/lib/types";
@@ -96,14 +97,17 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const { data } = await supabase
-      .from("entries")
-      .select("*")
-      .is("deleted_at", null)
-      .gte("occurred_at", start.toISOString())
-      .lt("occurred_at", end.toISOString())
-      .order("occurred_at", { ascending: false });
-    setMonthEntries((data as Entry[]) || []);
+    const data = await fetchAllRows<Entry>((from, to) =>
+      supabase
+        .from("entries")
+        .select("*")
+        .is("deleted_at", null)
+        .gte("occurred_at", start.toISOString())
+        .lt("occurred_at", end.toISOString())
+        .order("occurred_at", { ascending: false })
+        .range(from, to)
+    );
+    setMonthEntries(data);
   }, []);
 
   const loadGoal = useCallback(async (currentSettings: AppSettings) => {
@@ -111,18 +115,22 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     since.setDate(since.getDate() - BREAKEVEN_WINDOW_DAYS);
     const sinceIso = since.toISOString();
 
-    const [{ data: exp }, { data: ent }] = await Promise.all([
-      supabase.from("expenses").select("amount").is("deleted_at", null).gte("occurred_at", sinceIso),
-      supabase.from("entries").select("gross").is("deleted_at", null).gte("occurred_at", sinceIso),
+    const [exp, ent] = await Promise.all([
+      fetchAllRows<{ amount: number }>((from, to) =>
+        supabase.from("expenses").select("amount").is("deleted_at", null).gte("occurred_at", sinceIso).range(from, to)
+      ),
+      fetchAllRows<{ gross: number }>((from, to) =>
+        supabase.from("entries").select("gross").is("deleted_at", null).gte("occurred_at", sinceIso).range(from, to)
+      ),
     ]);
 
-    const windowExpenses = (exp || []).reduce((sum, r) => sum + Number(r.amount), 0);
-    const windowRevenue = (ent || []).reduce((sum, r) => sum + Number(r.gross), 0);
+    const windowExpenses = exp.reduce((sum, r) => sum + Number(r.amount), 0);
+    const windowRevenue = ent.reduce((sum, r) => sum + Number(r.gross), 0);
 
     setGoal(computeBreakEven({
       windowExpenses,
       windowRevenue,
-      windowEntries: (ent || []).length,
+      windowEntries: ent.length,
       windowDays: BREAKEVEN_WINDOW_DAYS,
       manualDailyTarget: currentSettings.daily_expense_target,
     }));

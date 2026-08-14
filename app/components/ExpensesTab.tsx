@@ -4,6 +4,7 @@ import "@/lib/chartRegistry";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Doughnut } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
+import { fetchAllRows } from "@/lib/fetchAll";
 import { AR_GREGORIAN_LOCALE, formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Expense } from "@/lib/types";
@@ -51,8 +52,10 @@ export function ExpensesTab() {
   }, []);
 
   const loadExpenses = useCallback(async () => {
-    const { data } = await supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: false });
-    setExpenses((data as Expense[]) || []);
+    const data = await fetchAllRows<Expense>((from, to) =>
+      supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: false }).range(from, to)
+    );
+    setExpenses(data);
   }, []);
 
   useEffect(() => {
