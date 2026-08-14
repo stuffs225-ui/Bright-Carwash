@@ -39,3 +39,29 @@ export function toDateKey(date: Date): string {
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+export type EntryDayChoice = "today" | "yesterday" | "custom";
+
+// لإضافة سيارات لعملية غسيل صارت "أمس" أو أي يوم سابق (نسي العامل يسجّلها
+// وقتها). نحتاج فقط تصحيح اليوم التقويمي، فنبقي وقت الساعة الحالي كما هو.
+export function resolveOccurredAt(choice: EntryDayChoice, customDateKey: string): string {
+  const now = new Date();
+  if (choice === "yesterday") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString();
+  }
+  if (choice === "custom" && customDateKey) {
+    const [y, m, d] = customDateKey.split("-").map(Number);
+    return new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds()).toISOString();
+  }
+  return now.toISOString();
+}
+
+// لتصحيح يوم عملية موجودة عند التعديل — يبدّل اليوم فقط، ويحافظ على وقت
+// الساعة الأصلي بدل استبداله بالوقت الحالي.
+export function withDateKey(dateKey: string, originalIso: string): string {
+  const orig = new Date(originalIso);
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d, orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds()).toISOString();
+}

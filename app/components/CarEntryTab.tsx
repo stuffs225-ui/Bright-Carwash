@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchAllRows } from "@/lib/fetchAll";
-import { AR_GREGORIAN_LOCALE, bonusPerWorker, formatCurrency, getDayBounds, getPaymentMethod, toDateKey } from "@/lib/business";
+import {
+  AR_GREGORIAN_LOCALE,
+  bonusPerWorker,
+  formatCurrency,
+  getDayBounds,
+  getPaymentMethod,
+  resolveOccurredAt,
+  toDateKey,
+  type EntryDayChoice,
+} from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Entry, EntryPreset } from "@/lib/types";
 import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
@@ -70,6 +79,11 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [bulkMode, setBulkMode] = useState(false);
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([emptyBulkRow()]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
+
+  // يوم التسجيل — لتصحيح سيارات تُضاف متأخرة (بعد منتصف الليل أو نسيان يوم كامل).
+  // يرجع "اليوم" تلقائياً بكل تحميل جديد للصفحة عشان ما يبقى عالقاً على يوم قديم بالغلط.
+  const [entryDay, setEntryDay] = useState<EntryDayChoice>("today");
+  const [customDate, setCustomDate] = useState("");
 
   const loadLists = useCallback(async () => {
     const [{ data: cars }, { data: services }] = await Promise.all([
@@ -259,6 +273,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       showToast("الرجاء إدخال مبلغ صحيح.", "warning");
       return;
     }
+    if (entryDay === "custom" && !customDate) {
+      showToast("اختر التاريخ أولاً.", "warning");
+      return;
+    }
     setSubmitting(true);
     const ok = await saveEntry(
       {
@@ -267,7 +285,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: cash,
         card_paid: card,
         notes: notes || null,
-        occurred_at: new Date().toISOString(),
+        occurred_at: resolveOccurredAt(entryDay, customDate),
       },
       "تمت إضافة السيارة بنجاح!"
     );
@@ -276,6 +294,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }
 
   async function handlePresetPick(preset: EntryPreset, method: "cash" | "card") {
+    if (entryDay === "custom" && !customDate) {
+      showToast("اختر التاريخ أولاً.", "warning");
+      return;
+    }
     setSubmitting(true);
     await saveEntry(
       {
@@ -284,7 +306,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: method === "cash" ? preset.amount : 0,
         card_paid: method === "card" ? preset.amount : 0,
         notes: null,
-        occurred_at: new Date().toISOString(),
+        occurred_at: resolveOccurredAt(entryDay, customDate),
       },
       `تم تسجيل ${preset.car_type} · ${formatCurrency(preset.amount)}`
     );
@@ -308,14 +330,18 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   async function handleBulkSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const now = new Date().toISOString();
+    if (entryDay === "custom" && !customDate) {
+      showToast("اختر التاريخ أولاً.", "warning");
+      return;
+    }
+    const occurredAt = resolveOccurredAt(entryDay, customDate);
     const payloads = bulkRows.map((row) => ({
       car_type: row.carType,
       service_type: row.serviceType,
       cash_paid: Number(row.cash) || 0,
       card_paid: Number(row.card) || 0,
       notes: row.notes || null,
-      occurred_at: now,
+      occurred_at: occurredAt,
     }));
 
     const invalid = payloads.find((p) => !p.car_type || !p.service_type || p.cash_paid + p.card_paid <= 0);
@@ -378,6 +404,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: cash,
         card_paid: card,
         notes: patch.notes ?? entry.notes,
+        occurred_at: patch.occurred_at ?? entry.occurred_at,
       })
       .eq("id", entry.id);
     if (error) {
@@ -393,6 +420,11 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   const priceSuggestions = suggestionsFor(presets, carType, serviceType);
 
+  const resolvedEntryDateLabel = useMemo(() => {
+    const iso = resolveOccurredAt(entryDay, customDate);
+    return new Date(iso).toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }, [entryDay, customDate]);
+
   return (
     <div className="space-y-6">
       {goal && (
@@ -403,6 +435,25 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           ownerView={ownerView}
         />
       )}
+
+      <section className="card">
+        <span className="form-label">تاريخ التسجيل</span>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={entryDay === "today" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("today")}>اليوم</button>
+          <button type="button" className={entryDay === "yesterday" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("yesterday")}>أمس</button>
+          <button type="button" className={entryDay === "custom" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("custom")}>تاريخ آخر</button>
+        </div>
+        {entryDay === "custom" && (
+          <div className="mt-3" style={{ maxWidth: 220 }}>
+            <input type="date" value={customDate} max={toDateKey(new Date())} onChange={(e) => setCustomDate(e.target.value)} />
+          </div>
+        )}
+        {entryDay !== "today" && (
+          <p className="txt-warning font-bold text-sm mt-3">
+            ⚠️ السيارات المُضافة الآن ستُسجَّل ليوم {resolvedEntryDateLabel}
+          </p>
+        )}
+      </section>
 
       {!bulkMode && presets.length > 0 && (
         <section className="card">

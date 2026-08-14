@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatCurrency } from "@/lib/business";
+import { formatCurrency, toDateKey, withDateKey } from "@/lib/business";
 import type { Entry } from "@/lib/types";
 
 export function EntryRow({
@@ -28,6 +28,7 @@ export function EntryRow({
   const [cash, setCash] = useState(String(entry.cash_paid));
   const [card, setCard] = useState(String(entry.card_paid));
   const [notes, setNotes] = useState(entry.notes || "");
+  const [dateKey, setDateKey] = useState(toDateKey(new Date(entry.occurred_at)));
 
   const time = new Date(entry.occurred_at).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
 
@@ -67,7 +68,7 @@ export function EntryRow({
   return (
     <tr>
       <td colSpan={8}>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 py-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3 py-2">
           <div>
             <label className="form-label">نوع السيارة</label>
             <select value={carType} onChange={(e) => setCarType(e.target.value)}>
@@ -92,9 +93,28 @@ export function EntryRow({
             <label className="form-label">ملاحظات</label>
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
+          <div>
+            <label className="form-label">التاريخ</label>
+            <input type="date" value={dateKey} max={toDateKey(new Date())} onChange={(e) => setDateKey(e.target.value)} />
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 pb-2">
-          <button type="button" className="btn-primary" onClick={() => onSave({ car_type: carType, service_type: serviceType, cash_paid: Number(cash) || 0, card_paid: Number(card) || 0, notes })}>حفظ</button>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() =>
+              onSave({
+                car_type: carType,
+                service_type: serviceType,
+                cash_paid: Number(cash) || 0,
+                card_paid: Number(card) || 0,
+                notes,
+                occurred_at: withDateKey(dateKey, entry.occurred_at),
+              })
+            }
+          >
+            حفظ
+          </button>
           <button type="button" className="btn-secondary" onClick={onCancel}>إلغاء</button>
         </div>
       </td>
