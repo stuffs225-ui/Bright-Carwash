@@ -1,16 +1,19 @@
 "use client";
 
 import { formatCurrency } from "@/lib/business";
+import { t, type Lang } from "@/lib/i18n";
 import type { EntryPreset } from "@/lib/types";
 
 export function PresetGrid({
   presets,
   disabled,
   onPick,
+  lang = "ar",
 }: {
   presets: EntryPreset[];
   disabled?: boolean;
   onPick: (preset: EntryPreset, method: "cash" | "card") => void;
+  lang?: Lang;
 }) {
   if (!presets.length) return null;
 
@@ -31,7 +34,7 @@ export function PresetGrid({
               disabled={disabled}
               onClick={() => onPick(p, "cash")}
             >
-              كاش
+              {t(lang, "كاش")}
             </button>
             <button
               type="button"
@@ -39,7 +42,7 @@ export function PresetGrid({
               disabled={disabled}
               onClick={() => onPick(p, "card")}
             >
-              بطاقة
+              {t(lang, "بطاقة")}
             </button>
           </div>
         </div>

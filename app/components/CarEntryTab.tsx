@@ -20,11 +20,13 @@ import { isNetworkError } from "@/lib/offlineSync";
 import { DEFAULT_SETTINGS, loadSettings, type AppSettings } from "@/lib/settings";
 import { loadPresets, suggestionsFor } from "@/lib/presets";
 import { BREAKEVEN_WINDOW_DAYS, computeBreakEven, type BreakEven } from "@/lib/breakeven";
+import { getLang, setLang as persistLang, t, type Lang } from "@/lib/i18n";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 import { PresetGrid } from "./PresetGrid";
 import { BreakEvenMeter } from "./BreakEvenMeter";
 import { EntryRow } from "./EntryRow";
+import { LangSwitch } from "./LangSwitch";
 
 function pendingEntriesFromQueue(): Entry[] {
   return getQueueByTable("entries").map((item) => {
@@ -84,6 +86,18 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   // يرجع "اليوم" تلقائياً بكل تحميل جديد للصفحة عشان ما يبقى عالقاً على يوم قديم بالغلط.
   const [entryDay, setEntryDay] = useState<EntryDayChoice>("today");
   const [customDate, setCustomDate] = useState("");
+
+  // لغة صفحة تسجيل السيارات فقط — تُحفظ بالجهاز، وباقي النظام يبقى عربي.
+  const [lang, setLangState] = useState<Lang>("ar");
+  useEffect(() => {
+    setLangState(getLang());
+  }, []);
+  function changeLang(next: Lang) {
+    setLangState(next);
+    persistLang(next);
+  }
+  const tt = (text: string, vars?: Record<string, string | number>) => t(lang, text, vars);
+  const dateLocale = lang === "en" ? "en-US" : AR_GREGORIAN_LOCALE;
 
   const loadLists = useCallback(async () => {
     const [{ data: cars }, { data: services }] = await Promise.all([
@@ -238,7 +252,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   async function saveEntry(payload: Record<string, unknown>, successMessage: string): Promise<boolean> {
     const queueLocally = (reason: string) => {
       enqueue("entries", payload);
-      showToast(`${reason} — تم الحفظ محلياً وسيُرفع تلقائياً عند رجوع النت.`, "warning");
+      showToast(`${tt(reason)}${tt(" — تم الحفظ محلياً وسيُرفع تلقائياً عند رجوع النت.")}`, "warning");
     };
 
     if (!navigator.onLine) {
@@ -252,7 +266,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         queueLocally("تعذر الاتصال");
         return true;
       }
-      showToast("خطأ في الحفظ: " + error.message, "error");
+      showToast(tt("خطأ في الحفظ: ") + error.message, "error");
       return false;
     }
 
@@ -266,15 +280,15 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     const cash = Number(cashPaid) || 0;
     const card = Number(cardPaid) || 0;
     if (!carType || !serviceType) {
-      showToast("يرجى اختيار نوع السيارة ونوع الخدمة.", "warning");
+      showToast(tt("يرجى اختيار نوع السيارة ونوع الخدمة."), "warning");
       return;
     }
     if (cash + card <= 0) {
-      showToast("الرجاء إدخال مبلغ صحيح.", "warning");
+      showToast(tt("الرجاء إدخال مبلغ صحيح."), "warning");
       return;
     }
     if (entryDay === "custom" && !customDate) {
-      showToast("اختر التاريخ أولاً.", "warning");
+      showToast(tt("اختر التاريخ أولاً."), "warning");
       return;
     }
     setSubmitting(true);
@@ -287,7 +301,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         notes: notes || null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
       },
-      "تمت إضافة السيارة بنجاح!"
+      tt("تمت إضافة السيارة بنجاح!")
     );
     setSubmitting(false);
     if (ok) clearForm();
@@ -295,7 +309,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   async function handlePresetPick(preset: EntryPreset, method: "cash" | "card") {
     if (entryDay === "custom" && !customDate) {
-      showToast("اختر التاريخ أولاً.", "warning");
+      showToast(tt("اختر التاريخ أولاً."), "warning");
       return;
     }
     setSubmitting(true);
@@ -308,7 +322,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         notes: null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
       },
-      `تم تسجيل ${preset.car_type} · ${formatCurrency(preset.amount)}`
+      `${tt("تم تسجيل")} ${preset.car_type} · ${formatCurrency(preset.amount)}`
     );
     setSubmitting(false);
   }
@@ -346,7 +360,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
     const invalid = payloads.find((p) => !p.car_type || !p.service_type || p.cash_paid + p.card_paid <= 0);
     if (invalid) {
-      showToast("تأكد إن كل سطر فيه نوع سيارة، نوع خدمة، ومبلغ أكبر من صفر.", "warning");
+      showToast(tt("تأكد إن كل سطر فيه نوع سيارة، نوع خدمة، ومبلغ أكبر من صفر."), "warning");
       return;
     }
 
@@ -355,7 +369,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     if (!navigator.onLine) {
       payloads.forEach((p) => enqueue("entries", p));
       setBulkSubmitting(false);
-      showToast(`لا يوجد اتصال — تم حفظ ${payloads.length} سيارة محلياً وستُرفع تلقائياً عند رجوع النت.`, "warning");
+      showToast(tt("لا يوجد اتصال — تم حفظ {n} سيارة محلياً وستُرفع تلقائياً عند رجوع النت.", { n: payloads.length }), "warning");
       setBulkRows([emptyBulkRow()]);
       return;
     }
@@ -365,27 +379,27 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     if (error) {
       if (isNetworkError(error)) {
         payloads.forEach((p) => enqueue("entries", p));
-        showToast(`تعذر الاتصال — تم حفظ ${payloads.length} سيارة محلياً وستُرفع تلقائياً عند رجوع النت.`, "warning");
+        showToast(tt("تعذر الاتصال — تم حفظ {n} سيارة محلياً وستُرفع تلقائياً عند رجوع النت.", { n: payloads.length }), "warning");
         setBulkRows([emptyBulkRow()]);
         return;
       }
-      showToast("خطأ في حفظ السيارات: " + error.message, "error");
+      showToast(tt("خطأ في حفظ السيارات: ") + error.message, "error");
       return;
     }
 
-    showToast(`تمت إضافة ${payloads.length} سيارة بنجاح!`);
+    showToast(tt("تمت إضافة {n} سيارة بنجاح!", { n: payloads.length }));
     setBulkRows([emptyBulkRow()]);
     refreshAll(settingsRef.current);
   }
 
   async function handleDelete(id: string) {
-    if (!confirm("هل أنت متأكد من حذف هذا السجل؟")) return;
+    if (!confirm(tt("هل أنت متأكد من حذف هذا السجل؟"))) return;
     const { error } = await supabase.from("entries").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) {
-      showToast("فشل الحذف: " + error.message, "error");
+      showToast(tt("فشل الحذف: ") + error.message, "error");
       return;
     }
-    showToast("تم حذف السجل بنجاح!");
+    showToast(tt("تم حذف السجل بنجاح!"));
     refreshAll(settingsRef.current);
   }
 
@@ -393,7 +407,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     const cash = Number(patch.cash_paid ?? entry.cash_paid);
     const card = Number(patch.card_paid ?? entry.card_paid);
     if (cash + card <= 0) {
-      showToast("يجب أن يكون إجمالي المبلغ أكبر من صفر.", "warning");
+      showToast(tt("يجب أن يكون إجمالي المبلغ أكبر من صفر."), "warning");
       return;
     }
     const { error } = await supabase
@@ -408,10 +422,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       })
       .eq("id", entry.id);
     if (error) {
-      showToast("فشل التحديث: " + error.message, "error");
+      showToast(tt("فشل التحديث: ") + error.message, "error");
       return;
     }
-    showToast("تم تحديث السجل بنجاح!");
+    showToast(tt("تم تحديث السجل بنجاح!"));
     setEditingId(null);
     refreshAll(settingsRef.current);
   }
@@ -422,26 +436,31 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   const resolvedEntryDateLabel = useMemo(() => {
     const iso = resolveOccurredAt(entryDay, customDate);
-    return new Date(iso).toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  }, [entryDay, customDate]);
+    return new Date(iso).toLocaleDateString(dateLocale, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  }, [entryDay, customDate, dateLocale]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir={lang === "en" ? "ltr" : "rtl"}>
+      <div className="flex justify-end">
+        <LangSwitch lang={lang} onChange={changeLang} />
+      </div>
+
       {goal && (
         <BreakEvenMeter
           goal={goal}
           carsToday={dailyTotals.count}
           revenueToday={dailyTotals.total}
           ownerView={ownerView}
+          lang={lang}
         />
       )}
 
       <section className="card">
-        <span className="form-label">تاريخ التسجيل</span>
+        <span className="form-label">{tt("تاريخ التسجيل")}</span>
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={entryDay === "today" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("today")}>اليوم</button>
-          <button type="button" className={entryDay === "yesterday" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("yesterday")}>أمس</button>
-          <button type="button" className={entryDay === "custom" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("custom")}>تاريخ آخر</button>
+          <button type="button" className={entryDay === "today" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("today")}>{tt("اليوم")}</button>
+          <button type="button" className={entryDay === "yesterday" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("yesterday")}>{tt("أمس")}</button>
+          <button type="button" className={entryDay === "custom" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("custom")}>{tt("تاريخ آخر")}</button>
         </div>
         {entryDay === "custom" && (
           <div className="mt-3" style={{ maxWidth: 220 }}>
@@ -450,23 +469,23 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         )}
         {entryDay !== "today" && (
           <p className="txt-warning font-bold text-sm mt-3">
-            ⚠️ السيارات المُضافة الآن ستُسجَّل ليوم {resolvedEntryDateLabel}
+            {tt("⚠️ السيارات المُضافة الآن ستُسجَّل ليوم {date}", { date: resolvedEntryDateLabel })}
           </p>
         )}
       </section>
 
       {!bulkMode && presets.length > 0 && (
         <section className="card">
-          <h2 className="section-title">تسجيل سريع</h2>
-          <PresetGrid presets={presets} disabled={submitting} onPick={handlePresetPick} />
+          <h2 className="section-title">{tt("تسجيل سريع")}</h2>
+          <PresetGrid presets={presets} disabled={submitting} onPick={handlePresetPick} lang={lang} />
         </section>
       )}
 
       <section className="card">
         <div className="flex items-center justify-between gap-3 mb-1">
-          <h2 className="section-title mb-0">{bulkMode ? "إضافة عدة سيارات دفعة وحدة" : "إدخال سيارة جديدة"}</h2>
+          <h2 className="section-title mb-0">{bulkMode ? tt("إضافة عدة سيارات دفعة وحدة") : tt("إدخال سيارة جديدة")}</h2>
           <button type="button" className="btn-secondary" onClick={() => setBulkMode((v) => !v)}>
-            {bulkMode ? "رجوع لإدخال سيارة واحدة" : "➕ إضافة عدة سيارات"}
+            {bulkMode ? tt("رجوع لإدخال سيارة واحدة") : tt("➕ إضافة عدة سيارات")}
           </button>
         </div>
 
@@ -474,10 +493,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           <form onSubmit={handleSubmit} className="space-y-5 mt-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="form-label">نوع السيارة</label>
+                <label className="form-label">{tt("نوع السيارة")}</label>
                 <div className="select-wrapper">
                   <select value={carType} onChange={(e) => setCarType(e.target.value)} required>
-                    <option value="">اختر...</option>
+                    <option value="">{tt("اختر...")}</option>
                     {carTypes.map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
@@ -485,10 +504,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                 </div>
               </div>
               <div>
-                <label className="form-label">نوع الخدمة</label>
+                <label className="form-label">{tt("نوع الخدمة")}</label>
                 <div className="select-wrapper">
                   <select value={serviceType} onChange={(e) => setServiceType(e.target.value)} required>
-                    <option value="">اختر...</option>
+                    <option value="">{tt("اختر...")}</option>
                     {serviceTypes.map((s) => (
                       <option key={s} value={s}>{s}</option>
                     ))}
@@ -498,7 +517,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
             </div>
             {priceSuggestions.length > 0 && (
               <div>
-                <label className="form-label">الأسعار المعتادة لهذي التركيبة</label>
+                <label className="form-label">{tt("الأسعار المعتادة لهذي التركيبة")}</label>
                 <div className="suggestion-row">
                   {priceSuggestions.map((p) => (
                     <span key={p.id} className="contents">
@@ -507,14 +526,14 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                         className="suggestion-chip"
                         onClick={() => { setCashPaid(String(p.amount)); setCardPaid(""); }}
                       >
-                        {formatCurrency(p.amount)} كاش
+                        {formatCurrency(p.amount)} {tt("كاش")}
                       </button>
                       <button
                         type="button"
                         className="suggestion-chip"
                         onClick={() => { setCardPaid(String(p.amount)); setCashPaid(""); }}
                       >
-                        {formatCurrency(p.amount)} بطاقة
+                        {formatCurrency(p.amount)} {tt("بطاقة")}
                       </button>
                     </span>
                   ))}
@@ -523,20 +542,20 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="form-label">كاش</label>
+                <label className="form-label">{tt("كاش")}</label>
                 <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cashPaid} onChange={(e) => setCashPaid(e.target.value)} />
               </div>
               <div>
-                <label className="form-label">بطاقة</label>
+                <label className="form-label">{tt("بطاقة")}</label>
                 <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cardPaid} onChange={(e) => setCardPaid(e.target.value)} />
               </div>
             </div>
             <div>
-              <label className="form-label">ملاحظات</label>
-              <input type="text" placeholder="أي تفاصيل إضافية..." value={notes} onChange={(e) => setNotes(e.target.value)} />
+              <label className="form-label">{tt("ملاحظات")}</label>
+              <input type="text" placeholder={tt("أي تفاصيل إضافية...")} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
             <button type="submit" disabled={submitting} className="btn-add-car w-full">
-              {submitting ? <span className="spinner" /> : "إضافة السيارة"}
+              {submitting ? <span className="spinner" /> : tt("إضافة السيارة")}
             </button>
           </form>
         ) : (
@@ -546,30 +565,30 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                 <div key={index} className="bulk-row">
                   <div className="grid grid-cols-2 lg:grid-cols-5 gap-2">
                     <div>
-                      <label className="form-label">نوع السيارة</label>
+                      <label className="form-label">{tt("نوع السيارة")}</label>
                       <select value={row.carType} onChange={(e) => updateBulkRow(index, { carType: e.target.value })} required>
-                        <option value="">اختر...</option>
+                        <option value="">{tt("اختر...")}</option>
                         {carTypes.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="form-label">نوع الخدمة</label>
+                      <label className="form-label">{tt("نوع الخدمة")}</label>
                       <select value={row.serviceType} onChange={(e) => updateBulkRow(index, { serviceType: e.target.value })} required>
-                        <option value="">اختر...</option>
+                        <option value="">{tt("اختر...")}</option>
                         {serviceTypes.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                     <div>
-                      <label className="form-label">كاش</label>
+                      <label className="form-label">{tt("كاش")}</label>
                       <input type="number" min="0" step="0.01" placeholder="0.00" value={row.cash} onChange={(e) => updateBulkRow(index, { cash: e.target.value })} />
                     </div>
                     <div>
-                      <label className="form-label">بطاقة</label>
+                      <label className="form-label">{tt("بطاقة")}</label>
                       <input type="number" min="0" step="0.01" placeholder="0.00" value={row.card} onChange={(e) => updateBulkRow(index, { card: e.target.value })} />
                     </div>
                     <div className="flex items-end gap-2">
                       <div className="flex-1">
-                        <label className="form-label">ملاحظات</label>
+                        <label className="form-label">{tt("ملاحظات")}</label>
                         <input type="text" value={row.notes} onChange={(e) => updateBulkRow(index, { notes: e.target.value })} />
                       </div>
                       <button
@@ -577,7 +596,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                         className="action-button delete-button"
                         onClick={() => removeBulkRow(index)}
                         disabled={bulkRows.length <= 1}
-                        title="حذف السطر"
+                        title={tt("حذف السطر")}
                       >
                         ✕
                       </button>
@@ -587,10 +606,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
               ))}
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn-secondary" onClick={addBulkRow}>+ إضافة سطر</button>
+              <button type="button" className="btn-secondary" onClick={addBulkRow}>{tt("+ إضافة سطر")}</button>
             </div>
             <button type="submit" disabled={bulkSubmitting} className="btn-add-car w-full">
-              {bulkSubmitting ? <span className="spinner" /> : `حفظ الكل (${bulkRows.length})`}
+              {bulkSubmitting ? <span className="spinner" /> : tt("حفظ الكل ({n})", { n: bulkRows.length })}
             </button>
           </form>
         )}
@@ -598,55 +617,55 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
       <section className="card text-center">
         <button type="button" className="section-title text-center w-full underline decoration-dotted" onClick={() => setShowTodayModal(true)}>
-          اليوم - {new Date().toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long" })} ({new Date().toLocaleDateString("en-GB")})
+          {tt("اليوم - ")}{new Date().toLocaleDateString(dateLocale, { weekday: "long" })} ({new Date().toLocaleDateString("en-GB")})
         </button>
         {ownerView ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard label="السيارات" value={dailyTotals.count} tone="blue" />
-            <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} tone="green" />
-            <MetricCard label="بطاقة" value={formatCurrency(dailyTotals.card)} tone="purple" />
-            <MetricCard label="الإجمالي" value={formatCurrency(dailyTotals.total)} tone="slate" />
+            <MetricCard label={tt("السيارات")} value={dailyTotals.count} tone="blue" />
+            <MetricCard label={tt("كاش")} value={formatCurrency(dailyTotals.cash)} tone="green" />
+            <MetricCard label={tt("بطاقة")} value={formatCurrency(dailyTotals.card)} tone="purple" />
+            <MetricCard label={tt("الإجمالي")} value={formatCurrency(dailyTotals.total)} tone="slate" />
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
-            <MetricCard label="سيارات اليوم" value={dailyTotals.count} tone="blue" />
+            <MetricCard label={tt("سيارات اليوم")} value={dailyTotals.count} tone="blue" />
           </div>
         )}
         <hr className="my-5 rule" />
-        <h3 className="subsection-title text-center">مكافأة اليوم</h3>
+        <h3 className="subsection-title text-center">{tt("مكافأة اليوم")}</h3>
         <div className="grid grid-cols-1 gap-4">
-          <MetricCard label="مكافأة كل عامل" value={formatCurrency(bonus)} tone="emerald" />
+          <MetricCard label={tt("مكافأة كل عامل")} value={formatCurrency(bonus)} tone="emerald" />
         </div>
       </section>
 
       <section className="card overflow-hidden p-0" hidden={!ownerView}>
         <button type="button" className={`accordion-button ${showMonthly ? "active" : ""}`} onClick={() => setShowMonthly((v) => !v)}>
-          <span>الدخل الشهري</span>
+          <span>{tt("الدخل الشهري")}</span>
           <span>⌄</span>
         </button>
         <div className="accordion-content" style={{ maxHeight: showMonthly ? "5000px" : undefined }}>
           <div className="p-4 overflow-x-auto">
             {monthlyByDay.length === 0 ? (
-              <p className="py-5 txt-muted text-center">لا توجد بيانات دخل لهذا الشهر.</p>
+              <p className="py-5 txt-muted text-center">{tt("لا توجد بيانات دخل لهذا الشهر.")}</p>
             ) : (
               <table className="app-table">
                 <thead>
-                  <tr><th>اليوم</th><th>عدد السيارات</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th></tr>
+                  <tr><th>{tt("اليوم")}</th><th>{tt("عدد السيارات")}</th><th>{tt("كاش")}</th><th>{tt("بطاقة")}</th><th>{tt("الإجمالي")}</th></tr>
                 </thead>
                 <tbody>
                   {monthlyByDay.map((row) => {
-                    const day = new Date(`${row.date}T12:00:00`).toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long" });
+                    const day = new Date(`${row.date}T12:00:00`).toLocaleDateString(dateLocale, { weekday: "long" });
                     return (
                       <tr key={row.date}>
-                        <td data-label="اليوم">
+                        <td data-label={tt("اليوم")}>
                           <button type="button" className="link-inline" onClick={() => setSelectedDay(row.date)}>
                             {day} - {row.date}
                           </button>
                         </td>
-                        <td data-label="عدد السيارات">{row.cars}</td>
-                        <td data-label="كاش" className="txt-cash">{formatCurrency(row.cash)}</td>
-                        <td data-label="بطاقة" className="txt-card">{formatCurrency(row.card)}</td>
-                        <td data-label="الإجمالي" className="font-extrabold">{formatCurrency(row.total)}</td>
+                        <td data-label={tt("عدد السيارات")}>{row.cars}</td>
+                        <td data-label={tt("كاش")} className="txt-cash">{formatCurrency(row.cash)}</td>
+                        <td data-label={tt("بطاقة")} className="txt-card">{formatCurrency(row.card)}</td>
+                        <td data-label={tt("الإجمالي")} className="font-extrabold">{formatCurrency(row.total)}</td>
                       </tr>
                     );
                   })}
@@ -658,15 +677,15 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       </section>
 
       {selectedDay && (
-        <Modal title={`إدخالات ${selectedDay}`} onClose={() => setSelectedDay(null)}>
-          <div className="overflow-x-auto">
+        <Modal title={tt("إدخالات {day}", { day: selectedDay })} onClose={() => setSelectedDay(null)}>
+          <div className="overflow-x-auto" dir={lang === "en" ? "ltr" : "rtl"}>
             <table className="app-table">
               <thead>
-                <tr><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th><th>إجراءات</th></tr>
+                <tr><th>{tt("الوقت")}</th><th>{tt("السيارة")}</th><th>{tt("الخدمة")}</th><th>{tt("الدفع")}</th><th>{tt("كاش")}</th><th>{tt("بطاقة")}</th><th>{tt("الإجمالي")}</th><th>{tt("إجراءات")}</th></tr>
               </thead>
               <tbody>
                 {dayEntries.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center txt-muted py-5">لا توجد إدخالات بهذا اليوم.</td></tr>
+                  <tr><td colSpan={8} className="text-center txt-muted py-5">{tt("لا توجد إدخالات بهذا اليوم.")}</td></tr>
                 ) : (
                   dayEntries.map((entry) => (
                     <EntryRow
@@ -679,6 +698,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                       onCancel={() => setEditingId(null)}
                       onSave={(patch) => handleUpdate(entry, patch)}
                       onDelete={() => handleDelete(entry.id)}
+                      lang={lang}
                     />
                   ))
                 )}
@@ -689,15 +709,15 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       )}
 
       {showTodayModal && (
-        <Modal title={`إدخالات اليوم - ${new Date().toLocaleDateString(AR_GREGORIAN_LOCALE, { weekday: "long" })}`} onClose={() => setShowTodayModal(false)}>
-          <div className="overflow-x-auto">
+        <Modal title={tt("إدخالات اليوم - {weekday}", { weekday: new Date().toLocaleDateString(dateLocale, { weekday: "long" }) })} onClose={() => setShowTodayModal(false)}>
+          <div className="overflow-x-auto" dir={lang === "en" ? "ltr" : "rtl"}>
             <table className="app-table">
               <thead>
-                <tr><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>كاش</th><th>بطاقة</th><th>الإجمالي</th><th>إجراءات</th></tr>
+                <tr><th>{tt("الوقت")}</th><th>{tt("السيارة")}</th><th>{tt("الخدمة")}</th><th>{tt("الدفع")}</th><th>{tt("كاش")}</th><th>{tt("بطاقة")}</th><th>{tt("الإجمالي")}</th><th>{tt("إجراءات")}</th></tr>
               </thead>
               <tbody>
                 {todayEntriesWithPending.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center txt-muted py-5">لا توجد إدخالات لليوم.</td></tr>
+                  <tr><td colSpan={8} className="text-center txt-muted py-5">{tt("لا توجد إدخالات لليوم.")}</td></tr>
                 ) : (
                   todayEntriesWithPending.map((entry) => (
                     <EntryRow
@@ -710,6 +730,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                       onCancel={() => setEditingId(null)}
                       onSave={(patch) => handleUpdate(entry, patch)}
                       onDelete={() => handleDelete(entry.id)}
+                      lang={lang}
                     />
                   ))
                 )}
