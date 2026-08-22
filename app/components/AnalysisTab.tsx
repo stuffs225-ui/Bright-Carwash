@@ -121,21 +121,26 @@ export function AnalysisTab() {
   }, []);
 
   const loadHistory = useCallback(async () => {
-    const [e, x] = await Promise.all([
-      fetchAllRows<Entry>((from, to) =>
-        supabase.from("entries").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
-      ),
-      fetchAllRows<Expense>((from, to) =>
-        supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
-      ),
-    ]);
-    setAllEntries(e);
-    setAllExpenses(x);
+    try {
+      const [e, x] = await Promise.all([
+        fetchAllRows<Entry>((from, to) =>
+          supabase.from("entries").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+        ),
+        fetchAllRows<Expense>((from, to) =>
+          supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+        ),
+      ]);
+      setAllEntries(e);
+      setAllExpenses(x);
+    } catch (err) {
+      showToast("خطأ في تحميل السجل الكامل: " + (err instanceof Error ? err.message : String(err)), "error");
+    }
   }, []);
 
   useEffect(() => {
-    load(startDate, endDate, carTypeFilter, serviceTypeFilter);
-    loadHistory();
+    // بالتتابع لا بالتوازي — نطلب كل السجلات التاريخية (7+ صفحات لكل جدول)
+    // مرتين بنفس اللحظة كان يزاحم الشبكة على الجوال ويسبب فشل لحظي.
+    load(startDate, endDate, carTypeFilter, serviceTypeFilter).then(loadHistory);
     loadPresets().then(setPresets);
 
     supabase
