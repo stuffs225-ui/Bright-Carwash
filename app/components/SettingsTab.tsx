@@ -8,6 +8,7 @@ import { createPreset, deletePreset, loadPresets } from "@/lib/presets";
 import { addLookup, loadLookup, renameLookup, setLookupActive, type LookupRow, type LookupTable } from "@/lib/lookups";
 import type { EntryPreset } from "@/lib/types";
 import { applyTheme, getTheme, setTheme, type ThemeChoice } from "@/lib/theme";
+import { ImportSheetSection } from "./ImportSheetSection";
 
 export function SettingsTab() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -144,6 +145,8 @@ export function SettingsTab() {
       </Section>
 
       <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
+
+      <ImportSheetSection />
 
       <LookupSection table="car_types" title="أنواع السيارات" />
       <LookupSection table="service_types" title="أنواع الخدمات" />
