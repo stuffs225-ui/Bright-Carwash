@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchAllRows } from "@/lib/fetchAll";
+import { describeError } from "@/lib/errors";
 import { formatCurrency, toDateKey } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { buildReportMarkdown, downloadMarkdown, exportReportToExcel, type ReportInput } from "@/lib/exportReport";
@@ -114,7 +115,7 @@ export function AnalysisTab() {
       setEntries(entryRows);
       setExpenses(expenseRows);
     } catch (err) {
-      showToast("خطأ في تحليل البيانات: " + (err instanceof Error ? err.message : String(err)), "error");
+      showToast("خطأ في تحليل البيانات: " + (describeError(err)), "error");
     } finally {
       setLoading(false);
     }
@@ -133,7 +134,7 @@ export function AnalysisTab() {
       setAllEntries(e);
       setAllExpenses(x);
     } catch (err) {
-      showToast("خطأ في تحميل السجل الكامل: " + (err instanceof Error ? err.message : String(err)), "error");
+      showToast("خطأ في تحميل السجل الكامل: " + (describeError(err)), "error");
     }
   }, []);
 

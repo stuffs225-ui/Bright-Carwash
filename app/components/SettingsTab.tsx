@@ -10,7 +10,18 @@ import type { EntryPreset } from "@/lib/types";
 import { applyTheme, getTheme, setTheme, type ThemeChoice } from "@/lib/theme";
 import { ImportSheetSection } from "./ImportSheetSection";
 
+type Category = "operations" | "access" | "appearance" | "data" | "backup";
+
+const CATEGORIES: { value: Category; label: string; icon: string }[] = [
+  { value: "operations", label: "التشغيل اليومي", icon: "📊" },
+  { value: "access", label: "الوصول", icon: "🔐" },
+  { value: "appearance", label: "المظهر", icon: "🎨" },
+  { value: "data", label: "البيانات", icon: "🗂️" },
+  { value: "backup", label: "النسخ الاحتياطي", icon: "📧" },
+];
+
 export function SettingsTab() {
+  const [category, setCategory] = useState<Category>("operations");
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
 
@@ -70,87 +81,121 @@ export function SettingsTab() {
 
   return (
     <div className="space-y-6">
-      <Section title="المكافأة" hint="تُحسب على عدد سيارات اليوم كاملاً (من منتصف الليل لمنتصف الليل).">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="حد السيارات للمكافأة">
-            <input type="number" min="0" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-          </Field>
-          <Field label="مكافأة كل سيارة زائدة (ر.س)">
-            <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
-          </Field>
+      <nav className="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
+        {CATEGORIES.map((c) => (
+          <button
+            key={c.value}
+            type="button"
+            role="tab"
+            aria-selected={category === c.value}
+            className={`settings-tab-button ${category === c.value ? "active" : ""}`}
+            onClick={() => setCategory(c.value)}
+          >
+            <span className="settings-tab-icon">{c.icon}</span>
+            {c.label}
+          </button>
+        ))}
+      </nav>
+
+      {category === "operations" && (
+        <div className="space-y-6">
+          <Section title="المكافأة" hint="تُحسب على عدد سيارات اليوم كاملاً (من منتصف الليل لمنتصف الليل).">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="حد السيارات للمكافأة">
+                <input type="number" min="0" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
+              </Field>
+              <Field label="مكافأة كل سيارة زائدة (ر.س)">
+                <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
+              </Field>
+            </div>
+            <SaveButton
+              disabled={saving}
+              onClick={() => save({ shift_car_threshold: Number(threshold) || 0, worker_bonus_rate: Number(rate) || 0 })}
+            />
+            <p className="txt-muted text-sm mt-2">
+              مثال: لو الحد {threshold || 0} والمكافأة {rate || 0} ريال، فعند {Number(threshold) + 5 || 5} سيارة
+              يستحق كل عامل {formatCurrency((Number(rate) || 0) * 5)}.
+            </p>
+          </Section>
+
+          <Section title="هدف التعادل اليومي" hint="عدد السيارات اللي تغطي مصروف اليوم. اتركه صفراً ليُحسب تلقائياً من آخر 90 يوم.">
+            <Field label="مصروف اليوم المستهدف (0 = تلقائي)">
+              <input type="number" min="0" step="0.01" value={dailyTarget} onChange={(e) => setDailyTarget(e.target.value)} />
+            </Field>
+            <SaveButton disabled={saving} onClick={() => save({ daily_expense_target: Number(dailyTarget) || 0 })} />
+          </Section>
         </div>
-        <SaveButton
-          disabled={saving}
-          onClick={() => save({ shift_car_threshold: Number(threshold) || 0, worker_bonus_rate: Number(rate) || 0 })}
-        />
-        <p className="txt-muted text-sm mt-2">
-          مثال: لو الحد {threshold || 0} والمكافأة {rate || 0} ريال، فعند {Number(threshold) + 5 || 5} سيارة
-          يستحق كل عامل {formatCurrency((Number(rate) || 0) * 5)}.
-        </p>
-      </Section>
+      )}
 
-      <Section title="هدف التعادل اليومي" hint="عدد السيارات اللي تغطي مصروف اليوم. اتركه صفراً ليُحسب تلقائياً من آخر 90 يوم.">
-        <Field label="مصروف اليوم المستهدف (0 = تلقائي)">
-          <input type="number" min="0" step="0.01" value={dailyTarget} onChange={(e) => setDailyTarget(e.target.value)} />
-        </Field>
-        <SaveButton disabled={saving} onClick={() => save({ daily_expense_target: Number(dailyTarget) || 0 })} />
-      </Section>
+      {category === "access" && (
+        <div className="space-y-6">
+          <Section title="رابط الموظف" hint="افتح هذا الرابط على تابلت المغسلة — يعرض تسجيل السيارات فقط بأزرار كبيرة.">
+            <div className="flex flex-wrap gap-2 items-center">
+              <input type="text" readOnly value={workerUrl} onFocus={(e) => e.currentTarget.select()} />
+              <button type="button" className="btn-primary" onClick={copyWorkerUrl}>نسخ الرابط</button>
+            </div>
+            <p className="txt-warning text-sm mt-2">
+              تنبيه: الرابط للتسهيل مو للحماية — الموظف يقدر يكتب العنوان الرئيسي ويوصل لوضع المالك.
+              لو تبي منع ذلك، فعّل الرقم السري تحت.
+            </p>
+          </Section>
 
-      <Section title="رابط الموظف" hint="افتح هذا الرابط على تابلت المغسلة — يعرض تسجيل السيارات فقط بأزرار كبيرة.">
-        <div className="flex flex-wrap gap-2 items-center">
-          <input type="text" readOnly value={workerUrl} onFocus={(e) => e.currentTarget.select()} />
-          <button type="button" className="btn-primary" onClick={copyWorkerUrl}>نسخ الرابط</button>
+          <Section title="قفل وضع المالك" hint="اتركه فارغاً لتعطيل القفل.">
+            <Field label="الرقم السري">
+              <input type="text" inputMode="numeric" value={ownerPin} onChange={(e) => setOwnerPin(e.target.value)} />
+            </Field>
+            <SaveButton disabled={saving} onClick={() => save({ owner_pin: ownerPin })} />
+          </Section>
         </div>
-        <p className="txt-warning text-sm mt-2">
-          تنبيه: الرابط للتسهيل مو للحماية — الموظف يقدر يكتب العنوان الرئيسي ويوصل لوضع المالك.
-          لو تبي منع ذلك، فعّل الرقم السري تحت.
-        </p>
-      </Section>
+      )}
 
-      <Section title="قفل وضع المالك" hint="اتركه فارغاً لتعطيل القفل.">
-        <Field label="الرقم السري">
-          <input type="text" inputMode="numeric" value={ownerPin} onChange={(e) => setOwnerPin(e.target.value)} />
-        </Field>
-        <SaveButton disabled={saving} onClick={() => save({ owner_pin: ownerPin })} />
-      </Section>
-
-      <Section title="النسخة الاحتياطية بالإيميل">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="الإيميل المستقبل">
-            <input type="email" value={backupEmail} onChange={(e) => setBackupEmail(e.target.value)} />
-          </Field>
-          <Field label="عدد الأيام بين كل نسخة">
-            <input type="number" min="1" value={backupDays} onChange={(e) => setBackupDays(e.target.value)} />
-          </Field>
+      {category === "appearance" && (
+        <div className="space-y-6">
+          <Section title="المظهر">
+            <div className="flex flex-wrap gap-2">
+              {(["auto", "light", "dark"] as ThemeChoice[]).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={theme === c ? "btn-primary" : "btn-secondary"}
+                  onClick={() => chooseTheme(c)}
+                >
+                  {c === "auto" ? "تلقائي" : c === "light" ? "فاتح" : "داكن"}
+                </button>
+              ))}
+            </div>
+          </Section>
         </div>
-        <SaveButton
-          disabled={saving}
-          onClick={() => save({ backup_email: backupEmail, backup_interval_days: Number(backupDays) || 1 })}
-        />
-      </Section>
+      )}
 
-      <Section title="المظهر">
-        <div className="flex flex-wrap gap-2">
-          {(["auto", "light", "dark"] as ThemeChoice[]).map((c) => (
-            <button
-              key={c}
-              type="button"
-              className={theme === c ? "btn-primary" : "btn-secondary"}
-              onClick={() => chooseTheme(c)}
-            >
-              {c === "auto" ? "تلقائي" : c === "light" ? "فاتح" : "داكن"}
-            </button>
-          ))}
+      {category === "data" && (
+        <div className="space-y-6">
+          <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
+          <ImportSheetSection />
+          <LookupSection table="car_types" title="أنواع السيارات" />
+          <LookupSection table="service_types" title="أنواع الخدمات" />
+          <LookupSection table="expense_types" title="أنواع المصروفات" />
         </div>
-      </Section>
+      )}
 
-      <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
-
-      <ImportSheetSection />
-
-      <LookupSection table="car_types" title="أنواع السيارات" />
-      <LookupSection table="service_types" title="أنواع الخدمات" />
-      <LookupSection table="expense_types" title="أنواع المصروفات" />
+      {category === "backup" && (
+        <div className="space-y-6">
+          <Section title="النسخة الاحتياطية بالإيميل">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="الإيميل المستقبل">
+                <input type="email" value={backupEmail} onChange={(e) => setBackupEmail(e.target.value)} />
+              </Field>
+              <Field label="عدد الأيام بين كل نسخة">
+                <input type="number" min="1" value={backupDays} onChange={(e) => setBackupDays(e.target.value)} />
+              </Field>
+            </div>
+            <SaveButton
+              disabled={saving}
+              onClick={() => save({ backup_email: backupEmail, backup_interval_days: Number(backupDays) || 1 })}
+            />
+          </Section>
+        </div>
+      )}
     </div>
   );
 }

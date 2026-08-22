@@ -244,6 +244,42 @@ button, input, select, textarea { font-family: inherit; }
 .tab-button:hover { transform: translateY(-1px); background: var(--surface-2); }
 .tab-button.active { background: var(--primary); color: var(--on-primary); }
 
+/* تصنيفات صفحة الإعدادات — نفس لغة .tabs-bar بس بحواف مدورة داخل المحتوى */
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+.settings-tab-button {
+  flex: 1 1 auto;
+  min-width: 130px;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: .95rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: background .2s ease, transform .2s ease;
+  box-shadow: var(--shadow-card);
+}
+.settings-tab-button:hover { transform: translateY(-1px); background: var(--surface-2); }
+.settings-tab-button.active { background: var(--primary); color: var(--on-primary); }
+.settings-tab-icon { font-size: 1.1rem; }
+
+@media (max-width: 760px) {
+  .settings-tab-button { min-width: 44%; }
+}
+
 .content-section-wrapper {
   background: var(--surface-2);
   border: 1px solid var(--border);
