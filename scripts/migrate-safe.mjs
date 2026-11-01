@@ -39,18 +39,32 @@ const onlyDatetime = (date) => {
 };
 
 const entries = [], expenses = [], invalid = [], mismatches = [];
+const sourceRows = [], issues = [];
+const recordSource = (sheet, values, i) => {
+  sourceRows.push({source_sheet:sheet, source_row:i+2, raw_values:values});
+};
 data("Main_Data").forEach((r, i) => {
+  recordSource("Main_Data", r, i);
   const sourceRow = i + 2;
   const cash = number(r[5]), card = number(r[6]), total = number(r[9]);
   const when = datetimePart(r[11], r[12]);
-  if (!r[1] || !r[2] || !when || !Number.isFinite(cash) || !Number.isFinite(card)
-      || cash < 0 || card < 0 || cash + card <= 0) {
-    invalid.push({ table: "Main_Data", row: sourceRow, issue: "invalid date, category or split payment" });
+  const reportedTotal = Number.isFinite(total) ? total : null;
+  const validSplit = Number.isFinite(cash) && Number.isFinite(card) && cash >= 0 && card >= 0;
+  const amountMismatch = reportedTotal !== null && validSplit &&
+    Math.abs(reportedTotal - cash - card) > 0.011;
+  if (amountMismatch) {
+    const details = {cash,card,reportedTotal,splitTotal:cash+card};
+    mismatches.push({row:sourceRow,...details});
+    issues.push({source_sheet:"Main_Data",source_row:sourceRow,issue_code:"total_mismatch",details});
+  }
+  if (!r[1] || !r[2] || !when || !validSplit || cash + card <= 0) {
+    const details = {carType:r[1]||null,serviceType:r[2]||null,
+      reportedTotal, cash:Number.isFinite(cash)?cash:null,
+      card:Number.isFinite(card)?card:null,occurredAt:when};
+    invalid.push({ table: "Main_Data", row: sourceRow, issue: "missing category/date or unresolved payment split", details });
+    issues.push({source_sheet:"Main_Data",source_row:sourceRow,issue_code:"not_importable",details});
     return;
   }
-  const reportedTotal = Number.isFinite(total) ? total : null;
-  const amountMismatch = reportedTotal !== null && Math.abs(reportedTotal - cash - card) > 0.011;
-  if (amountMismatch) mismatches.push({row:sourceRow,cash,card,reportedTotal});
   entries.push({
     legacy_ref: `carwash:Main_Data:${sourceRow}`,
     car_type: String(r[1]).trim(),
@@ -65,11 +79,13 @@ data("Main_Data").forEach((r, i) => {
   });
 });
 data("Expenses").forEach((r, i) => {
+  recordSource("Expenses", r, i);
   const sourceRow = i + 2;
   if (!r.some(x=>x !== null && x !== "")) return;
   const when = onlyDatetime(r[0]), amount = number(r[2]);
   if (!r[1] || !when || !Number.isFinite(amount) || amount <= 0) {
     invalid.push({table:"Expenses",row:sourceRow,issue:"invalid date/type/amount"});
+    issues.push({source_sheet:"Expenses",source_row:sourceRow,issue_code:"not_importable",details:{type:r[1]||null,amount:Number.isFinite(amount)?amount:null,occurredAt:when}});
     return;
   }
   expenses.push({
@@ -97,7 +113,9 @@ const workers = data("WORKERS")
   }));
 
 const totals = {
-  sourceCars: entries.length, sourceExpenses: expenses.length,
+  sourceRows: sourceRows.length,
+  importableCars: entries.length, importableExpenses: expenses.length,
+  pendingReviewItems: issues.length,
   workerCount: workers.length, carTypeCount: carTypes.length,
   serviceTypeCount: serviceTypes.length, expenseTypeCount: expenseTypes.length,
   cash: entries.reduce((s,r)=>s+r.cash_paid,0),
@@ -109,10 +127,13 @@ const report = {
   mode: shouldWrite ? "write-requested" : "dry-run", totals,
   invalid: invalid.slice(0,100), invalidCount: invalid.length,
   mismatches: mismatches.slice(0,100), mismatchCount: mismatches.length,
+  financialCutoverAllowed: invalid.length === 0 && mismatches.length === 0,
 };
 console.log(JSON.stringify(report,null,2));
 if (!shouldWrite) process.exit(0);
-if (invalid.length) throw new Error("STOP: source has invalid rows. Resolve before cutover; no data written.");
+if (invalid.length && !process.argv.includes("--accept-pending-review")) {
+  throw new Error("STOP: invalid original records must be reviewed. Use --accept-pending-review ONLY to quarantine originals and import valid records; no source rows will be deleted.");
+}
 if (mismatches.length && !approveMismatches) {
   throw new Error("STOP: mismatched historical totals require --approve-mismatches after review. No data written.");
 }
@@ -124,16 +145,21 @@ const batch = async (table, rows) => {
   let written = 0;
   for (let i=0;i<rows.length;i+=100) {
     const {error} = await client.from(table).upsert(rows.slice(i,i+100),
-      {onConflict:table==="entries" || table==="expenses" ? "legacy_ref" : "name",ignoreDuplicates:true});
+      {onConflict:table==="entries" || table==="expenses" ? "legacy_ref" :
+        table==="legacy_source_rows"?"source_sheet,source_row":
+        table==="legacy_import_issues"?"source_sheet,source_row,issue_code":"name",
+        ignoreDuplicates:true});
     if(error) throw new Error(`${table} batch at ${i}: ${error.message}`);
     written += Math.min(100, rows.length-i);
     console.log(`${table} processed: ${written}/${rows.length}`);
   }
 };
+await batch("legacy_source_rows",sourceRows);
+await batch("legacy_import_issues",issues);
 await batch("car_types",carTypes);
 await batch("service_types",serviceTypes);
 await batch("expense_types",expenseTypes);
 await batch("workers",workers);
 await batch("entries",entries);
 await batch("expenses",expenses);
-console.log("Migration upload completed. Validate row counts and totals in Supabase before go-live.");
+console.log("Source archive and import finished; pending review cases =",issues.length,". Financial cutover is blocked until reconciled and signed off.");
