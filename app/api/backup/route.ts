@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 
-const TABLES = ["entries", "expenses", "car_types", "service_types", "expense_types", "settings"] as const;
+const TABLES = ["entries", "expenses", "car_types", "service_types", "expense_types", "settings", "workers", "worker_ledger", "entry_presets", "app_members", "audit_events"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(request: Request) {
@@ -31,11 +31,17 @@ export async function GET(request: Request) {
 
   const dump: Record<string, unknown> = {};
   for (const table of TABLES) {
-    const { data, error } = await supabase.from(table).select("*");
-    if (error) {
-      return NextResponse.json({ ok: false, error: `${table}: ${error.message}` }, { status: 500 });
+    const allRows: unknown[] = [];
+    const PAGE = 500;
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase.from(table).select("*").range(offset, offset + PAGE - 1);
+      if (error) {
+        return NextResponse.json({ ok: false, error: `${table}: ${error.message}` }, { status: 500 });
+      }
+      allRows.push(...(data || []));
+      if (!data || data.length < PAGE) break;
     }
-    dump[table] = data;
+    dump[table] = allRows;
   }
 
   const json = JSON.stringify(dump, null, 2);
