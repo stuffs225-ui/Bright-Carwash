@@ -5,9 +5,12 @@ export type QueuedMutation = {
   table: "entries" | "expenses";
   payload: Record<string, unknown>;
   createdAt: string;
+  actorId?: string | null;
 };
 
 const STORAGE_KEY = "carwash_offline_queue_v1";
+let activeUserId: string | null = null;
+export function setOfflineActor(id: string | null) { activeUserId = id; }
 
 function readQueue(): QueuedMutation[] {
   if (typeof window === "undefined") return [];
@@ -39,6 +42,7 @@ export function enqueue(table: QueuedMutation["table"], payload: Record<string, 
     table,
     payload: { ...payload, client_mutation_id: id },
     createdAt: new Date().toISOString(),
+    actorId: activeUserId,
   };
   queue.push(item);
   writeQueue(queue);
