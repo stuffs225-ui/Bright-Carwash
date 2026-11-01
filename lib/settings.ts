@@ -21,7 +21,7 @@ const STRING_KEYS = new Set<keyof AppSettings>(["backup_email"]);
 export async function loadSettings(): Promise<AppSettings> {
   const { data } = await supabase.from("settings").select("key, value");
   const settings = { ...DEFAULT_SETTINGS };
-  const mutable: Record<string, string | number> = settings;
+  const mutable = settings as unknown as Record<string, string | number>;
   (data || []).forEach((row) => {
     const key = row.key as keyof AppSettings;
     if (key in settings) {
