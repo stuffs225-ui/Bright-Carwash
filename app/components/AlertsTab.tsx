@@ -67,7 +67,7 @@ export function AlertsTab({isOwner}: {isOwner:boolean}) {
     const inDay=(iso:string)=>{const t=new Date(iso);return t>=dayStart&&t<dayEnd;};
     const inShift=(iso:string)=>{const t=new Date(iso);return t>=shift.start&&t<shift.end;};
     return {
-      alert_max_monthly_expenses:expenses.reduce((s,x)=>s+Number(x.amount),0),
+      alert_max_monthly_expenses:expenses.filter(x=>new Date(x.occurred_at)>=monthStart).reduce((s,x)=>s+Number(x.amount),0),
       alert_max_daily_income:cars.filter(x=>inDay(x.occurred_at)).reduce((s,x)=>s+Number(x.gross),0),
       alert_max_monthly_income:cars.filter(x=>new Date(x.occurred_at)>=monthStart).reduce((s,x)=>s+Number(x.gross),0),
       alert_shift_car_target:cars.filter(x=>inShift(x.occurred_at)).length,
