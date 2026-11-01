@@ -18,6 +18,11 @@ export async function flushOfflineQueue() {
     if (!user) return;
     latestError = null;
     for (const item of getQueue()) {
+      if (!item.actorId || item.actorId !== user.id) {
+        latestError = "هذه العملية المحفوظة محليًا تخص حسابًا آخر أو غير معروف؛ لا يمكن رفعها تلقائيًا.";
+        window.dispatchEvent(new Event("offline-sync-error"));
+        break;
+      }
       const { error } = await supabase.from(item.table).insert(item.payload);
       if (!error) {
         removeFromQueue(item.id);
