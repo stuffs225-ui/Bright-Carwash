@@ -29,8 +29,8 @@ create table if not exists public.legacy_import_issues (
 );
 create index if not exists legacy_import_issues_status_idx on public.legacy_import_issues(status,source_sheet);
 alter table public.legacy_import_issues enable row level security;
-create policy owner_read_legacy_issues on public.legacy_import_issues
- for select to authenticated using (private.current_app_role() = 'owner');
+create policy lead_read_legacy_issues on public.legacy_import_issues
+ for select to authenticated using (private.current_app_role() in ('owner','manager'));
 create policy owner_update_legacy_issues on public.legacy_import_issues
  for update to authenticated using (private.current_app_role() = 'owner')
  with check (private.current_app_role() = 'owner');
