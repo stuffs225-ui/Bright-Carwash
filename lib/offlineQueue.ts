@@ -33,10 +33,11 @@ export function getQueueByTable(table: QueuedMutation["table"]): QueuedMutation[
 
 export function enqueue(table: QueuedMutation["table"], payload: Record<string, unknown>): QueuedMutation {
   const queue = readQueue();
+  const id = (crypto as { randomUUID?: () => string }).randomUUID?.() || String(Date.now() + Math.random());
   const item: QueuedMutation = {
-    id: (crypto as { randomUUID?: () => string }).randomUUID?.() || String(Date.now() + Math.random()),
+    id,
     table,
-    payload,
+    payload: { ...payload, client_mutation_id: id },
     createdAt: new Date().toISOString(),
   };
   queue.push(item);
