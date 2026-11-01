@@ -1,113 +1,76 @@
 "use client";
-
 export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
-import { applyMode, getMode, setMode as persistMode, type AppMode } from "@/lib/theme";
-import { DEFAULT_SETTINGS, loadSettings, type AppSettings } from "@/lib/settings";
+import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { queueLength } from "@/lib/offlineQueue";
+import { AuthGate, type AppIdentity } from "./components/AuthGate";
 import { CarEntryTab } from "./components/CarEntryTab";
 import { ExpensesTab } from "./components/ExpensesTab";
 import { AnalysisTab } from "./components/AnalysisTab";
-import { SettingsTab } from "./components/SettingsTab";
 import { WorkersTab } from "./components/WorkersTab";
+import { SettingsTab } from "./components/SettingsTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
-import { ModeSwitch } from "./components/ModeSwitch";
-import { OwnerPinPrompt } from "./components/OwnerPinPrompt";
 
 type Tab = "car" | "expenses" | "analysis" | "workers" | "settings";
+const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[] }[] = [
+  { key: "car", label: "🚗 تسجيل السيارات", allowed: ["owner","manager","worker"] },
+  { key: "expenses", label: "💳 المصروفات", allowed: ["owner","manager"] },
+  { key: "analysis", label: "📊 التحليلات", allowed: ["owner","manager"] },
+  { key: "workers", label: "👷 العمال", allowed: ["owner","manager"] },
+  { key: "settings", label: "⚙ الإعدادات", allowed: ["owner"] },
+];
 
-export default function Home() {
+function CarwashApp({ identity }: { identity: AppIdentity }) {
   const [tab, setTab] = useState<Tab>("car");
-  const [mode, setModeState] = useState<AppMode>("worker");
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [askPin, setAskPin] = useState(false);
+  const permitted = NAV.filter((item) => item.allowed.includes(identity.role));
+  const actualTab = permitted.some((t) => t.key === tab) ? tab : "car";
+  const isOwner = identity.role === "owner";
+  const canManage = identity.role === "owner" || identity.role === "manager";
 
-  useEffect(() => {
-    const current = getMode();
-    setModeState(current);
-    applyMode(current);
-    loadSettings().then(setSettings);
-  }, []);
-
-  function switchTo(next: AppMode) {
-    setModeState(next);
-    persistMode(next);
-    if (next === "worker") setTab("car");
-  }
-
-  function requestOwner() {
-    if (settings.owner_pin) {
-      setAskPin(true);
+  async function logout() {
+    if (queueLength() > 0) {
+      alert("يوجد تسجيلات غير متزامنة. أعد الاتصال بالإنترنت قبل الخروج.");
       return;
     }
-    switchTo("owner");
+    await supabase.auth.signOut();
   }
-
-  const isOwner = mode === "owner";
 
   return (
     <ErrorBoundary>
       <ErrorMonitor />
-      <div className="app-shell">
+      <div className="app-shell" dir="rtl">
         <header className="app-header">
-          <ModeSwitch
-            mode={mode}
-            onRequestOwner={requestOwner}
-            onLeaveOwner={() => switchTo("worker")}
-          />
-          <h1 className="text-2xl sm:text-3xl font-extrabold mt-2">
-            {isOwner ? "لوحة التحكم الرئيسية" : "تسجيل السيارات"}
-          </h1>
-          <p className="text-sm sm:text-base opacity-90 mt-1">
-            {isOwner
-              ? "نظام موحد لإدارة السيارات والمصروفات وتحليل الأداء"
-              : "سجّل السيارة بضغطة — الأزرار السريعة بالأعلى"}
+          <h1 className="text-2xl sm:text-3xl font-extrabold">مغسلة سيارتك اللامعة</h1>
+          <p className="text-sm opacity-90 mt-2">
+            {identity.role === "owner" ? "لوحة المالك" : identity.role === "manager" ? "إدارة المغسلة" : "تسجيل السيارات"}
           </p>
+          <div className="flex items-center justify-center gap-3 mt-3 text-sm">
+            <span>{identity.email}</span>
+            <button type="button" className="btn-secondary" onClick={logout}>تسجيل الخروج</button>
+          </div>
         </header>
-
-        {isOwner && (
-          <nav className="tabs-bar">
-            <button type="button" className={`tab-button ${tab === "car" ? "active" : ""}`} onClick={() => setTab("car")}>
-              🚗 تسجيل السيارات
-            </button>
-            <button type="button" className={`tab-button ${tab === "expenses" ? "active" : ""}`} onClick={() => setTab("expenses")}>
-              💳 المصروفات
-            </button>
-            <button type="button" className={`tab-button ${tab === "analysis" ? "active" : ""}`} onClick={() => setTab("analysis")}>
-              📊 تحليل البيانات
-            </button>
-            <button type="button" className={`tab-button ${tab === "workers" ? "active" : ""}`} onClick={() => setTab("workers")}>
-              👷 العمال
-            </button>
-            <button type="button" className={`tab-button ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
-              ⚙ الإعدادات
-            </button>
-          </nav>
-        )}
-
-        <div className={`content-section-wrapper ${isOwner ? "" : "is-standalone"}`}>
-          {tab === "car" && <CarEntryTab ownerView={isOwner} />}
-          {isOwner && tab === "expenses" && <ExpensesTab />}
-          {isOwner && tab === "analysis" && <AnalysisTab />}
-          {isOwner && tab === "workers" && <WorkersTab />}
-          {isOwner && tab === "settings" && <SettingsTab />}
+        <nav className="tabs-bar" aria-label="القائمة الرئيسية">
+          {permitted.map(({key,label}) =>
+            <button key={key} type="button" className={`tab-button ${actualTab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>
+          )}
+        </nav>
+        <div className="content-section-wrapper">
+          {actualTab === "car" && <CarEntryTab ownerView={canManage} />}
+          {canManage && actualTab === "expenses" && <ExpensesTab />}
+          {canManage && actualTab === "analysis" && <AnalysisTab />}
+          {canManage && actualTab === "workers" && <WorkersTab />}
+          {isOwner && actualTab === "settings" && <SettingsTab />}
         </div>
-
-        {askPin && (
-          <OwnerPinPrompt
-            expectedPin={settings.owner_pin}
-            onUnlock={() => { setAskPin(false); switchTo("owner"); }}
-            onCancel={() => setAskPin(false)}
-          />
-        )}
-
         <div id="toast-container" />
         <OfflineStatusBadge />
         <ServiceWorkerRegister />
       </div>
     </ErrorBoundary>
   );
+}
+export default function Home() {
+  return <AuthGate>{identity => <CarwashApp identity={identity} />}</AuthGate>;
 }
