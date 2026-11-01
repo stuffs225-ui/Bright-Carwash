@@ -8,6 +8,7 @@ import {
   bonusPerWorker,
   formatCurrency,
   getDayBounds,
+  getOperationalShiftBounds,
   getPaymentMethod,
   resolveOccurredAt,
   toDateKey,
@@ -59,6 +60,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [carTypes, setCarTypes] = useState<string[]>([]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [todayEntries, setTodayEntries] = useState<Entry[]>([]);
+  const [shiftEntries, setShiftEntries] = useState<Entry[]>([]);
   const [monthEntries, setMonthEntries] = useState<Entry[]>([]);
   const [pendingEntries, setPendingEntries] = useState<Entry[]>([]);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -121,6 +123,17 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     setTodayEntries((data as Entry[]) || []);
   }, []);
 
+  const loadShift = useCallback(async () => {
+    const { start, end } = getOperationalShiftBounds(new Date());
+    const rows = await fetchAllRows<Entry>((from, to) =>
+      supabase.from("entries").select("*").is("deleted_at", null)
+        .gte("occurred_at", start.toISOString())
+        .lt("occurred_at", end.toISOString())
+        .order("occurred_at", { ascending: false }).range(from, to)
+    );
+    setShiftEntries(rows);
+  }, []);
+
   const loadMonth = useCallback(async () => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -167,8 +180,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const refreshAll = useCallback((currentSettings: AppSettings) => {
     loadToday();
     loadMonth();
+    loadShift();
     loadGoal(currentSettings);
-  }, [loadToday, loadMonth, loadGoal]);
+  }, [loadToday, loadMonth, loadShift, loadGoal]);
 
   useEffect(() => {
     loadLists();
@@ -217,10 +231,18 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     return { count: todayEntriesWithPending.length, cash, card, total: cash + card };
   }, [todayEntriesWithPending]);
 
-  // بعد إلغاء الورديات صار عدّاد الوردية مطابقاً لعدّاد اليوم، فنعتمد واحداً.
+  const shiftCarCount = useMemo(() => {
+    const { start, end } = getOperationalShiftBounds(new Date());
+    const unsynced = pendingEntries.filter(e => {
+      const t = new Date(e.occurred_at);
+      return t >= start && t < end;
+    });
+    return shiftEntries.length + unsynced.length;
+  }, [shiftEntries, pendingEntries]);
+
   const bonus = useMemo(
-    () => bonusPerWorker(dailyTotals.count, settings.shift_car_threshold, settings.worker_bonus_rate),
-    [dailyTotals.count, settings.shift_car_threshold, settings.worker_bonus_rate]
+    () => bonusPerWorker(shiftCarCount, settings.shift_car_threshold, settings.worker_bonus_rate),
+    [shiftCarCount, settings.shift_car_threshold, settings.worker_bonus_rate]
   );
 
   const monthlyByDay = useMemo(() => {
@@ -632,7 +654,8 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           </div>
         )}
         <hr className="my-5 rule" />
-        <h3 className="subsection-title text-center">{tt("مكافأة اليوم")}</h3>
+        <h3 className="subsection-title text-center">{tt("مكافأة الوردية")}</h3>
+        <p className="txt-muted text-center text-sm">عدد سيارات الوردية: {shiftCarCount} — من 3 عصرًا حتى 4 فجرًا</p>
         <div className="grid grid-cols-1 gap-4">
           <MetricCard label={tt("مكافأة كل عامل")} value={formatCurrency(bonus)} tone="emerald" />
         </div>
@@ -693,7 +716,8 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                       entry={entry}
                       carTypes={carTypes}
                       serviceTypes={serviceTypes}
-                      editing={editingId === entry.id}
+                      editing={ownerView && editingId === entry.id}
+                      editable={ownerView}
                       onEdit={() => setEditingId(entry.id)}
                       onCancel={() => setEditingId(null)}
                       onSave={(patch) => handleUpdate(entry, patch)}
@@ -725,7 +749,8 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                       entry={entry}
                       carTypes={carTypes}
                       serviceTypes={serviceTypes}
-                      editing={editingId === entry.id}
+                      editing={ownerView && editingId === entry.id}
+                      editable={ownerView}
                       onEdit={() => setEditingId(entry.id)}
                       onCancel={() => setEditingId(null)}
                       onSave={(patch) => handleUpdate(entry, patch)}
