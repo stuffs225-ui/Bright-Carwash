@@ -44,7 +44,7 @@ function pendingEntriesFromQueue(): Entry[] {
       payment_method: getPaymentMethod(cash, card),
       notes: (p.notes as string | null) ?? null,
       occurred_at: String(p.occurred_at),
-      worker_name: null,
+      worker_name: p.worker_name ? String(p.worker_name) : null,
       pending: true,
     };
   });
@@ -59,6 +59,7 @@ function emptyBulkRow(prefill?: Partial<BulkRow>): BulkRow {
 export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [carTypes, setCarTypes] = useState<string[]>([]);
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
+  const [performers, setPerformers] = useState<string[]>([]);
   const [todayEntries, setTodayEntries] = useState<Entry[]>([]);
   const [shiftEntries, setShiftEntries] = useState<Entry[]>([]);
   const [monthEntries, setMonthEntries] = useState<Entry[]>([]);
@@ -73,6 +74,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   const [carType, setCarType] = useState("");
   const [serviceType, setServiceType] = useState("");
+  const [performer, setPerformer] = useState("");
   const [cashPaid, setCashPaid] = useState("");
   const [cardPaid, setCardPaid] = useState("");
   const [notes, setNotes] = useState("");
@@ -102,12 +104,14 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const dateLocale = lang === "en" ? "en-US" : AR_GREGORIAN_LOCALE;
 
   const loadLists = useCallback(async () => {
-    const [{ data: cars }, { data: services }] = await Promise.all([
+    const [{ data: cars }, { data: services }, { data: staff }] = await Promise.all([
       supabase.from("car_types").select("name").eq("active", true).order("sort_order"),
       supabase.from("service_types").select("name").eq("active", true).order("sort_order"),
+      supabase.from("workers").select("name").eq("active", true).order("sort_order"),
     ]);
     setCarTypes((cars || []).map((c) => c.name));
     setServiceTypes((services || []).map((s) => s.name));
+    setPerformers((staff || []).map((s) => s.name));
     setPresets(await loadPresets());
   }, []);
 
@@ -321,6 +325,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: cash,
         card_paid: card,
         notes: notes || null,
+        worker_name: performer || null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
       },
       tt("تمت إضافة السيارة بنجاح!")
@@ -342,6 +347,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: method === "cash" ? preset.amount : 0,
         card_paid: method === "card" ? preset.amount : 0,
         notes: null,
+        worker_name: performer || null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
       },
       `${tt("تم تسجيل")} ${preset.car_type} · ${formatCurrency(preset.amount)}`
@@ -377,6 +383,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       cash_paid: Number(row.cash) || 0,
       card_paid: Number(row.card) || 0,
       notes: row.notes || null,
+      worker_name: performer || null,
       occurred_at: occurredAt,
     }));
 
@@ -573,6 +580,13 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
               </div>
             </div>
             <div>
+              <label className="form-label">{tt("المنفذ / الفريق")}</label>
+              <select value={performer} onChange={(e) => setPerformer(e.target.value)}>
+                <option value="">بدون تحديد</option>
+                {performers.map(name => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </div>
+            <div>
               <label className="form-label">{tt("ملاحظات")}</label>
               <input type="text" placeholder={tt("أي تفاصيل إضافية...")} value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
@@ -582,6 +596,8 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           </form>
         ) : (
           <form onSubmit={handleBulkSubmit} className="space-y-4 mt-4">
+            <label className="form-label">المنفذ لجميع الإدخالات</label>
+            <select value={performer} onChange={e => setPerformer(e.target.value)}><option value="">بدون تحديد</option>{performers.map(name => <option key={name} value={name}>{name}</option>)}</select>
             <div className="space-y-3">
               {bulkRows.map((row, index) => (
                 <div key={index} className="bulk-row">
