@@ -80,8 +80,26 @@ data("Expenses").forEach((r, i) => {
     occurred_at: when,
   });
 });
+// Preserve configurable lookup lists and valid teams / workers from the original workbook.
+const listRows = data("Lists");
+const unique = (items) => [...new Set(items.map(v => v == null ? "" : String(v).trim()).filter(Boolean))];
+const carTypes = unique(listRows.map(r=>r[0])).map((name,i)=>({name,sort_order:i}));
+const serviceTypes = unique(listRows.map(r=>r[1])).map((name,i)=>({name,sort_order:i}));
+const expenseTypes = unique([...listRows.map(r=>r[4]),...expenses.map(e=>e.expense_type)])
+  .map((name,i)=>({name,sort_order:i}));
+const workers = data("WORKERS")
+  .filter(r=>r[1] && ["worker","team"].includes(String(r[2]||"").trim().toLowerCase()))
+  .map((r,i)=>({
+    name:String(r[1]).trim(),
+    worker_type:String(r[2]).trim().toLowerCase(),
+    hourly_rate:Number.isFinite(number(r[3]))?Math.max(0,number(r[3])):0,
+    sort_order:i
+  }));
+
 const totals = {
   sourceCars: entries.length, sourceExpenses: expenses.length,
+  workerCount: workers.length, carTypeCount: carTypes.length,
+  serviceTypeCount: serviceTypes.length, expenseTypeCount: expenseTypes.length,
   cash: entries.reduce((s,r)=>s+r.cash_paid,0),
   card: entries.reduce((s,r)=>s+r.card_paid,0),
   reported: entries.reduce((s,r)=>s+(r.legacy_reported_total??r.cash_paid+r.card_paid),0),
@@ -106,12 +124,16 @@ const batch = async (table, rows) => {
   let written = 0;
   for (let i=0;i<rows.length;i+=100) {
     const {error} = await client.from(table).upsert(rows.slice(i,i+100),
-      {onConflict:"legacy_ref",ignoreDuplicates:true});
+      {onConflict:table==="entries" || table==="expenses" ? "legacy_ref" : "name",ignoreDuplicates:true});
     if(error) throw new Error(`${table} batch at ${i}: ${error.message}`);
     written += Math.min(100, rows.length-i);
     console.log(`${table} processed: ${written}/${rows.length}`);
   }
 };
+await batch("car_types",carTypes);
+await batch("service_types",serviceTypes);
+await batch("expense_types",expenseTypes);
+await batch("workers",workers);
 await batch("entries",entries);
 await batch("expenses",expenses);
 console.log("Migration upload completed. Validate row counts and totals in Supabase before go-live.");
