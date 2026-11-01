@@ -7,11 +7,11 @@ This branch reuses the original Next.js UI and database model, extends the origi
 - Fast single/batch wash registration, cash/card/mixed payments, dates, services, price presets, workers/team performer.
 - Expenses, workers ledgers, service analytics, day/month reports, Excel export, offline queue.
 - Configurable bonus threshold and separate 15:00–04:00 Asia/Riyadh operational shift.
-- The new role gate, append-only financial audit, source-aware import and idempotent offline replay. Owner-only user invitations and role administration, and configurable targets and alerts are included.
+- The new role gate, append-only financial audit, source-aware import and idempotent offline replay. Owner-only user invitations and role administration, configurable targets and alerts, source row reconciliation and worker/team hourly rates are included.
 
 ## Security boundaries
 - Create a **dedicated NEW Supabase project** for this deployment. Never reuse the WorkshopOS database.
-- Run existing migrations 0001–0010, then 0011–0017 **in sequence on the new project only**. Migration 0015 reconciles salary expenses with worker ledger atomically; 0016 restores target alerts; 0017 closes legacy audit exposure.
+- Run existing migrations 0001–0010, then 0011–0019 **in sequence on the new project only**. Migration 0015 reconciles salary expenses with worker ledger atomically; 0016 restores target alerts; 0017 closes legacy audit exposure; 0018/0019 preserve original rows and audit reconciliation decisions.
 - RLS is essential; do not ship until verified by role.
 - Disable public signup in Auth configuration and create users privately in Supabase Auth.
 - Seed first owner from Supabase SQL Editor (replace placeholder with the verified new Auth email):
@@ -26,9 +26,9 @@ This branch reuses the original Next.js UI and database model, extends the origi
 
 ## Migration control
 1. Freeze source writes for the final cutover and export the original Google Sheet as XLSX.
-2. Run `node scripts/migrate-safe.mjs carwash.xlsx` first (dry run, no DB credentials needed).
+2. Run `node scripts/migrate-safe.mjs carwash.xlsx` first (dry run, no DB credentials needed). If any source rows cannot be financially classified, they must be quarantined as `legacy_source_rows`/`legacy_import_issues` using the explicitly acknowledged `--accept-pending-review` workflow, not silently dropped.
 3. Review all invalid source rows and monetary discrepancies. Neither is silently discarded or overwritten.
-4. After explicit financial approval, run the importer with protected server-only credentials and `--confirm` (and `--approve-mismatches` only if intentionally approved).
+4. After explicit financial approval, run the importer with protected server-only credentials and `--confirm` (plus `--accept-pending-review` and `--approve-mismatches` only if explicitly accepted). Every row is preserved as raw source evidence while only valid operations enter live financial totals.
 5. The importer uses unique `legacy_ref` keys and `ignoreDuplicates` so repeating the same frozen export does not duplicate records.
 6. Compare row counts, cash/card splits, reported totals, expenses and per-month results before activating the new site.
 7. Keep Google Apps Script and source Sheet unchanged and read-only during the parallel test.
@@ -58,3 +58,9 @@ Never commit a `.env.local` file. Protect previews through Vercel Authentication
 - Test record edit/deletion audit, salary linked to workers ledger, expense corrections, backup and restore.
 - Test on a mobile phone plus tablet and desktop browser.
 - Only after successful staging verification, approve a controlled production cutover.
+
+## Current infrastructure blocker (Nov 1, 2026)
+Supabase creation of **Bright Carwash V2 Dev** in org `bright-carwash` was **rejected by quota**, despite a quoted **$0 monthly** project cost. Do not repurpose WorkshopOS or delete/pause unrelated projects without separate explicit user authorization. To unblock, the account owner must free a Supabase free-project slot or upgrade an appropriate plan. The Vercel staging project has been deployed in a safe unconfigured state; login and data writes remain blocked until the isolated project URL and publishable key are provided via protected environment variables.
+
+## Verification
+Vercel protected builds run `node --check scripts/migrate-safe.mjs && npm test && npm run build`. A successful build validates syntax, 45 unit tests, React compilation and TypeScript. It does **not** validate SQL migrations or Supabase Auth/RLS against a real DB; these remain blockers.
