@@ -7,7 +7,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
@@ -15,7 +15,10 @@ export async function GET(request: Request) {
 
   const { data: settingsRows } = await supabase.from("settings").select("key, value");
   const settingsMap = Object.fromEntries((settingsRows || []).map((r) => [r.key, r.value]));
-  const backupEmail = String(settingsMap.backup_email || "Aburaykah@gmail.com");
+  const backupEmail = String(settingsMap.backup_email || "").trim();
+  if (!backupEmail || !process.env.RESEND_API_KEY) {
+    return NextResponse.json({ ok: false, error: "Backup email / sending credentials not configured" }, { status: 503 });
+  }
   const intervalDays = Number(settingsMap.backup_interval_days) || 10;
   const lastSentAt = settingsMap.backup_last_sent_at ? new Date(String(settingsMap.backup_last_sent_at)) : null;
 
@@ -39,7 +42,8 @@ export async function GET(request: Request) {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `backup-${timestamp}.json`;
 
-  await supabase.storage.from("backups").upload(filename, json, { contentType: "application/json" });
+  const { error: uploadError } = await supabase.storage.from("backups").upload(filename, json, { contentType: "application/json" });
+  if (uploadError) return NextResponse.json({ ok: false, error: "Backup storage failed" }, { status: 500 });
 
   const rowCounts = Object.fromEntries(Object.entries(dump).map(([t, rows]) => [t, (rows as unknown[]).length]));
 
