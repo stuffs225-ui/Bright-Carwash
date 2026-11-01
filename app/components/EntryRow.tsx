@@ -10,6 +10,7 @@ export function EntryRow({
   carTypes,
   serviceTypes,
   editing,
+  editable = true,
   onEdit,
   onCancel,
   onSave,
@@ -20,6 +21,7 @@ export function EntryRow({
   carTypes: string[];
   serviceTypes: string[];
   editing: boolean;
+  editable?: boolean;
   onEdit: () => void;
   onCancel: () => void;
   onSave: (patch: Partial<Entry>) => void;
@@ -62,8 +64,8 @@ export function EntryRow({
         <td data-label={tt("بطاقة")} className="txt-card">{formatCurrency(entry.card_paid)}</td>
         <td data-label={tt("الإجمالي")} className="font-extrabold">{formatCurrency(entry.gross)}</td>
         <td className="flex gap-1.5">
-          <button type="button" className="action-button edit-button" onClick={onEdit}>{tt("تعديل")}</button>
-          <button type="button" className="action-button delete-button" onClick={onDelete}>{tt("حذف")}</button>
+          {editable && <><button type="button" className="action-button edit-button" onClick={onEdit}>{tt("تعديل")}</button>
+          <button type="button" className="action-button delete-button" onClick={onDelete}>{tt("حذف")}</button></>}
         </td>
       </tr>
     );
