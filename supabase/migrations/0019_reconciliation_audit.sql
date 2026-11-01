@@ -7,3 +7,16 @@ for each row execute function private.audit_row();
 -- Revoke direct table DELETE/INSERT for user roles even if another grant is later introduced.
 revoke insert, delete on public.legacy_import_issues from anon,authenticated;
 revoke insert, update, delete on public.legacy_source_rows from anon,authenticated;
+
+-- Require owner explanations even for direct API calls.
+alter table public.legacy_import_issues
+add constraint reconciled_requires_reason
+check (
+ status = 'pending' or
+ (length(trim(coalesce(resolution_note,''))) >= 10
+  and resolved_at is not null and resolved_by is not null)
+);
+grant select on public.legacy_import_issues to authenticated;
+grant update(status,resolution_note,resolved_at,resolved_by)
+ on public.legacy_import_issues to authenticated;
+grant select on public.legacy_source_rows to authenticated;
