@@ -75,11 +75,22 @@ export function AnalysisTab() {
   const [allEntries, setAllEntries] = useState<Entry[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pendingReviewCount, setPendingReviewCount] = useState<number | null>(null);
   const [showDaily, setShowDaily] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [activePeriod, setActivePeriod] = useState<"today" | "week" | "month" | "year" | null>(null);
   const [presets, setPresets] = useState<EntryPreset[]>([]);
+
+  useEffect(() => {
+    let disposed = false;
+    supabase.from("legacy_import_issues").select("id", {count:"exact",head:true})
+      .eq("status","pending")
+      .then(({count,error}) => {
+        if (!disposed) setPendingReviewCount(error ? null : (count ?? 0));
+      });
+    return () => {disposed=true;};
+  }, []);
 
   const load = useCallback(async (start: string, end: string, carFilter: string, serviceFilter: string) => {
     setLoading(true);
@@ -386,6 +397,14 @@ export function AnalysisTab() {
 
   return (
     <div className="space-y-6">
+      {pendingReviewCount === null ? (
+        <p className="txt-warning text-sm">لم يتم التحقق من حالة مراجعة بيانات الترحيل.</p>
+      ) : pendingReviewCount > 0 ? (
+        <section className="card" role="status">
+          <h2 className="section-title">⚠️ الأرقام المالية قيد المطابقة</h2>
+          <p className="txt-warning">يوجد {pendingReviewCount} اختلاف أو نقص في بيانات المصدر القديمة. التقارير تعرض العمليات القابلة للاحتساب فقط؛ ولا تمثل إقفالًا ماليًا معتمدًا حتى الانتهاء من المراجعة.</p>
+        </section>
+      ) : null}
       {/* نظرة سريعة — دوس على أي بطاقة لتفاصيل السيارات بهذي الفترة */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <QuickCard label="دخل اليوم" net={quickGlance.today.net} sub={`${quickGlance.today.cars} سيارة`} tone="blue" onClick={() => setActivePeriod("today")} />
