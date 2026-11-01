@@ -28,7 +28,6 @@ export function SettingsTab() {
   const [threshold, setThreshold] = useState("");
   const [rate, setRate] = useState("");
   const [dailyTarget, setDailyTarget] = useState("");
-  const [ownerPin, setOwnerPin] = useState("");
   const [backupEmail, setBackupEmail] = useState("");
   const [backupDays, setBackupDays] = useState("");
 
@@ -41,7 +40,6 @@ export function SettingsTab() {
     setThreshold(String(s.shift_car_threshold));
     setRate(String(s.worker_bonus_rate));
     setDailyTarget(String(s.daily_expense_target));
-    setOwnerPin(s.owner_pin);
     setBackupEmail(s.backup_email);
     setBackupDays(String(s.backup_interval_days));
   }, []);
@@ -57,7 +55,8 @@ export function SettingsTab() {
     setSaving(true);
     const next = { ...settings, ...patch };
     for (const key of Object.keys(patch) as (keyof AppSettings)[]) {
-      await updateSetting(key, next[key]);
+      const result = await updateSetting(key, next[key]);
+      if (result.error) { showToast("فشل حفظ الإعداد: " + result.error.message, "error"); setSaving(false); return; }
     }
     setSettings(next);
     setSaving(false);
@@ -99,7 +98,7 @@ export function SettingsTab() {
 
       {category === "operations" && (
         <div className="space-y-6">
-          <Section title="المكافأة" hint="تُحسب على عدد سيارات اليوم كاملاً (من منتصف الليل لمنتصف الليل).">
+          <Section title="المكافأة" hint="المكافآت تحسب على وردية التشغيل من 3 عصرًا حتى 4 فجرًا، وتقارير اليوم تظل حسب اليوم التقويمي.">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Field label="حد السيارات للمكافأة">
                 <input type="number" min="0" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
@@ -129,22 +128,15 @@ export function SettingsTab() {
 
       {category === "access" && (
         <div className="space-y-6">
-          <Section title="رابط الموظف" hint="افتح هذا الرابط على تابلت المغسلة — يعرض تسجيل السيارات فقط بأزرار كبيرة.">
+          <Section title="صلاحيات الموظفين" hint="الوصول محمي بحسابات Supabase Auth وصلاحيات قاعدة البيانات. لا يوجد PIN في المتصفح.">
+            <p className="txt-muted text-sm">المالك يدير الحسابات والصلاحيات من Supabase Auth وجدول app_members. لا تشارك حساب المالك.</p>
+          </Section>
+          <Section title="رابط تسجيل الموظف">
             <div className="flex flex-wrap gap-2 items-center">
               <input type="text" readOnly value={workerUrl} onFocus={(e) => e.currentTarget.select()} />
               <button type="button" className="btn-primary" onClick={copyWorkerUrl}>نسخ الرابط</button>
             </div>
-            <p className="txt-warning text-sm mt-2">
-              تنبيه: الرابط للتسهيل مو للحماية — الموظف يقدر يكتب العنوان الرئيسي ويوصل لوضع المالك.
-              لو تبي منع ذلك، فعّل الرقم السري تحت.
-            </p>
-          </Section>
-
-          <Section title="قفل وضع المالك" hint="اتركه فارغاً لتعطيل القفل.">
-            <Field label="الرقم السري">
-              <input type="text" inputMode="numeric" value={ownerPin} onChange={(e) => setOwnerPin(e.target.value)} />
-            </Field>
-            <SaveButton disabled={saving} onClick={() => save({ owner_pin: ownerPin })} />
+            <p className="txt-muted text-sm mt-2">الرابط لا يمنح صلاحيات إضافية؛ كل موظف يسجل دخوله بحسابه.</p>
           </Section>
         </div>
       )}
