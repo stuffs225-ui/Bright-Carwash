@@ -1,50 +1,32 @@
 "use client";
-
 export const dynamic = "force-dynamic";
-
-import { useEffect, useState } from "react";
+import { AuthGate } from "../components/AuthGate";
 import { CarEntryTab } from "../components/CarEntryTab";
 import { OfflineStatusBadge } from "../components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { ErrorMonitor } from "../components/ErrorMonitor";
-import { ThemeSwitch } from "../components/ModeSwitch";
-import { getLang, t, type Lang } from "@/lib/i18n";
+import { supabase } from "@/lib/supabaseClient";
+import { queueLength } from "@/lib/offlineQueue";
 
 export default function WorkerPage() {
-  // هذي الصفحة دائماً بوضع اللمس، بغض النظر عن الوضع المحفوظ بالجهاز
-  useEffect(() => {
-    document.documentElement.classList.add("touch-mode");
-  }, []);
-
-  // ترويسة الصفحة مستقلة عن CarEntryTab، فنستمع لتغيّر اللغة من زر التبديل
-  // الموجود داخل CarEntryTab عشان العنوان يتزامن معه بنفس اللحظة.
-  const [lang, setLangState] = useState<Lang>("ar");
-  useEffect(() => {
-    setLangState(getLang());
-    const handler = (e: Event) => setLangState((e as CustomEvent<Lang>).detail);
-    window.addEventListener("carwash-lang-changed", handler);
-    return () => window.removeEventListener("carwash-lang-changed", handler);
-  }, []);
-
-  return (
+  return <AuthGate>{(identity) => (
     <ErrorBoundary>
       <ErrorMonitor />
-      <div className="app-shell">
-        <header className="app-header" dir={lang === "en" ? "ltr" : "rtl"}>
-          <ThemeSwitch />
-          <h1 className="text-2xl sm:text-3xl font-extrabold mt-2">{t(lang, "تسجيل السيارات")}</h1>
-          <p className="text-sm sm:text-base opacity-90 mt-1">{t(lang, "سجّل السيارة بضغطة — الأزرار السريعة بالأعلى")}</p>
+      <div className="app-shell" dir="rtl">
+        <header className="app-header">
+          <h1 className="text-2xl font-extrabold">🚗 تسجيل السيارات</h1>
+          <p className="text-sm mt-1">المستخدم: {identity.email}</p>
+          <button type="button" className="btn-secondary mt-3" onClick={async () => {
+            if (queueLength()) { alert("زامن التسجيلات المحفوظة محليًا قبل الخروج."); return; }
+            await supabase.auth.signOut();
+          }}>تسجيل الخروج</button>
         </header>
-
-        <div className="content-section-wrapper is-standalone">
-          <CarEntryTab ownerView={false} />
-        </div>
-
+        <div className="content-section-wrapper is-standalone"><CarEntryTab ownerView={false} /></div>
         <div id="toast-container" />
         <OfflineStatusBadge />
         <ServiceWorkerRegister />
       </div>
     </ErrorBoundary>
-  );
+  )}</AuthGate>;
 }
