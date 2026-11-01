@@ -33,6 +33,8 @@ export type EntryPreset = {
 
 export type Worker = {
   id: string;
+  worker_type?: "worker" | "team";
+  hourly_rate?: number;
   name: string;
   active: boolean;
   sort_order: number;
