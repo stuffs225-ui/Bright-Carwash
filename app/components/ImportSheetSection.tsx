@@ -1,5 +1,6 @@
-import { subtractExisting } from "@/lib/importDelta";
 "use client";
+
+import { subtractExisting } from "@/lib/importDelta";
 
 import "@/lib/chartRegistry";
 import { useMemo, useRef, useState } from "react";
@@ -66,8 +67,8 @@ export function ImportSheetSection() {
         ),
       ]);
 
-      const newEntries = subtractExisting(parsed.entries, existingEntries, entryKey);
-      const newExpenses = subtractExisting(parsed.expenses, existingExpenses, expenseKey);
+      const newEntries = subtractExisting(parsed.entries, existingEntries, entryKey, entryKey);
+      const newExpenses = subtractExisting(parsed.expenses, existingExpenses, expenseKey, expenseKey);
 
       setPreview({ parsed, newEntries, newExpenses });
     } catch (err) {
