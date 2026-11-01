@@ -1,3 +1,4 @@
+import { subtractExisting } from "@/lib/importDelta";
 "use client";
 
 import "@/lib/chartRegistry";
@@ -65,11 +66,8 @@ export function ImportSheetSection() {
         ),
       ]);
 
-      const existingEntryKeys = new Set(existingEntries.map(entryKey));
-      const existingExpenseKeys = new Set(existingExpenses.map(expenseKey));
-
-      const newEntries = parsed.entries.filter((e) => !existingEntryKeys.has(entryKey(e)));
-      const newExpenses = parsed.expenses.filter((x) => !existingExpenseKeys.has(expenseKey(x)));
+      const newEntries = subtractExisting(parsed.entries, existingEntries, entryKey);
+      const newExpenses = subtractExisting(parsed.expenses, existingExpenses, expenseKey);
 
       setPreview({ parsed, newEntries, newExpenses });
     } catch (err) {
