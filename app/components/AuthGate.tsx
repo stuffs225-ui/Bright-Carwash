@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { queueLength } from "@/lib/offlineQueue";
+import { queueLength, setOfflineActor } from "@/lib/offlineQueue";
 
 export type AppRole = "owner" | "manager" | "worker";
 export type AppIdentity = { userId: string; email: string; role: AppRole };
@@ -21,6 +21,7 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     setError("");
     const { data, error: authError } = await supabase.auth.getUser();
     if (authError || !data.user) {
+      setOfflineActor(null);
       setIdentity(null);
       setNeedsAccess(false);
       setLoading(false);
@@ -37,6 +38,7 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     }
     const role = member?.active && ["owner", "manager", "worker"].includes(member.role)
       ? member.role as AppRole : null;
+    setOfflineActor(role ? data.user.id : null);
     setIdentity(role ? { userId: data.user.id, email: data.user.email || "", role } : null);
     setNeedsAccess(!role);
     setLoading(false);
