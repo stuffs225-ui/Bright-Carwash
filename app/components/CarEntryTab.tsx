@@ -276,8 +276,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   // مسار الحفظ الموحّد: يستخدمه النموذج اليدوي والأزرار الجاهزة معاً، فيمر
   // الاثنان بنفس منطق الطابور المحلي عند انقطاع الشبكة.
   async function saveEntry(payload: Record<string, unknown>, successMessage: string): Promise<boolean> {
+    const mutation = { ...payload, client_mutation_id: crypto.randomUUID() };
     const queueLocally = (reason: string) => {
-      enqueue("entries", payload);
+      enqueue("entries", mutation);
       showToast(`${tt(reason)}${tt(" — تم الحفظ محلياً وسيُرفع تلقائياً عند رجوع النت.")}`, "warning");
     };
 
@@ -286,7 +287,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       return true;
     }
 
-    const { error } = await supabase.from("entries").insert(payload);
+    const { error } = await supabase.from("entries").insert(mutation);
     if (error) {
       if (isNetworkError(error)) {
         queueLocally("تعذر الاتصال");
@@ -385,6 +386,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       notes: row.notes || null,
       worker_name: performer || null,
       occurred_at: occurredAt,
+      client_mutation_id: crypto.randomUUID(),
     }));
 
     const invalid = payloads.find((p) => !p.car_type || !p.service_type || p.cash_paid + p.card_paid <= 0);
