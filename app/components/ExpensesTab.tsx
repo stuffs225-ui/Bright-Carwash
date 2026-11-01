@@ -11,7 +11,7 @@ import type { Expense } from "@/lib/types";
 import { enqueue } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { MetricCard } from "./MetricCard";
-import { PAYMENT_SOURCES, addLedgerEntry, loadWorkers } from "@/lib/workers";
+import { PAYMENT_SOURCES, loadWorkers } from "@/lib/workers";
 import type { Worker } from "@/lib/types";
 
 const DEFAULT_COLORS = ["#3b82f6", "#8b5cf6", "#ef4444", "#f59e0b", "#10b981", "#6366f1", "#ec4899", "#6d28d9", "#06b6d4", "#eab308"];
@@ -123,8 +123,12 @@ export function ExpensesTab() {
       showToast("يجب أن يكون مبلغ المصروف أكبر من صفر.", "warning");
       return;
     }
+    if (isSalary && !workerId) {
+      showToast("اختر العامل الذي يخصه مصروف الراتب.", "warning");
+      return;
+    }
     setSubmitting(true);
-    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: new Date().toISOString() };
+    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: new Date().toISOString(), salary_worker_id: isSalary ? workerId : null, salary_payment_source: isSalary ? paymentSource : null };
 
     if (!navigator.onLine) {
       enqueue("expenses", payload);
@@ -147,19 +151,7 @@ export function ExpensesTab() {
       return;
     }
 
-    // المصروف هو مصدر الحقيقة للنقد الخارج؛ قيد الدفتر مرجع للرصيد ومربوط به.
-    if (isSalary && workerId && inserted?.id) {
-      await addLedgerEntry({
-        worker_id: workerId,
-        kind: "payment",
-        amount: amt,
-        payment_source: paymentSource,
-        expense_id: inserted.id,
-        notes: notes || null,
-      });
-    }
-
-    showToast("تم حفظ المصروف بنجاح.");
+    // The database trigger creates/updates the linked worker payment atomically.\n    showToast("تم حفظ المصروف بنجاح.");
     setExpenseType("");
     setAmount("");
     setNotes("");
@@ -179,6 +171,10 @@ export function ExpensesTab() {
   }
 
   async function handleUpdate(expense: Expense, patch: { expense_type: string; amount: number; notes: string }) {
+    if (patch.expense_type === "راتب" && !expense.salary_worker_id) {
+      showToast("لا يمكن تحويل المصروف إلى راتب بدون اختيار عامل جديد.", "warning");
+      return;
+    }
     if (patch.amount <= 0) {
       showToast("يجب أن يكون مبلغ المصروف أكبر من صفر.", "warning");
       return;
