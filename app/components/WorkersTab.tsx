@@ -8,6 +8,7 @@ import {
   PAYMENT_SOURCES,
   addLedgerEntry,
   addWorker,
+  editWorker,
   balancesByWorker,
   loadLedger,
   loadWorkers,
@@ -22,6 +23,8 @@ export function WorkersTab() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [openWorker, setOpenWorker] = useState<Worker | null>(null);
   const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState<"worker"|"team">("worker");
+  const [newHourlyRate, setNewHourlyRate] = useState("0");
 
   const reload = useCallback(async () => {
     const [w, l] = await Promise.all([loadWorkers(), loadLedger()]);
@@ -54,10 +57,17 @@ export function WorkersTab() {
 
   async function handleAddWorker() {
     if (!newName.trim()) return;
-    await addWorker(newName, workers.length + 1);
+    const rate = Number(newHourlyRate);
+    if (!Number.isFinite(rate) || rate < 0) {
+      showToast("الأجر بالساعة يجب أن يكون صفرًا أو أكبر.", "warning");
+      return;
+    }
+    const {error} = await addWorker(newName, workers.length + 1, newType, rate);
+    if (error) { showToast(error.message, "error"); return; }
     setNewName("");
-    showToast("تمت إضافة العامل.");
-    reload();
+    setNewHourlyRate("0");
+    showToast("تمت إضافة العامل أو الفريق.");
+    await reload();
   }
 
   return (
@@ -78,11 +88,11 @@ export function WorkersTab() {
         <div className="overflow-x-auto">
           <table className="app-table">
             <thead>
-              <tr><th>العامل</th><th>المستحق</th><th>المدفوع</th><th>الرصيد</th><th>إجراءات</th></tr>
+              <tr><th>العامل / الفريق</th><th>النوع</th><th>الأجر / ساعة</th><th>المستحق</th><th>المدفوع</th><th>الرصيد</th><th>إجراءات</th></tr>
             </thead>
             <tbody>
               {balances.length === 0 ? (
-                <tr><td colSpan={5} className="text-center txt-muted py-5">لا يوجد عمال مسجّلون.</td></tr>
+                <tr><td colSpan={7} className="text-center txt-muted py-5">لا يوجد عمال مسجّلون.</td></tr>
               ) : (
                 balances.map((b) => (
                   <tr key={b.worker.id}>
@@ -91,6 +101,8 @@ export function WorkersTab() {
                         {b.worker.name}
                       </button>
                     </td>
+                    <td data-label="النوع">{b.worker.worker_type === "team" ? "فريق" : "عامل"}</td>
+                    <td data-label="الأجر / ساعة">{formatCurrency(b.worker.hourly_rate || 0)}</td>
                     <td data-label="المستحق">{formatCurrency(b.earned)}</td>
                     <td data-label="المدفوع" className="txt-expense">{formatCurrency(b.paid)}</td>
                     <td data-label="الرصيد" className={`txt-net ${b.balance < 0 ? "is-negative" : ""}`}>
@@ -112,6 +124,16 @@ export function WorkersTab() {
           <div className="flex-1" style={{ minWidth: 200 }}>
             <label className="form-label">إضافة عامل جديد</label>
             <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} />
+          </div>
+          <div>
+            <label className="form-label">النوع</label>
+            <select value={newType} onChange={e=>setNewType(e.target.value as "worker"|"team")}>
+              <option value="worker">عامل</option><option value="team">فريق</option>
+            </select>
+          </div>
+          <div>
+            <label className="form-label">الأجر بالساعة</label>
+            <input type="number" min="0" step="0.01" value={newHourlyRate} onChange={e=>setNewHourlyRate(e.target.value)} />
           </div>
           <button type="button" className="btn-primary" onClick={handleAddWorker}>إضافة</button>
         </div>
@@ -144,6 +166,8 @@ function WorkerLedgerModal({
   const [amount, setAmount] = useState("");
   const [source, setSource] = useState("cash");
   const [notes, setNotes] = useState("");
+  const [workerType, setWorkerType] = useState<"worker"|"team">(worker.worker_type || "worker");
+  const [hourlyRate, setHourlyRate] = useState(String(worker.hourly_rate || 0));
   const [saving, setSaving] = useState(false);
 
   async function add() {
@@ -176,6 +200,28 @@ function WorkerLedgerModal({
 
   return (
     <Modal title={`كشف حساب — ${worker.name}`} onClose={onClose}>
+      <div className="card mb-5">
+        <h3 className="subsection-title mb-2">بيانات العامل / الفريق</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="form-label">النوع
+            <select value={workerType} onChange={e=>setWorkerType(e.target.value as "worker"|"team")}>
+              <option value="worker">عامل</option><option value="team">فريق</option>
+            </select>
+          </label>
+          <label className="form-label">الأجر بالساعة
+            <input type="number" min="0" step="0.01" value={hourlyRate} onChange={e=>setHourlyRate(e.target.value)} />
+          </label>
+        </div>
+        <button type="button" className="btn-secondary mt-3" disabled={saving} onClick={async()=>{
+          const rate=Number(hourlyRate);
+          if(!Number.isFinite(rate)||rate<0) {showToast("قيمة الأجر غير صالحة", "warning");return;}
+          setSaving(true);
+          const result=await editWorker(worker.id,{worker_type:workerType,hourly_rate:rate});
+          setSaving(false);
+          if(result.error) showToast(result.error.message,"error");
+          else {showToast("تم حفظ بيانات العامل");onChanged();}
+        }}>حفظ بيانات العامل</button>
+      </div>
       <div className="card mb-5">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
