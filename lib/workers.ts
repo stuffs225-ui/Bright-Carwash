@@ -33,8 +33,12 @@ export function balancesByWorker(workers: Worker[], ledger: LedgerEntry[]): Work
   });
 }
 
-export async function addWorker(name: string, sortOrder: number) {
-  return supabase.from("workers").insert({ name: name.trim(), sort_order: sortOrder });
+export async function addWorker(name: string, sortOrder: number, type: "worker"|"team" = "worker", rate = 0) {
+  return supabase.from("workers").insert({ name: name.trim(), sort_order: sortOrder, worker_type: type, hourly_rate: rate });
+}
+
+export async function editWorker(id: string, patch: {worker_type: "worker"|"team"; hourly_rate: number}) {
+  return supabase.from("workers").update(patch).eq("id", id);
 }
 
 export async function addLedgerEntry(entry: {
