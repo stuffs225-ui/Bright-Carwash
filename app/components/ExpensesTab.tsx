@@ -128,7 +128,7 @@ export function ExpensesTab() {
       return;
     }
     setSubmitting(true);
-    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: new Date().toISOString(), salary_worker_id: isSalary ? workerId : null, salary_payment_source: isSalary ? paymentSource : null };
+    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: new Date().toISOString(), salary_worker_id: isSalary ? workerId : null, salary_payment_source: isSalary ? paymentSource : null, client_mutation_id: crypto.randomUUID() };
 
     if (!navigator.onLine) {
       enqueue("expenses", payload);
