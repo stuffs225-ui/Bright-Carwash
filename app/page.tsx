@@ -10,12 +10,13 @@ import { AnalysisTab } from "./components/AnalysisTab";
 import { WorkersTab } from "./components/WorkersTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { UsersTab } from "./components/UsersTab";
+import { AlertsTab } from "./components/AlertsTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
-type Tab = "car" | "expenses" | "analysis" | "workers" | "settings" | "users";
+type Tab = "car" | "expenses" | "analysis" | "workers" | "settings" | "users" | "alerts";
 const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[] }[] = [
   { key: "car", label: "🚗 تسجيل السيارات", allowed: ["owner","manager","worker"] },
   { key: "expenses", label: "💳 المصروفات", allowed: ["owner","manager"] },
@@ -23,6 +24,7 @@ const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[
   { key: "workers", label: "👷 العمال", allowed: ["owner","manager"] },
   { key: "settings", label: "⚙ الإعدادات", allowed: ["owner"] },
   { key: "users", label: "🔐 المستخدمون", allowed: ["owner"] },
+  { key: "alerts", label: "🔔 التنبيهات", allowed: ["owner","manager"] },
 ];
 
 function CarwashApp({ identity }: { identity: AppIdentity }) {
@@ -66,6 +68,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           {canManage && actualTab === "workers" && <WorkersTab />}
           {isOwner && actualTab === "settings" && <SettingsTab />}
           {isOwner && actualTab === "users" && <UsersTab />}
+          {canManage && actualTab === "alerts" && <AlertsTab isOwner={isOwner} />}
         </div>
         <div id="toast-container" />
         <OfflineStatusBadge />
