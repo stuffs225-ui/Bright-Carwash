@@ -38,11 +38,12 @@ export function AlertsTab({isOwner}: {isOwner:boolean}) {
   const [message,setMessage]=useState("");
   const refresh=useCallback(async()=>{
     const {monthStart}=riyadhDayBounds(new Date());
+    const lookBack = new Date(monthStart.getTime() - 86400000);
     const [settingRows,entryRows,expenseRows]=await Promise.all([
       supabase.from("settings").select("key,value").in("key",ALERT_DEFS.map(x=>x.key)),
       fetchAllRows<Wash>((from,to)=>supabase.from("entries")
         .select("occurred_at,gross,deleted_at").is("deleted_at",null)
-        .gte("occurred_at",monthStart.toISOString()).range(from,to)),
+        .gte("occurred_at",lookBack.toISOString()).range(from,to)),
       fetchAllRows<Outlay>((from,to)=>supabase.from("expenses")
         .select("occurred_at,amount,deleted_at").is("deleted_at",null)
         .gte("occurred_at",monthStart.toISOString()).range(from,to))
@@ -61,14 +62,14 @@ export function AlertsTab({isOwner}: {isOwner:boolean}) {
   useEffect(()=>{void refresh();},[refresh]);
 
   const values=useMemo(()=>{
-    const now=new Date(), {dayStart,dayEnd}=riyadhDayBounds(now);
+    const now=new Date(), {dayStart,dayEnd,monthStart}=riyadhDayBounds(now);
     const shift=getOperationalShiftBounds(now);
     const inDay=(iso:string)=>{const t=new Date(iso);return t>=dayStart&&t<dayEnd;};
     const inShift=(iso:string)=>{const t=new Date(iso);return t>=shift.start&&t<shift.end;};
     return {
       alert_max_monthly_expenses:expenses.reduce((s,x)=>s+Number(x.amount),0),
       alert_max_daily_income:cars.filter(x=>inDay(x.occurred_at)).reduce((s,x)=>s+Number(x.gross),0),
-      alert_max_monthly_income:cars.reduce((s,x)=>s+Number(x.gross),0),
+      alert_max_monthly_income:cars.filter(x=>new Date(x.occurred_at)>=monthStart).reduce((s,x)=>s+Number(x.gross),0),
       alert_shift_car_target:cars.filter(x=>inShift(x.occurred_at)).length,
       alert_max_daily_cars:cars.filter(x=>inDay(x.occurred_at)).length,
     };
