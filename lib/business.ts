@@ -65,3 +65,28 @@ export function withDateKey(dateKey: string, originalIso: string): string {
   const [y, m, d] = dateKey.split("-").map(Number);
   return new Date(y, m - 1, d, orig.getHours(), orig.getMinutes(), orig.getSeconds(), orig.getMilliseconds()).toISOString();
 }
+
+
+/**
+ * Separate operational shift from calendar-day reporting.
+ * The legacy carwash ran 15:00-04:00 Asia/Riyadh (13 hours).
+ * From 04:00 to 14:59 the display refers to the most recent completed shift.
+ */
+export function getOperationalShiftBounds(
+  now: Date, startHour = 15, endHour = 4
+): { start: Date; end: Date } {
+  if (!(startHour >= 0 && startHour < 24 && endHour >= 0 && endHour < 24 && startHour !== endHour)) {
+    throw new Error("Invalid shift hours");
+  }
+  const fields = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit",
+    day: "2-digit", hour: "2-digit", hourCycle: "h23",
+  }).formatToParts(now);
+  const part = (k: string) => Number(fields.find(p => p.type === k)?.value || 0);
+  const y = part("year"), m = part("month"), d = part("day"), h = part("hour");
+  const riyadhUtcOffset = 3;
+  const currentDateStart = Date.UTC(y, m - 1, d, startHour - riyadhUtcOffset);
+  const start = new Date(currentDateStart - (h < startHour ? 24 * 60 * 60 * 1000 : 0));
+  const durationHours = (endHour - startHour + 24) % 24;
+  return { start, end: new Date(start.getTime() + durationHours * 60 * 60 * 1000) };
+}
