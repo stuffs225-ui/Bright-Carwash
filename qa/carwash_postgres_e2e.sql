@@ -32,7 +32,7 @@ insert into public.entries(
  'carwash-synthetic-1','+966500000004',true
 );
 
-do $$
+do $qa_worker_discount_guard$
 declare count_visible int; blocked boolean:=false;
 begin
  select count(*) into count_visible from public.entries;
@@ -50,7 +50,7 @@ begin
  exception when others then blocked:=true;
  end;
  if not blocked then raise exception 'Worker could bypass SAR10 discount cap';end if;
-end $;
+end $qa_worker_discount_guard$;
 
 -- A valid catalog add-on increases the fixed price by SAR 5,
 -- while forged arbitrary worker prices must be rejected server-side.
