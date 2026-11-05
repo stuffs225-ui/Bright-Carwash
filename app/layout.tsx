@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "مغسلة سيارتك اللامعة",
   description: "نظام إدارة مغسلة سيارتك اللامعة",
+  manifest: "/manifest.webmanifest",
+  appleWebApp:{capable:true,statusBarStyle:"default",title:"المغسلة"},
+  icons: {icon:"/api/pwa-icon/192",apple:"/api/pwa-icon/192"},
 };
 
 export default function RootLayout({
@@ -14,6 +17,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <head>
+        <meta name="theme-color" content="#1d4ed8" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
