@@ -43,3 +43,40 @@ jobs:
           path: qa-archive/
           retention-days: 7
           if-no-files-found: error
+
+  database-smoke:
+    name: "Synthetic PostgreSQL migrations / RLS / shift close"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: carwash-ci-only
+          POSTGRES_DB: carwash_synthetic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d carwash_synthetic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Apply every carwash migration and validate financial workflow using synthetic users
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD=carwash-ci-only \
+            -v "$PWD:/src:ro" -w /src postgres:16 \
+            bash -ceu '
+              export PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=carwash_synthetic
+              psql -v ON_ERROR_STOP=1 -f qa/supabase_postgres_test_bootstrap.sql
+              for f in supabase/migrations/*.sql; do
+                echo "Testing migration: $f"
+                psql -v ON_ERROR_STOP=1 -f "$f"
+              done
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_postgres_e2e.sql
+            '
