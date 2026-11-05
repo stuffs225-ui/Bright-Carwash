@@ -47,8 +47,17 @@ export async function POST(request: Request) {
   if (!phone || !ROLES.includes(role) || !canInviteCarwashAccount(access.viewerRole,role)) {
     return NextResponse.json({error:"Invalid Saudi phone number or role"},{status:400});
   }
-  // Only an authorized owner can pre-provision the phone number.
-  // Public OTP sign-up is disabled in the client (shouldCreateUser:false).
+  // Exactly one active shared worker login, never one login per carwash worker.
+  if(role==="worker"){
+    const {count,error:existingError}=await access.admin.from("app_members")
+      .select("user_id",{count:"exact",head:true}).eq("role","worker").eq("active",true);
+    if(existingError)return NextResponse.json({error:"تعذر التحقق من حساب العمال الحالي"},{status:500});
+    if((count||0)>0)return NextResponse.json({
+      error:"يوجد حساب عامل مشترك نشط بالفعل؛ عطله أولًا إذا كنت تريد تغيير رقم الجوال."
+    },{status:409});
+  }
+  // Only an authorized manager/owner can pre-provision a phone after checking
+  // the allowed role. Public OTP sign-up stays disabled.
   const creation = await access.admin.auth.admin.createUser({phone, phone_confirm:true});
   if (creation.error || !creation.data.user) {
     return NextResponse.json({error:"Unable to provision phone account. It may already exist."},{status:409});
@@ -59,7 +68,7 @@ export async function POST(request: Request) {
   if(error) {
     // Roll back only the newly created, unlinked Auth user from this request.
     await access.admin.auth.admin.deleteUser(creation.data.user.id);
-    return NextResponse.json({error:"Phone account setup failed; nothing was activated."},{status:500});
+    return NextResponse.json({error:role==="worker"?"تعذر تفعيل رقم العامل؛ تحقق من عدم وجود حساب مشترك آخر نشط.":"Phone account setup failed; nothing was activated."},{status:500});
   }
   return NextResponse.json({ok:true,user_id:creation.data.user.id});
 }
