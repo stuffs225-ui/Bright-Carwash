@@ -658,3 +658,76 @@ create policy shared_staff_account_active_shift_entries on public.entries
   )
  )
 );
+
+
+-- Price governance: active fixed preset + explicitly selected add-ons.
+-- Historical imports and manager-authorized corrections retain source values,
+-- but the shared worker account must never override the catalog tariff.
+create table if not exists public.carwash_addons (
+ id uuid primary key default gen_random_uuid(),
+ name text not null unique,
+ price numeric(10,2) not null check(price >= 0),
+ active boolean not null default true,
+ created_at timestamptz not null default now()
+);
+alter table public.carwash_addons enable row level security;
+create policy active_addons_read on public.carwash_addons for select to authenticated
+ using(private.current_app_role() in ('owner','manager','worker'));
+create policy manager_addons_create on public.carwash_addons for insert to authenticated
+ with check(private.current_app_role() in ('owner','manager'));
+create policy manager_addons_update on public.carwash_addons for update to authenticated
+ using(private.current_app_role() in ('owner','manager'))
+ with check(private.current_app_role() in ('owner','manager'));
+grant select,insert,update on public.carwash_addons to authenticated;
+create trigger audit_change after insert or update or delete on public.carwash_addons
+ for each row execute function private.audit_row();
+
+alter table public.entries
+ add column if not exists addon_ids jsonb not null default '[]'::jsonb,
+ add column if not exists addon_total numeric(10,2) not null default 0
+  check(addon_total>=0);
+
+create or replace function private.validate_worker_carwash_price()
+returns trigger language plpgsql security definer set search_path=''
+as $carwash_price_check$
+declare
+ v_role text;
+ v_token text;
+ v_extra numeric(10,2):=0;
+ v_price numeric(10,2);
+ v_count integer;
+ v_unique integer;
+ v_effective numeric(10,2);
+begin
+ v_role:=private.current_app_role();
+ if new.legacy_ref is not null then return new; end if;
+ if jsonb_typeof(new.addon_ids)<>'array' or jsonb_array_length(new.addon_ids)>8 then
+  raise exception 'Add-on selections must be an array of up to 8 IDs'; end if;
+ select count(*),count(distinct value) into v_count,v_unique
+ from jsonb_array_elements_text(new.addon_ids);
+ if v_count<>v_unique then raise exception 'Duplicate add-on selected'; end if;
+ for v_token in select value from jsonb_array_elements_text(new.addon_ids) loop
+  if v_token !~* '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+    then raise exception 'Invalid add-on ID'; end if;
+  select price into v_price from public.carwash_addons
+   where id=v_token::uuid and active=true for share;
+  if not found then raise exception 'Inactive or unknown add-on';end if;
+  v_extra:=v_extra+v_price;
+ end loop;
+ new.addon_total:=v_extra;
+ if v_role<>'worker' then return new;end if;
+ if new.discount_amount>10 then raise exception 'Worker discount exceeds SAR10';end if;
+ v_effective:=new.cash_paid+new.card_paid+new.discount_amount-v_extra;
+ if not exists(
+  select 1 from public.entry_presets p
+  where p.active=true and p.car_type=new.car_type
+    and p.service_type=new.service_type and p.amount=v_effective
+ ) then raise exception 'Price is not an active carwash service price plus selected add-ons';end if;
+ return new;
+end
+$carwash_price_check$;
+revoke all on function private.validate_worker_carwash_price() from public;
+create trigger carwash_validate_price
+ before insert or update of car_type,service_type,cash_paid,card_paid,
+  discount_amount,addon_ids on public.entries
+ for each row execute function private.validate_worker_carwash_price();
