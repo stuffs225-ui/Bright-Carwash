@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
 import { queueLength, setOfflineActor } from "@/lib/offlineQueue";
 import { normalizeSaudiMobile } from "@/lib/phone";
+import { DemoCarwashApp } from "./DemoCarwashApp";
 
 export type AppRole = "owner" | "manager" | "worker";
 export type AppIdentity = { userId: string; email: string; role: AppRole };
@@ -93,7 +94,7 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     setStage("phone"); setOtp("");
   }
 
-  if (!supabaseConfigured) return <div dir="rtl" className="min-h-screen flex justify-center items-center p-6"><section className="card max-w-md w-full"><h1 className="text-2xl font-bold">مغسلة سيارتك اللامعة — النسخة التجريبية</h1><p className="mt-4 txt-warning">تم تجهيز التطبيق، لكن قاعدة بيانات Supabase المستقلة لم تُربط بعد. تم تعطيل الدخول والتسجيل لمنع الكتابة على أي نظام آخر.</p></section></div>;
+  if (!supabaseConfigured) return <DemoCarwashApp />;
 
   if (loading) return <div dir="rtl" className="min-h-screen flex items-center justify-center p-6">جاري التحقق من الحساب والصلاحيات...</div>;
 
