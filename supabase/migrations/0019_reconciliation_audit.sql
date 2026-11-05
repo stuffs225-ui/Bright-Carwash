@@ -639,3 +639,19 @@ create trigger carwash_no_edit_after_shift_settlement
 revoke insert,update,delete on public.carwash_shifts from anon,authenticated;
 revoke insert,update,delete on public.carwash_shift_devices from anon,authenticated;
 revoke insert,update,delete on public.carwash_shift_settlements from anon,authenticated;
+
+-- Shared worker account must not retrieve archived/approved shifts even via
+-- direct PostgREST queries. Owner/manager retain full audit history.
+drop policy if exists shared_staff_account_entries on public.entries;
+create policy shared_staff_account_active_shift_entries on public.entries
+ for select to authenticated using(
+ private.current_app_role() in ('owner','manager')
+ or (
+  private.current_app_role()='worker'
+  and created_by=(select auth.uid())
+  and exists(
+   select 1 from public.carwash_shifts s where s.id=shift_id
+   and s.status in ('open','awaiting_owner')
+  )
+ )
+);
