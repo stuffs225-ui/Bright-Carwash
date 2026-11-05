@@ -731,3 +731,23 @@ create trigger carwash_validate_price
  before insert or update of car_type,service_type,cash_paid,card_paid,
   discount_amount,addon_ids on public.entries
  for each row execute function private.validate_worker_carwash_price();
+
+
+-- Financial audit attribution is immutable: even a privileged management
+-- user must not rewrite which account/device originally created an entry.
+create or replace function private.carwash_immutable_origin()
+returns trigger language plpgsql security definer set search_path=''
+as $carwash_origin_guard$
+begin
+ if new.created_by is distinct from old.created_by or
+    new.client_mutation_id is distinct from old.client_mutation_id or
+    new.shift_id is distinct from old.shift_id or
+    new.device_id is distinct from old.device_id or
+    new.legacy_ref is distinct from old.legacy_ref
+ then raise exception 'Original account, device, shift and mutation ID are immutable';end if;
+ return new;
+end
+$carwash_origin_guard$;
+revoke all on function private.carwash_immutable_origin() from public;
+create trigger carwash_immutable_origin before update on public.entries
+ for each row execute function private.carwash_immutable_origin();
