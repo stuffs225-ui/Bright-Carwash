@@ -2,6 +2,14 @@
 export type CarwashSize = "small" | "large";
 export type CrewEntitlement = { size: CarwashSize; quantity: number };
 
+/** Crew-wide amount per registered paid car; never a per-worker earning. */
+export const CREW_RATE_PER_CAR = 10 as const;
+export function crewProvisionForCarCount(carCount: number): number {
+  if (!Number.isInteger(carCount) || carCount < 0) throw new Error("Invalid paid car count");
+  return carCount * CREW_RATE_PER_CAR;
+}
+
+
 export const APPROVED_CREW_RATE_PER_CAR: Readonly<Record<CarwashSize, number>> = Object.freeze({
   small: 10, large: 10,
 });
