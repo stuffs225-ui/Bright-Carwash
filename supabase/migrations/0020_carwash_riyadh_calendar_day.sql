@@ -3,6 +3,7 @@
 -- remain for historical audit, but are not used by new worker/manager flows.
 
 create table if not exists public.carwash_days(
+ id uuid not null default gen_random_uuid() unique,
  business_date date primary key,
  status text not null default 'open' check(status in('open','awaiting_owner','approved')),
  created_at timestamptz not null default now(),
@@ -20,6 +21,7 @@ grant select on public.carwash_days to authenticated;
 revoke insert,update,delete on public.carwash_days from anon,authenticated;
 
 create table if not exists public.carwash_registered_devices(
+ id uuid not null default gen_random_uuid() unique,
  device_id uuid primary key,
  account_id uuid not null references auth.users(id),
  active boolean not null default true,
@@ -231,6 +233,7 @@ revoke all on function public.seal_carwash_business_day(date,uuid) from public,a
 grant execute on function public.seal_carwash_business_day(date,uuid) to authenticated;
 
 create table if not exists public.carwash_day_settlements(
+ id uuid not null default gen_random_uuid() unique,
  business_date date primary key references public.carwash_days(business_date),
  recorded_cash numeric(12,2) not null check(recorded_cash>=0),
  recorded_card numeric(12,2) not null check(recorded_card>=0),
@@ -328,7 +331,7 @@ grant execute on function public.approve_carwash_day_difference(date) to authent
 
 create trigger audit_change after insert or update on public.carwash_days
  for each row execute function private.audit_row();
-create trigger audit_change after insert or update on public.carwash_registered_devices
+create trigger audit_change after insert on public.carwash_registered_devices
  for each row execute function private.audit_row();
 create trigger audit_change after insert or update on public.carwash_day_settlements
  for each row execute function private.audit_row();
