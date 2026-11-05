@@ -32,6 +32,20 @@ insert into public.entries(
  'carwash-synthetic-1','+966500000004',true
 );
 
+do $qa_ready_once$
+declare
+ v_first text;
+ v_again text;
+ v_count integer;
+begin
+ v_first:=public.request_ready_notice(null,'carwash-synthetic-1');
+ v_again:=public.request_ready_notice(null,'carwash-synthetic-1');
+ select count(*) into v_count from public.ready_sms_outbox;
+ if v_first<>'pending_provider' or v_again<>'already_ready' or v_count<>1
+ then raise exception 'Ready notice was duplicated or falsely delivered';end if;
+end
+$qa_ready_once$;
+
 do $qa_worker_discount_guard$
 declare count_visible int; blocked boolean:=false;
 begin
@@ -91,6 +105,13 @@ values('carwash-pos-evidence', current_setting('qa.shift_id')||'/pos.jpg');
 
 -- Manager must not approve while a staff device is unsealed.
 set role authenticated;
+set request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
+select public.register_carwash_device(
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid,
+ current_setting('qa.shift_id')::uuid
+);
+
+set role authenticated;
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
 do $$
 declare blocked boolean:=false;
@@ -110,7 +131,39 @@ select public.seal_carwash_device(
 );
 
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
-do $$
+do $qa_second_device$
+declare blocked boolean:=false;
+begin
+ begin
+  perform public.submit_carwash_shift_settlement(
+    current_setting('qa.shift_id')::uuid,45,0,current_setting('qa.shift_id')||'/pos.jpg',null);
+ exception when others then blocked:=true;
+ end;
+ if not blocked then raise exception 'Manager approved while second staff device remained unsealed';end if;
+end
+$qa_second_device$;
+
+do $qa_immutable_account$
+declare blocked boolean:=false;
+begin
+ begin
+  update public.entries
+  set created_by='33333333-3333-4333-8333-333333333333'
+  where client_mutation_id='carwash-synthetic-1';
+ exception when others then blocked:=true;
+ end;
+ if not blocked then raise exception 'Manager rewrote financial creator';end if;
+end
+$qa_immutable_account$;
+
+set request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
+select public.seal_carwash_device(
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'::uuid,
+ current_setting('qa.shift_id')::uuid
+);
+
+set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
+do $
 declare status_out text;
 begin
  status_out := public.submit_carwash_shift_settlement(
