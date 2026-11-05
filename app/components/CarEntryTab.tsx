@@ -5,7 +5,6 @@ import { supabase } from "@/lib/supabaseClient";
 import { fetchAllRows } from "@/lib/fetchAll";
 import {
   AR_GREGORIAN_LOCALE,
-  bonusPerWorker,
   formatCurrency,
   getDayBounds,
   getOperationalShiftBounds,
@@ -22,6 +21,7 @@ import { DEFAULT_SETTINGS, loadSettings, type AppSettings } from "@/lib/settings
 import { loadPresets, suggestionsFor } from "@/lib/presets";
 import { BREAKEVEN_WINDOW_DAYS, computeBreakEven, type BreakEven } from "@/lib/breakeven";
 import { getLang, setLang as persistLang, t, type Lang } from "@/lib/i18n";
+import { crewProvisionForCarCount } from "@/lib/carwashCompensation";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 import { PresetGrid } from "./PresetGrid";
@@ -244,10 +244,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     return shiftEntries.length + unsynced.length;
   }, [shiftEntries, pendingEntries]);
 
-  const bonus = useMemo(
-    () => bonusPerWorker(shiftCarCount, settings.shift_car_threshold, settings.worker_bonus_rate),
-    [shiftCarCount, settings.shift_car_threshold, settings.worker_bonus_rate]
-  );
+  const crewProvision = useMemo(() => crewProvisionForCarCount(shiftCarCount), [shiftCarCount]);
 
   const monthlyByDay = useMemo(() => {
     const map = new Map<string, { cars: number; cash: number; card: number; total: number }>();
@@ -326,7 +323,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: cash,
         card_paid: card,
         notes: notes || null,
-        worker_name: performer || null,
+        worker_name: ownerView ? performer || null : null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
       },
       tt("تمت إضافة السيارة بنجاح!")
@@ -476,7 +473,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         <LangSwitch lang={lang} onChange={changeLang} />
       </div>
 
-      {goal && (
+      {ownerView && goal && (
         <BreakEvenMeter
           goal={goal}
           carsToday={dailyTotals.count}
@@ -486,7 +483,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         />
       )}
 
-      <section className="card">
+      {ownerView && <section className="card">
         <span className="form-label">{tt("تاريخ التسجيل")}</span>
         <div className="flex flex-wrap gap-2">
           <button type="button" className={entryDay === "today" ? "btn-primary" : "btn-secondary"} onClick={() => setEntryDay("today")}>{tt("اليوم")}</button>
@@ -503,7 +500,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
             {tt("⚠️ السيارات المُضافة الآن ستُسجَّل ليوم {date}", { date: resolvedEntryDateLabel })}
           </p>
         )}
-      </section>
+      </section>}
 
       {!bulkMode && presets.length > 0 && (
         <section className="card">
@@ -515,9 +512,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       <section className="card">
         <div className="flex items-center justify-between gap-3 mb-1">
           <h2 className="section-title mb-0">{bulkMode ? tt("إضافة عدة سيارات دفعة وحدة") : tt("إدخال سيارة جديدة")}</h2>
-          <button type="button" className="btn-secondary" onClick={() => setBulkMode((v) => !v)}>
+          {ownerView && <button type="button" className="btn-secondary" onClick={() => setBulkMode((v) => !v)}>
             {bulkMode ? tt("رجوع لإدخال سيارة واحدة") : tt("➕ إضافة عدة سيارات")}
-          </button>
+          </button>}
         </div>
 
         {!bulkMode ? (
@@ -581,13 +578,13 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                 <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cardPaid} onChange={(e) => setCardPaid(e.target.value)} />
               </div>
             </div>
-            <div>
+            {ownerView && <div>
               <label className="form-label">{tt("المنفذ / الفريق")}</label>
               <select value={performer} onChange={(e) => setPerformer(e.target.value)}>
                 <option value="">بدون تحديد</option>
                 {performers.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
-            </div>
+            </div>}
             <div>
               <label className="form-label">{tt("ملاحظات")}</label>
               <input type="text" placeholder={tt("أي تفاصيل إضافية...")} value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -672,10 +669,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           </div>
         )}
         <hr className="my-5 rule" />
-        <h3 className="subsection-title text-center">{tt("مكافأة الوردية")}</h3>
-        <p className="txt-muted text-center text-sm">عدد سيارات الوردية: {shiftCarCount} — من 3 عصرًا حتى 4 فجرًا</p>
+        <h3 className="subsection-title text-center">مخصص عمال الوردية (جماعي)</h3>
+        <p className="txt-muted text-center text-sm">عدد سيارات الوردية: {shiftCarCount} — من 3 عصرًا حتى 4 فجرًا. مكافأة 2 ر.س القديمة مجمّدة ولا تُحتسب.</p>
         <div className="grid grid-cols-1 gap-4">
-          <MetricCard label={tt("مكافأة كل عامل")} value={formatCurrency(bonus)} tone="emerald" />
+          <MetricCard label="إجمالي مخصص العمال — 10 ر.س لكل سيارة" value={formatCurrency(crewProvision)} tone="emerald" />
         </div>
       </section>
 
