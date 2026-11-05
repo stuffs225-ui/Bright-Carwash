@@ -611,6 +611,29 @@ end $$;
 revoke all on function public.approve_carwash_shift_variance(uuid) from public,anon;
 grant execute on function public.approve_carwash_shift_variance(uuid) to authenticated;
 
+
+-- Freeze financial rows once the manager has submitted a final settlement
+-- (including awaiting owner approval). Ready notices are still permitted.
+create or replace function private.prevent_settled_shift_edits()
+returns trigger language plpgsql security definer set search_path='' as $
+declare v_status text;
+begin
+ if new.shift_id is distinct from old.shift_id then
+  raise exception 'Cannot move a car across financial shifts';
+ end if;
+ select status into v_status from public.carwash_shifts
+  where id=old.shift_id for share;
+ if v_status in ('approved','awaiting_owner') then
+  raise exception 'Shift already submitted; financial rows are frozen';
+ end if;
+ return new;
+end $;
+revoke all on function private.prevent_settled_shift_edits() from public;
+create trigger carwash_no_edit_after_shift_settlement
+ before update of car_type,service_type,cash_paid,card_paid,discount_amount,
+  deleted_at,occurred_at,shift_id on public.entries
+ for each row execute function private.prevent_settled_shift_edits();
+
 -- No direct authenticated table mutation of sessions, device seals or
 -- financial settlements: user writes happen only through guarded RPCs.
 revoke insert,update,delete on public.carwash_shifts from anon,authenticated;
