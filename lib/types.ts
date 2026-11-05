@@ -11,6 +11,7 @@ export type Entry = {
   worker_name: string | null;
   pending?: boolean;
   shift_id?: string | null;
+  business_date?: string | null;
   device_id?: string | null;
   discount_amount?: number;
   list_price?: number;
