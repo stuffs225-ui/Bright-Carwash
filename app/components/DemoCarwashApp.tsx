@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from "react";
 import {riyadhDayKey,dayIsFinished} from "@/lib/carwashCalendarDay";
 import {formatCurrency} from "@/lib/business";
 import {InstallAppButton} from "./InstallAppButton";
+import {ServiceWorkerRegister} from "./ServiceWorkerRegister";
 
 type Row={id:string;day:string;car:"سيارة صغيرة"|"سيارة كبيرة";
   service:string;cash:number;card:number;ready:boolean};
@@ -100,9 +101,11 @@ export function DemoCarwashApp(){
    <button type="button" className="btn-primary w-full" onClick={()=>{setStarted(true);setRole("manager");}}>فتح لوحة المدير التجريبية</button>
    <button type="button" className="btn-secondary w-full" onClick={()=>{setStarted(true);setRole("worker");}}>فتح شاشة العامل التجريبية</button>
    <InstallAppButton />
+   <ServiceWorkerRegister />
   </div>
  </div>;
  return <div className="app-shell space-y-4" dir="rtl">
+  <ServiceWorkerRegister />
   <header className="app-header rounded-xl">
    <h1 className="text-2xl font-bold">مغسلة سيارتك اللامعة</h1>
    <p className="mt-2">وضع تجربة محلي — لا توجد عمليات حقيقية أو رسائل SMS</p>
