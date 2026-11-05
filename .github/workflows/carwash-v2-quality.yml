@@ -29,3 +29,17 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
+      - name: Package exact tested source for QA
+        if: success()
+        run: |
+          mkdir -p qa-archive
+          git archive --format=zip --output=qa-archive/carwash-v2-exact-tested-source.zip HEAD
+          (cd qa-archive && sha256sum carwash-v2-exact-tested-source.zip > SHA256SUMS.txt)
+      - name: Retain tested source as workflow artifact
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bright-carwash-qa-source
+          path: qa-archive/
+          retention-days: 7
+          if-no-files-found: error
