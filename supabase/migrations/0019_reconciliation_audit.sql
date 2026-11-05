@@ -618,7 +618,7 @@ grant execute on function public.approve_carwash_shift_variance(uuid) to authent
 -- Freeze financial rows once the manager has submitted a final settlement
 -- (including awaiting owner approval). Ready notices are still permitted.
 create or replace function private.prevent_settled_shift_edits()
-returns trigger language plpgsql security definer set search_path='' as $
+returns trigger language plpgsql security definer set search_path='' as $carwash_shift_guard$
 declare v_status text;
 begin
  if new.shift_id is distinct from old.shift_id then
@@ -630,7 +630,7 @@ begin
   raise exception 'Shift already submitted; financial rows are frozen';
  end if;
  return new;
-end $;
+end $carwash_shift_guard$;
 revoke all on function private.prevent_settled_shift_edits() from public;
 create trigger carwash_no_edit_after_shift_settlement
  before update of car_type,service_type,cash_paid,card_paid,discount_amount,
