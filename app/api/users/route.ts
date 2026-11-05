@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 import { normalizeSaudiMobile } from "@/lib/phone";
+import { canInviteCarwashAccount, canModifyCarwashAccount } from "@/lib/carwashMemberPermissions";
 
 type AppRole = "owner" | "manager" | "worker";
 const ROLES: AppRole[] = ["owner", "manager", "worker"];
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(()=>null);
   const phone = normalizeSaudiMobile(typeof body?.phone === "string" ? body.phone : "");
   const role: AppRole = body?.role;
-  if (!phone || !ROLES.includes(role) || (access.viewerRole==="manager" && role!=="worker")) {
+  if (!phone || !ROLES.includes(role) || !canInviteCarwashAccount(access.viewerRole,role)) {
     return NextResponse.json({error:"Invalid Saudi phone number or role"},{status:400});
   }
   // Only an authorized owner can pre-provision the phone number.
@@ -79,7 +80,7 @@ export async function PATCH(request: Request) {
     // Manager can only switch active status of the shared worker account.
     const {data:target}=await access.admin.from("app_members")
       .select("role").eq("user_id",id).maybeSingle();
-    if(target?.role!=="worker"||role!=="worker"){
+    if(!target?.role||!canModifyCarwashAccount(access.viewerRole,target.role,role)){
       return NextResponse.json({error:"Managers may only manage the worker account"},{status:403});
     }
   }
