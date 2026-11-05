@@ -12,17 +12,21 @@ import { SettingsTab } from "./components/SettingsTab";
 import { UsersTab } from "./components/UsersTab";
 import { AlertsTab } from "./components/AlertsTab";
 import { ReconciliationTab } from "./components/ReconciliationTab";
+import { CrewBonusesTab } from "./components/CrewBonusesTab";
+import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
-type Tab = "car" | "expenses" | "analysis" | "workers" | "settings" | "users" | "alerts" | "reconciliation";
+type Tab = "car" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation";
 const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[] }[] = [
   { key: "car", label: "🚗 تسجيل السيارات", allowed: ["owner","manager","worker"] },
   { key: "expenses", label: "💳 المصروفات", allowed: ["owner","manager"] },
   { key: "analysis", label: "📊 التحليلات", allowed: ["owner","manager"] },
   { key: "workers", label: "👷 العمال", allowed: ["owner","manager"] },
+  { key: "crewbonus", label: "⭐ مكافآت الوردية", allowed: ["owner","manager"] },
+  { key: "months", label: "🗓️ اعتماد الشهور", allowed: ["owner"] },
   { key: "settings", label: "⚙ الإعدادات", allowed: ["owner"] },
   { key: "users", label: "🔐 المستخدمون", allowed: ["owner"] },
   { key: "alerts", label: "🔔 التنبيهات", allowed: ["owner","manager"] },
@@ -41,7 +45,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
       alert("يوجد تسجيلات غير متزامنة. أعد الاتصال بالإنترنت قبل الخروج.");
       return;
     }
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   }
 
   return (
@@ -68,6 +72,8 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           {canManage && actualTab === "expenses" && <ExpensesTab />}
           {canManage && actualTab === "analysis" && <AnalysisTab />}
           {canManage && actualTab === "workers" && <WorkersTab />}
+          {canManage && actualTab === "crewbonus" && <CrewBonusesTab />}
+          {isOwner && actualTab === "months" && <AccountingMonthsTab />}
           {isOwner && actualTab === "settings" && <SettingsTab />}
           {isOwner && actualTab === "users" && <UsersTab />}
           {canManage && actualTab === "alerts" && <AlertsTab isOwner={isOwner} />}
