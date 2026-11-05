@@ -41,8 +41,8 @@ begin
  v_first:=public.request_ready_notice(null,'carwash-synthetic-1');
  v_again:=public.request_ready_notice(null,'carwash-synthetic-1');
  select count(*) into v_count from public.ready_sms_outbox;
- if v_first<>'pending_provider' or v_again<>'already_ready' or v_count<>1
- then raise exception 'Ready notice was duplicated or falsely delivered';end if;
+ if v_first<>'pending_provider' or v_again<>'already_ready' or v_count<>0
+ then raise exception 'Worker Ready status or private outbox visibility is incorrect';end if;
 end
 $qa_ready_once$;
 
@@ -100,6 +100,15 @@ end
 $carwash_price_e2e$;
 
 reset role;
+-- The sender outbox is restricted from the shared worker account.
+do $qa_ready_sender_queue$
+declare v_count integer;
+begin
+ select count(*) into v_count from public.ready_sms_outbox
+ where status='pending_provider' and destination_phone='+966500000004';
+ if v_count<>1 then raise exception 'SMS notification outbox must be single pending record';end if;
+end
+$qa_ready_sender_queue$;
 insert into storage.objects(bucket_id,name)
 values('carwash-pos-evidence', current_setting('qa.shift_id')||'/pos.jpg');
 
