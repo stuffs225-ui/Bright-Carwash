@@ -77,6 +77,9 @@ jobs:
               for f in supabase/migrations/*.sql; do
                 echo "Testing migration: $f"
                 psql -v ON_ERROR_STOP=1 -f "$f"
+                if [[ "$f" == *"/0019_reconciliation_audit.sql" ]]; then
+                  psql -v ON_ERROR_STOP=1 -f qa/carwash_postgres_e2e.sql
+                fi
               done
-              psql -v ON_ERROR_STOP=1 -f qa/carwash_postgres_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_calendar_e2e.sql
             '
