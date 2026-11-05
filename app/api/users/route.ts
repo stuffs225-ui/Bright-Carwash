@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     await access.admin.auth.admin.deleteUser(creation.data.user.id);
     return NextResponse.json({error:"Phone account setup failed; nothing was activated."},{status:500});
   }
-  return NextResponse.json({ok:true,user_id:invitation.data.user.id});
+  return NextResponse.json({ok:true,user_id:creation.data.user.id});
 }
 
 export async function PATCH(request: Request) {
