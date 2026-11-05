@@ -15,6 +15,8 @@ import { ReconciliationTab } from "./components/ReconciliationTab";
 import { CrewBonusesTab } from "./components/CrewBonusesTab";
 import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
 import { ShiftCloseTab } from "./components/ShiftCloseTab";
+import { WorkerRegisterTab } from "./components/WorkerRegisterTab";
+import { DaySettlementTab } from "./components/DaySettlementTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { InstallAppButton } from "./components/InstallAppButton";
@@ -72,8 +74,8 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           )}
         </nav>
         <div className="content-section-wrapper">
-          {actualTab === "car" && <CarEntryTab ownerView={isOwner} />}
-          {canManage && actualTab === "settlement" && <ShiftCloseTab isOwner={isOwner} />}
+          {actualTab === "car" && (identity.role==="worker"?<WorkerRegisterTab/>:<CarEntryTab ownerView />)}
+          {canManage && actualTab === "settlement" && <DaySettlementTab isOwner={isOwner} />}
           {canManage && actualTab === "expenses" && <ExpensesTab />}
           {canManage && actualTab === "analysis" && <AnalysisTab />}
           {canManage && actualTab === "workers" && <WorkersTab />}
