@@ -98,23 +98,8 @@ export function SettingsTab() {
 
       {category === "operations" && (
         <div className="space-y-6">
-          <Section title="المكافأة" hint="المكافآت تحسب على وردية التشغيل من 3 عصرًا حتى 4 فجرًا، وتقارير اليوم تظل حسب اليوم التقويمي.">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="حد السيارات للمكافأة">
-                <input type="number" min="0" value={threshold} onChange={(e) => setThreshold(e.target.value)} />
-              </Field>
-              <Field label="مكافأة كل سيارة زائدة (ر.س)">
-                <input type="number" min="0" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} />
-              </Field>
-            </div>
-            <SaveButton
-              disabled={saving}
-              onClick={() => save({ shift_car_threshold: Number(threshold) || 0, worker_bonus_rate: Number(rate) || 0 })}
-            />
-            <p className="txt-muted text-sm mt-2">
-              مثال: لو الحد {threshold || 0} والمكافأة {rate || 0} ريال، فعند {Number(threshold) + 5 || 5} سيارة
-              يستحق كل عامل {formatCurrency((Number(rate) || 0) * 5)}.
-            </p>
+          <Section title="مخصص العمال الجماعي" hint="10 ريالات إجمالًا لفريق العمال عن كل سيارة صغيرة أو كبيرة مسجلة، وليس لكل عامل على حدة.">
+            <p className="txt-muted text-sm">مكافأة ريالين عن السيارات التي تتجاوز 15 سيارة مجمّدة مؤقتًا، ولن تُحتسب أو تُدفع آليًا. يمكن للمدير إضافة مكافأة منفصلة للوردية من سجل المكافآت.</p>
           </Section>
 
           <Section title="هدف التعادل اليومي" hint="عدد السيارات اللي تغطي مصروف اليوم. اتركه صفراً ليُحسب تلقائياً من آخر 90 يوم.">
