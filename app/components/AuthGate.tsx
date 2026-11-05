@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase, supabaseConfigured } from "@/lib/supabaseClient";
 import { queueLength, setOfflineActor } from "@/lib/offlineQueue";
+import { normalizeSaudiMobile } from "@/lib/phone";
 
 export type AppRole = "owner" | "manager" | "worker";
 export type AppIdentity = { userId: string; email: string; role: AppRole };
@@ -11,8 +12,10 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
   const [identity, setIdentity] = useState<AppIdentity | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsAccess, setNeedsAccess] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [verifiedPhone, setVerifiedPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [stage, setStage] = useState<"phone" | "otp">("phone");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -39,7 +42,7 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     const role = member?.active && ["owner", "manager", "worker"].includes(member.role)
       ? member.role as AppRole : null;
     setOfflineActor(role ? data.user.id : null);
-    setIdentity(role ? { userId: data.user.id, email: data.user.email || "", role } : null);
+    setIdentity(role ? { userId: data.user.id, email: data.user.phone || data.user.email || "", role } : null);
     setNeedsAccess(!role);
     setLoading(false);
   }, []);
@@ -54,16 +57,29 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     return () => subscription.subscription.unsubscribe();
   }, [refresh]);
 
-  async function signIn(e: React.FormEvent) {
+  async function requestCode(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting(true);
-    setError("");
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(), password,
+    const normalized = normalizeSaudiMobile(phone);
+    if (!normalized) { setError("أدخل رقم جوال سعودي صحيحًا مثل 05XXXXXXXX."); return; }
+    setSubmitting(true); setError("");
+    const { error: sendError } = await supabase.auth.signInWithOtp({
+      phone: normalized, options: { channel: "sms", shouldCreateUser: false },
     });
-    if (signInError) setError("تعذر تسجيل الدخول. تأكد من البريد وكلمة المرور.");
-    else await refresh();
     setSubmitting(false);
+    if (sendError) { setError("تعذر إرسال رمز الدخول. تأكد من تفعيل رقمك وإعدادات SMS."); return; }
+    setVerifiedPhone(normalized); setOtp(""); setStage("otp");
+  }
+
+  async function verifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(otp)) { setError("أدخل رمز التحقق المكوّن من 6 أرقام."); return; }
+    setSubmitting(true); setError("");
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      phone: verifiedPhone, token: otp, type: "sms",
+    });
+    setSubmitting(false);
+    if (verifyError) { setError("رمز الدخول غير صحيح أو انتهت صلاحيته."); return; }
+    await refresh();
   }
 
   async function signOut() {
@@ -71,9 +87,10 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
       setError("يوجد تسجيلات لم تُرفع بعد. اتصل بالإنترنت لتتم المزامنة قبل تسجيل الخروج.");
       return;
     }
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     setIdentity(null);
     setNeedsAccess(false);
+    setStage("phone"); setOtp("");
   }
 
   if (!supabaseConfigured) return <div dir="rtl" className="min-h-screen flex justify-center items-center p-6"><section className="card max-w-md w-full"><h1 className="text-2xl font-bold">مغسلة سيارتك اللامعة — النسخة التجريبية</h1><p className="mt-4 txt-warning">تم تجهيز التطبيق، لكن قاعدة بيانات Supabase المستقلة لم تُربط بعد. تم تعطيل الدخول والتسجيل لمنع الكتابة على أي نظام آخر.</p></section></div>;
@@ -91,16 +108,24 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
               <button className="btn-secondary w-full" type="button" onClick={signOut}>تسجيل الخروج</button>
             </>
           ) : (
-            <form onSubmit={signIn} className="space-y-4">
-              <p className="txt-muted">الدخول مخصص للحسابات التي أنشأها مالك النظام.</p>
-              <label className="block">البريد الإلكتروني
-                <input className="w-full" type="email" autoComplete="username" required value={email} onChange={e => setEmail(e.target.value)} />
-              </label>
-              <label className="block">كلمة المرور
-                <input className="w-full" type="password" autoComplete="current-password" required value={password} onChange={e => setPassword(e.target.value)} />
-              </label>
-              <button className="btn-primary w-full" disabled={submitting} type="submit">{submitting ? "جارٍ الدخول..." : "دخول"}</button>
-            </form>
+            stage === "phone" ? (
+              <form onSubmit={requestCode} className="space-y-4">
+                <p className="txt-muted">الدخول برقم الجوال ورمز تحقق SMS. تبقى الجلسة محفوظة على الجهاز طالما صالحة.</p>
+                <label className="block">رقم الجوال
+                  <input className="w-full" type="tel" autoComplete="tel" required value={phone} onChange={e => setPhone(e.target.value)} placeholder="05XXXXXXXX" />
+                </label>
+                <button className="btn-primary w-full" disabled={submitting} type="submit">{submitting ? "جارٍ إرسال الرمز..." : "إرسال رمز الدخول"}</button>
+              </form>
+            ) : (
+              <form onSubmit={verifyCode} className="space-y-4">
+                <p className="txt-muted">أرسلنا رمز تحقق إلى {verifiedPhone}</p>
+                <label className="block">رمز التحقق
+                  <input className="w-full" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otp} onChange={e => setOtp(e.target.value.replace(/\\D/g, "").slice(0,6))} placeholder="000000" />
+                </label>
+                <button className="btn-primary w-full" disabled={submitting} type="submit">{submitting ? "جارٍ التحقق..." : "دخول"}</button>
+                <button type="button" className="btn-secondary w-full" onClick={() => { setStage("phone"); setOtp(""); setError(""); }}>تغيير الرقم أو إعادة إرسال الرمز</button>
+              </form>
+            )
           )}
           {error && <p role="alert" className="txt-danger text-sm">{error}</p>}
         </div>
