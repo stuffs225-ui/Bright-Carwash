@@ -15,6 +15,7 @@ export function EntryRow({
   onCancel,
   onSave,
   onDelete,
+  onDetails,
   lang = "ar",
 }: {
   entry: Entry;
@@ -26,6 +27,7 @@ export function EntryRow({
   onCancel: () => void;
   onSave: (patch: Partial<Entry>) => void;
   onDelete: () => void;
+  onDetails?: () => void;
   lang?: Lang;
 }) {
   const [carType, setCarType] = useState(entry.car_type);
@@ -41,13 +43,13 @@ export function EntryRow({
   if (entry.pending) {
     return (
       <tr style={{ opacity: 0.65 }}>
-        <td data-label={tt("الوقت")}>{time}</td>
+        <td data-label={tt("الوقت")}>{onDetails ? <button type="button" className="link-inline" onClick={onDetails} title="عرض تفاصيل هذه السيارة">{time}</button> : time}</td>
         <td data-label={tt("السيارة")}>{entry.car_type}</td>
         <td data-label={tt("الخدمة")}>{entry.service_type}</td>
         <td data-label={tt("الدفع")}>{entry.payment_method}</td>
         <td data-label={tt("كاش")} className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
         <td data-label={tt("بطاقة")} className="txt-card">{formatCurrency(entry.card_paid)}</td>
-        <td data-label={tt("الإجمالي")} className="font-extrabold">{formatCurrency(entry.gross)}</td>
+        <td data-label={tt("الإجمالي")} className="font-extrabold">{onDetails ? <button type="button" className="link-inline" onClick={onDetails} title="عرض تفاصيل المبلغ">{formatCurrency(entry.gross)}</button> : formatCurrency(entry.gross)}</td>
         <td data-label="الحالة" className="txt-warning font-bold text-sm">{tt("⏳ بانتظار الرفع")}</td>
       </tr>
     );
@@ -56,13 +58,13 @@ export function EntryRow({
   if (!editing) {
     return (
       <tr>
-        <td data-label={tt("الوقت")}>{time}</td>
+        <td data-label={tt("الوقت")}>{onDetails ? <button type="button" className="link-inline" onClick={onDetails} title="عرض تفاصيل هذه السيارة">{time}</button> : time}</td>
         <td data-label={tt("السيارة")}>{entry.car_type}</td>
         <td data-label={tt("الخدمة")}>{entry.service_type}</td>
         <td data-label={tt("الدفع")}>{entry.payment_method}</td>
         <td data-label={tt("كاش")} className="txt-cash">{formatCurrency(entry.cash_paid)}</td>
         <td data-label={tt("بطاقة")} className="txt-card">{formatCurrency(entry.card_paid)}</td>
-        <td data-label={tt("الإجمالي")} className="font-extrabold">{formatCurrency(entry.gross)}</td>
+        <td data-label={tt("الإجمالي")} className="font-extrabold">{onDetails ? <button type="button" className="link-inline" onClick={onDetails} title="عرض تفاصيل المبلغ">{formatCurrency(entry.gross)}</button> : formatCurrency(entry.gross)}</td>
         <td className="flex gap-1.5">
           {editable && <><button type="button" className="action-button edit-button" onClick={onEdit}>{tt("تعديل")}</button>
           <button type="button" className="action-button delete-button" onClick={onDelete}>{tt("حذف")}</button></>}
