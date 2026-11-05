@@ -14,14 +14,16 @@ import { AlertsTab } from "./components/AlertsTab";
 import { ReconciliationTab } from "./components/ReconciliationTab";
 import { CrewBonusesTab } from "./components/CrewBonusesTab";
 import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
+import { ShiftCloseTab } from "./components/ShiftCloseTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
-type Tab = "car" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation";
+type Tab = "car" | "settlement" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation";
 const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[] }[] = [
-  { key: "car", label: "🚗 تسجيل السيارات", allowed: ["owner","manager","worker"] },
+  { key: "car", label: "🚗 تسجيل السيارات", allowed: ["owner","worker"] },
+  { key: "settlement", label: "🧾 موازنة الوردية", allowed: ["owner","manager"] },
   { key: "expenses", label: "💳 المصروفات", allowed: ["owner","manager"] },
   { key: "analysis", label: "📊 التحليلات", allowed: ["owner","manager"] },
   { key: "workers", label: "👷 العمال", allowed: ["owner","manager"] },
@@ -34,9 +36,9 @@ const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[
 ];
 
 function CarwashApp({ identity }: { identity: AppIdentity }) {
-  const [tab, setTab] = useState<Tab>("car");
+  const [tab, setTab] = useState<Tab>(identity.role==="manager"?"settlement":"car");
   const permitted = NAV.filter((item) => item.allowed.includes(identity.role));
-  const actualTab = permitted.some((t) => t.key === tab) ? tab : "car";
+  const actualTab = permitted.some((t) => t.key === tab) ? tab : (identity.role==="manager"?"settlement":"car");
   const isOwner = identity.role === "owner";
   const canManage = identity.role === "owner" || identity.role === "manager";
 
@@ -68,7 +70,8 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           )}
         </nav>
         <div className="content-section-wrapper">
-          {actualTab === "car" && <CarEntryTab ownerView={canManage} />}
+          {actualTab === "car" && <CarEntryTab ownerView={isOwner} />}
+          {canManage && actualTab === "settlement" && <ShiftCloseTab isOwner={isOwner} />}
           {canManage && actualTab === "expenses" && <ExpensesTab />}
           {canManage && actualTab === "analysis" && <AnalysisTab />}
           {canManage && actualTab === "workers" && <WorkersTab />}
