@@ -23,7 +23,9 @@ export async function flushOfflineQueue() {
         window.dispatchEvent(new Event("offline-sync-error"));
         break;
       }
-      const { error } = await supabase.from(item.table).insert(item.payload);
+      const { error } = item.table === "ready_notice"
+        ? await supabase.rpc("request_ready_notice", item.payload as { p_entry_id?: string; p_client_mutation_id?: string })
+        : await supabase.from(item.table).insert(item.payload);
       if (!error) {
         removeFromQueue(item.id);
         continue;
