@@ -23,6 +23,7 @@ import { loadPresets, suggestionsFor } from "@/lib/presets";
 import { BREAKEVEN_WINDOW_DAYS, computeBreakEven, type BreakEven } from "@/lib/breakeven";
 import { getLang, setLang as persistLang, t, type Lang } from "@/lib/i18n";
 import { crewProvisionForCarCount } from "@/lib/carwashCompensation";
+import { isApprovedStaffPrice, selectedAddonsTotal, type CatalogAddon } from "@/lib/priceGovernance";
 import { workerShiftSummary } from "@/lib/workerShiftSummary";
 import { queueLength } from "@/lib/offlineQueue";
 import { MetricCard } from "./MetricCard";
@@ -101,6 +102,8 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [readyBusy, setReadyBusy] = useState<string | null>(null);
 
   const [presets, setPresets] = useState<EntryPreset[]>([]);
+  const [addons,setAddons] = useState<CatalogAddon[]>([]);
+  const [selectedAddons,setSelectedAddons] = useState<string[]>([]);
   const [goal, setGoal] = useState<BreakEven | null>(null);
 
   const [bulkMode, setBulkMode] = useState(false);
@@ -125,15 +128,17 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const dateLocale = lang === "en" ? "en-US" : AR_GREGORIAN_LOCALE;
 
   const loadLists = useCallback(async () => {
-    const [{ data: cars }, { data: services }, { data: staff }] = await Promise.all([
+    const [{ data: cars }, { data: services }, { data: staff }, { data: addonItems }] = await Promise.all([
       supabase.from("car_types").select("name").eq("active", true).order("sort_order"),
       supabase.from("service_types").select("name").eq("active", true).order("sort_order"),
       supabase.from("workers").select("name").eq("active", true).order("sort_order"),
+      supabase.from("carwash_addons").select("id,name,price,active").eq("active",true).order("name"),
     ]);
     setCarTypes((cars || []).map((c) => c.name));
     setServiceTypes((services || []).map((s) => s.name));
     setPerformers((staff || []).map((s) => s.name));
     setPresets(await loadPresets());
+    setAddons((addonItems||[]) as CatalogAddon[]);
   }, []);
 
   const loadToday = useCallback(async () => {
@@ -388,6 +393,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     setDiscountAmount("");
     setCustomerPhone("");
     setSmsConsent(false);
+    setSelectedAddons([]);
   }
 
   // مسار الحفظ الموحّد: يستخدمه النموذج اليدوي والأزرار الجاهزة معاً، فيمر
@@ -455,6 +461,18 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       showToast(tt("الرجاء إدخال مبلغ صحيح."), "warning");
       return;
     }
+    if(!ownerView){
+      try{
+        if(!isApprovedStaffPrice({
+          carType,serviceType,cash,card,discount,presets,addons,selectedAddons
+        })){
+          showToast("يجب أن يتطابق السعر مع سعر الخدمة المعتمد والإضافات المختارة، بعد الخصم.","warning");
+          return;
+        }
+      }catch(cause){
+        showToast("راجع الإضافات المختارة: "+(cause instanceof Error?cause.message:"اختيار غير صالح"),"warning");return;
+      }
+    }
     if (entryDay === "custom" && !customDate) {
       showToast(tt("اختر التاريخ أولاً."), "warning");
       return;
@@ -467,6 +485,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: cash,
         card_paid: card,
         discount_amount: discount,
+        addon_ids: selectedAddons,
         customer_phone: normalizedPhone,
         sms_consent: !!normalizedPhone && smsConsent,
         notes: notes || null,
@@ -494,8 +513,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       showToast(tt("اختر التاريخ أولاً."), "warning");
       return;
     }
+    const extrasTotal=selectedAddonsTotal(addons,selectedAddons);
     setSubmitting(true);
-    const net = Number((preset.amount - discount).toFixed(2));
+    const net = Number((preset.amount + extrasTotal - discount).toFixed(2));
     const saved = await saveEntry(
       {
         car_type: preset.car_type,
@@ -503,6 +523,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         cash_paid: method === "cash" ? net : 0,
         card_paid: method === "card" ? net : 0,
         discount_amount: discount,
+        addon_ids: selectedAddons,
         customer_phone: normalizedPhone,
         sms_consent: !!normalizedPhone && smsConsent,
         notes: null,
@@ -702,6 +723,22 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
             {tt("⚠️ السيارات المُضافة الآن ستُسجَّل ليوم {date}", { date: resolvedEntryDateLabel })}
           </p>
         )}
+      </section>}
+
+      {addons.length>0&&<section className="card">
+        <h2 className="section-title">خدمات إضافية — اختيارية</h2>
+        <p className="txt-muted text-sm">سعر كل إضافة يُضاف إلى سعر الغسيل المعتمد، والخصم يُحسب بشكل منفصل.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+          {addons.map(addon=><label key={addon.id} className="flex justify-between items-center gap-2 rounded-xl border p-3">
+            <span><input type="checkbox" checked={selectedAddons.includes(addon.id)} onChange={e=>
+              setSelectedAddons(old=>e.target.checked?[...old,addon.id]:old.filter(v=>v!==addon.id))} />
+              <span className="ms-2">{addon.name}</span></span>
+            <strong>{formatCurrency(addon.price)}</strong>
+          </label>)}
+        </div>
+        <p className="text-sm font-semibold mt-3">
+          قيمة الإضافات: {formatCurrency(selectedAddonsTotal(addons,selectedAddons))}
+        </p>
       </section>}
 
       <section className="card">
