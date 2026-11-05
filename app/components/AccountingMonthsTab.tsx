@@ -85,7 +85,7 @@ export function AccountingMonthsTab(){
       {versions.length===0?<p className="txt-muted">لا توجد إصدارات معتمدة بعد.</p>:
       <div className="space-y-3">{versions.map(x=><div key={x.version} className="border-b pb-3">
         <p className="font-bold">إصدار {x.version} — {new Date(x.approved_at).toLocaleString("en-GB",{timeZone:"Asia/Riyadh"})}</p>
-        <p className="txt-muted text-sm">سيارات: {x.snapshot.cars??0} · كاش: {formatCurrency(Number(x.snapshot.cash)||0)} · شبكة: {formatCurrency(Number(x.snapshot.card)||0)} · خصومات: {formatCurrency(Number(x.snapshot.discount)||0)} · مصروفات: {formatCurrency(Number(x.snapshot.expenses)||0)}</p>
+        <p className="txt-muted text-sm">سيارات: {x.snapshot.cars??0} · كاش: {formatCurrency(Number(x.snapshot.cash)||0)} · شبكة: {formatCurrency(Number(x.snapshot.card)||0)} · خصومات: {formatCurrency(Number(x.snapshot.discount)||0)} · مخصص الفريق: {formatCurrency(Number(x.snapshot.crew_provision)||0)} · مكافآت إضافية: {formatCurrency(Number(x.snapshot.crew_extra_bonuses)||0)} · مصروفات: {formatCurrency(Number(x.snapshot.expenses)||0)}</p>
       </div>)}</div>}
     </section>
   </div>;
