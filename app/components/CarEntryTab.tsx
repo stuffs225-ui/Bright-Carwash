@@ -381,7 +381,16 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   // مسار الحفظ الموحّد: يستخدمه النموذج اليدوي والأزرار الجاهزة معاً، فيمر
   // الاثنان بنفس منطق الطابور المحلي عند انقطاع الشبكة.
   async function saveEntry(payload: Record<string, unknown>, successMessage: string): Promise<boolean> {
-    const mutation = { ...payload, client_mutation_id: crypto.randomUUID() };
+    if(!activeShiftId||shiftStatus!=="open"){
+      showToast("الوردية غير مفتوحة؛ انتظر اعتماد المدير أو أعد الاتصال.","warning");return false;
+    }
+    if(!ownerView && (!deviceId || (navigator.onLine && lastRegisteredShift.current!==activeShiftId))){
+      showToast("يتطلب تسجيل الجهاز اتصالًا بالإنترنت لأول مرة في الوردية.","warning");return false;
+    }
+    const mutation={...payload,shift_id:activeShiftId,
+      ...(!ownerView?{device_id:deviceId}:{}),
+      client_mutation_id:crypto.randomUUID()};
+    setDeviceSeal("unsealed");
     const queueLocally = (reason: string) => {
       enqueue("entries", mutation);
       showToast(`${tt(reason)}${tt(" — تم الحفظ محلياً وسيُرفع تلقائياً عند رجوع النت.")}`, "warning");
@@ -544,6 +553,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
 
   async function handleBulkSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if(!ownerView)return;
+    if(!activeShiftId||shiftStatus!=="open"){
+      showToast("لا يمكن إضافة سيارات إلى وردية مغلقة.","warning");return;
+    }
     if (entryDay === "custom" && !customDate) {
       showToast("اختر التاريخ أولاً.", "warning");
       return;
@@ -558,6 +571,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       worker_name: performer || null,
       occurred_at: occurredAt,
       client_mutation_id: crypto.randomUUID(),
+      shift_id: activeShiftId,
     }));
 
     const invalid = payloads.find((p) => !p.car_type || !p.service_type || p.cash_paid + p.card_paid <= 0);
