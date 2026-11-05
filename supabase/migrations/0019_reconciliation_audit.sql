@@ -701,6 +701,13 @@ declare
 begin
  v_role:=private.current_app_role();
  if new.legacy_ref is not null then return new; end if;
+ -- Do not reprice historical add-ons when a manager corrects cash/card
+ -- after the catalog price has changed; preserve the original snapshot.
+ if TG_OP='UPDATE' and new.addon_ids is not distinct from old.addon_ids
+   and v_role in ('owner','manager') then
+  new.addon_total:=old.addon_total;
+  return new;
+ end if;
  if jsonb_typeof(new.addon_ids)<>'array' or jsonb_array_length(new.addon_ids)>8 then
   raise exception 'Add-on selections must be an array of up to 8 IDs'; end if;
  select count(*),count(distinct value) into v_count,v_unique
