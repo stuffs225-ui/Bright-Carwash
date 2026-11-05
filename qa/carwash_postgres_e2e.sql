@@ -172,14 +172,14 @@ select public.seal_carwash_device(
 );
 
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
-do $
+do $qa_approve_exact$
 declare status_out text;
 begin
  status_out := public.submit_carwash_shift_settlement(
   current_setting('qa.shift_id')::uuid,45,0,current_setting('qa.shift_id')||'/pos.jpg',null
  );
  if status_out<>'approved' then raise exception 'Expected exact balance approval, got %',status_out;end if;
-end $$;
+end $qa_approve_exact$;
 
 set request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
 do $$
