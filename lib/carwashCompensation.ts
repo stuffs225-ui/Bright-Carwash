@@ -17,7 +17,7 @@ export function provisionalCrewEntitlement(cars: CrewEntitlement[]): number {
 
 /** Separate from wages already accrued: manager-issued discretionary bonus. */
 export function shiftBonusAmount(raw: number): number {
-  if (!Number.isFinite(raw) || raw < 0 || Math.round(raw * 100) !== raw * 100) {
+  if (!Number.isFinite(raw) || raw < 0 || Math.abs(Math.round(raw * 100) - raw * 100) > 1e-7) {
     throw new Error("Invalid manager bonus");
   }
   return raw;
