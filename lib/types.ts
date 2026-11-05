@@ -10,6 +10,11 @@ export type Entry = {
   occurred_at: string;
   worker_name: string | null;
   pending?: boolean;
+  discount_amount?: number;
+  list_price?: number;
+  customer_phone?: string | null;
+  sms_consent?: boolean;
+  ready_at?: string | null;
 };
 
 export type Expense = {
