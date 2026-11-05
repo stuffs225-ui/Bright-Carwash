@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
 import { createPreset, deletePreset, loadPresets } from "@/lib/presets";
+import { supabase } from "@/lib/supabaseClient";
 import { addLookup, loadLookup, renameLookup, setLookupActive, type LookupRow, type LookupTable } from "@/lib/lookups";
 import type { EntryPreset } from "@/lib/types";
 import { applyTheme, getTheme, setTheme, type ThemeChoice } from "@/lib/theme";
@@ -148,6 +149,7 @@ export function SettingsTab() {
       {category === "data" && (
         <div className="space-y-6">
           <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
+          <CarwashAddonsSettings />
           <ImportSheetSection />
           <LookupSection table="car_types" title="أنواع السيارات" />
           <LookupSection table="service_types" title="أنواع الخدمات" />
@@ -336,4 +338,65 @@ function LookupSection({ table, title }: { table: LookupTable; title: string }) 
       </div>
     </Section>
   );
+}
+
+
+// Add-ons are a fixed approved price catalog. Worker clients can read active
+// items only. Audited owner changes do not rewrite historical cash receipts.
+function CarwashAddonsSettings(){
+  type AddonRow={id:string;name:string;price:number;active:boolean};
+  const [rows,setRows]=useState<AddonRow[]>([]);
+  const [name,setName]=useState("");
+  const [price,setPrice]=useState("");
+  const [busy,setBusy]=useState(false);
+  const refresh=useCallback(async()=>{
+    const {data,error}=await supabase.from("carwash_addons")
+      .select("id,name,price,active").order("name");
+    if(error){showToast("تعذر قراءة الإضافات: "+error.message,"error");return;}
+    setRows((data||[]) as AddonRow[]);
+  },[]);
+  useEffect(()=>{void refresh();},[refresh]);
+  async function add(){
+    const amount=Number(price);
+    if(!name.trim()||!Number.isFinite(amount)||amount<0||Math.round(amount*100)!==amount*100){
+      showToast("اكتب اسم الإضافة وسعرًا صحيحًا.","warning");return;
+    }
+    setBusy(true);
+    const {error}=await supabase.from("carwash_addons").insert({name:name.trim(),price:amount,active:true});
+    setBusy(false);
+    if(error){showToast(error.message,"error");return;}
+    setName("");setPrice("");void refresh();
+    showToast("تمت إضافة خدمة إضافية معتمدة.");
+  }
+  async function toggle(item:AddonRow){
+    if(!confirm((item.active?"تعطيل":"تفعيل")+" الإضافة؟"))return;
+    const {error}=await supabase.from("carwash_addons").update({active:!item.active}).eq("id",item.id);
+    if(error){showToast(error.message,"error");return;}
+    void refresh();
+  }
+  async function reprice(item:AddonRow){
+    const input=prompt("السعر الجديد (ر.س):",String(item.price));
+    if(input===null)return;
+    const value=Number(input);
+    if(!Number.isFinite(value)||value<0||Math.abs(Math.round(value*100)-value*100)>0.00001){
+      showToast("السعر الجديد غير صالح.","warning");return;
+    }
+    const {error}=await supabase.from("carwash_addons").update({price:value}).eq("id",item.id);
+    if(error){showToast(error.message,"error");return;}
+    showToast("تغير سعر الإضافة للتسجيلات الجديدة فقط؛ السجلات التاريخية محفوظة.");void refresh();
+  }
+  return <Section title="الخدمات الإضافية وأسعارها" hint="خدمات اختيارية تُضاف إلى أسعار الغسيل الثابتة. الأسعار المعتمدة فقط تظهر للعامل.">
+    <div className="space-y-3">
+      {rows.map(item=><div key={item.id} className="flex flex-wrap justify-between items-center gap-2 border-b py-3">
+        <span className="font-semibold">{item.name} · {formatCurrency(item.price)} · {item.active?"مفعّلة":"موقفة"}</span>
+        <div className="flex gap-2">
+          <button type="button" className="btn-secondary" onClick={()=>void reprice(item)}>تعديل السعر</button>
+          <button type="button" className="btn-secondary" onClick={()=>void toggle(item)}>{item.active?"تعطيل":"تفعيل"}</button>
+        </div>
+      </div>)}
+      <label className="form-label">اسم الإضافة<input type="text" value={name} onChange={e=>setName(e.target.value)} /></label>
+      <label className="form-label">سعر الإضافة (ر.س)<input type="number" min="0" step="0.01" value={price} onChange={e=>setPrice(e.target.value)} /></label>
+      <button className="btn-primary" type="button" disabled={busy} onClick={()=>void add()}>إضافة خدمة إضافية</button>
+    </div>
+  </Section>;
 }
