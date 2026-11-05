@@ -79,6 +79,8 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showTodayModal, setShowTodayModal] = useState(false);
   const [showCrewModal, setShowCrewModal] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
+  const [detailFilter, setDetailFilter] = useState<"all"|"cash"|"card">("all");
   const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
   const [shiftStatus, setShiftStatus] = useState<"open"|"awaiting_owner"|"approved"|null>(null);
   const [deviceId,setDeviceId] = useState<string|null>(null);
@@ -164,6 +166,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   },[activeShiftId]);
 
   const loadMonth = useCallback(async () => {
+    if (!ownerView) { setMonthEntries([]); return; }
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), 1);
     const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -178,7 +181,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         .range(from, to)
     );
     setMonthEntries(data);
-  }, []);
+  }, [ownerView]);
 
   const loadGoal = useCallback(async (currentSettings: AppSettings) => {
     if (!ownerView) { setGoal(null); return; }
@@ -246,7 +249,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       localStorage.setItem("carwash_device_id_v2",staffDevice);
       setDeviceId(staffDevice);
       const cached=localStorage.getItem("carwash_active_shift_v2");
-      if(cached){knownShiftId.current=cached;setActiveShiftId(cached);}
+      if(cached){knownShiftId.current=cached;setActiveShiftId(cached);setShiftStatus("open");}
     }
     async function checkShift() {
       if(!navigator.onLine)return;
@@ -259,7 +262,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       setShiftStatus((data?.status as "open"|"awaiting_owner")||null);
       if(knownShiftId.current!==next){
         knownShiftId.current=next;
-        setTodayEntries([]);setShiftEntries([]);setActiveShiftId(next);
+        setTodayEntries([]);setShiftEntries([]);setActiveShiftId(next);setSelectedEntry(null);
         if(next)localStorage.setItem("carwash_active_shift_v2",next);
         else localStorage.removeItem("carwash_active_shift_v2");
         lastRegisteredShift.current=null;
@@ -381,6 +384,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   // مسار الحفظ الموحّد: يستخدمه النموذج اليدوي والأزرار الجاهزة معاً، فيمر
   // الاثنان بنفس منطق الطابور المحلي عند انقطاع الشبكة.
   async function saveEntry(payload: Record<string, unknown>, successMessage: string): Promise<boolean> {
+    if(deviceSeal==="sealed"&&!ownerView){showToast("أكدت اكتمال تسجيلات جهازك. انتظر اعتماد الوردية الجديدة.","warning");return false;}
     if(!activeShiftId||shiftStatus!=="open"){
       showToast("الوردية غير مفتوحة؛ انتظر اعتماد المدير أو أعد الاتصال.","warning");return false;
     }
@@ -647,6 +651,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }
 
   const dayEntries = selectedDay ? monthEntriesWithPending.filter((e) => toDateKey(new Date(e.occurred_at)) === selectedDay) : [];
+  const visibleDetailEntries = todayEntriesWithPending.filter(e => detailFilter==="all" || (detailFilter==="cash" ? Number(e.cash_paid)>0 : Number(e.card_paid)>0));
 
   const priceSuggestions = suggestionsFor(presets, carType, serviceType);
 
