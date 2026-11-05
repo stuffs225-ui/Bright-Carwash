@@ -29,6 +29,7 @@ function queued():StaffEntry[]{
    payment_method:cash&&card?"مختلط":cash?"كاش":"بطاقة",
    pending:true,ready_at:null,notes:String(p.notes||""),
    customer_phone:p.customer_phone?String(p.customer_phone):null,
+   worker_name:null,
   };
  });
 }
@@ -257,7 +258,7 @@ export function WorkerRegisterTab(){
     <label className="form-label">ملاحظات (اختياري)
      <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} />
     </label>
-    <button type="button" className="btn-add-car w-full" disabled={saving||!device||(!enrolled&&navigator.onLine)}
+    <button type="button" className="btn-add-car w-full" disabled={saving||!device||(!enrolled&&typeof navigator!=="undefined"&&navigator.onLine)}
       onClick={()=>void add()}>{saving?"جارٍ الحفظ":"تسجيل السيارة الآن"}</button>
    </>}
   </section>
