@@ -10,6 +10,8 @@ insert into public.app_members(user_id,role,active) values
  ('11111111-1111-4111-8111-111111111111','worker',true),
  ('22222222-2222-4222-8222-222222222222','manager',true),
  ('33333333-3333-4333-8333-333333333333','owner',true);
+insert into public.carwash_addons(id,name,price,active)
+values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab','تعطير',5,true);
 
 select set_config('qa.shift_id',
  (select id::text from public.carwash_shifts where status='open'),false);
@@ -24,7 +26,7 @@ insert into public.entries(
  car_type,service_type,cash_paid,card_paid,discount_amount,shift_id,device_id,
  client_mutation_id,customer_phone,sms_consent
 ) values (
- 'سيارة صغيرة','غسيل كامل',25,0,10,
+ 'سيارة صغيرة','غسيل كامل',15,0,10,
  current_setting('qa.shift_id')::uuid,
  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
  'carwash-synthetic-1','+966500000004',true
@@ -48,7 +50,40 @@ begin
  exception when others then blocked:=true;
  end;
  if not blocked then raise exception 'Worker could bypass SAR10 discount cap';end if;
-end $$;
+end $;
+
+-- A valid catalog add-on increases the fixed price by SAR 5,
+-- while forged arbitrary worker prices must be rejected server-side.
+insert into public.entries(
+ car_type,service_type,cash_paid,card_paid,discount_amount,
+ shift_id,device_id,client_mutation_id,addon_ids
+) values(
+ 'سيارة صغيرة','غسيل كامل',30,0,0,
+ current_setting('qa.shift_id')::uuid,
+ 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
+ 'carwash-valid-extra','["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab"]'::jsonb
+);
+do $carwash_price_e2e$
+declare blocked boolean:=false; valid_addon_total numeric;
+begin
+ select addon_total into valid_addon_total from public.entries
+  where client_mutation_id='carwash-valid-extra';
+ if valid_addon_total<>5 then raise exception 'Server add-on price incorrect';end if;
+ begin
+  insert into public.entries(
+   car_type,service_type,cash_paid,card_paid,discount_amount,
+   shift_id,device_id,client_mutation_id
+  ) values(
+   'سيارة صغيرة','غسيل كامل',1,0,0,
+   current_setting('qa.shift_id')::uuid,
+   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
+   'carwash-forged-price'
+  );
+ exception when others then blocked:=true;
+ end;
+ if not blocked then raise exception 'Worker bypassed fixed service tariff';end if;
+end
+$carwash_price_e2e$;
 
 reset role;
 insert into storage.objects(bucket_id,name)
@@ -62,7 +97,7 @@ declare blocked boolean:=false;
 begin
  begin
   perform public.submit_carwash_shift_settlement(
-    current_setting('qa.shift_id')::uuid,25,0,current_setting('qa.shift_id')||'/pos.jpg',null);
+    current_setting('qa.shift_id')::uuid,45,0,current_setting('qa.shift_id')||'/pos.jpg',null);
  exception when others then blocked:=true;
  end;
  if not blocked then raise exception 'Manager approved unsealed staff shift';end if;
@@ -79,7 +114,7 @@ do $$
 declare status_out text;
 begin
  status_out := public.submit_carwash_shift_settlement(
-  current_setting('qa.shift_id')::uuid,25,0,current_setting('qa.shift_id')||'/pos.jpg',null
+  current_setting('qa.shift_id')::uuid,45,0,current_setting('qa.shift_id')||'/pos.jpg',null
  );
  if status_out<>'approved' then raise exception 'Expected exact balance approval, got %',status_out;end if;
 end $$;
@@ -110,7 +145,7 @@ insert into public.entries(
  car_type,service_type,cash_paid,card_paid,discount_amount,shift_id,device_id,
  client_mutation_id
 ) values(
- 'سيارة كبيرة','غسيل كامل',25,0,0,
+ 'سيارة كبيرة','غسيل كامل',30,0,0,
  current_setting('qa.shift2')::uuid,
  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
  'carwash-synthetic-2'
@@ -125,7 +160,7 @@ do $$
 declare status_out text;
 begin
  status_out:=public.submit_carwash_shift_settlement(
-  current_setting('qa.shift2')::uuid,20,0,
+  current_setting('qa.shift2')::uuid,25,0,
   current_setting('qa.shift2')||'/pos2.jpg','5 SAR shortage recorded'
  );
  if status_out<>'awaiting_owner' then raise exception 'Expected owner approval route';end if;
