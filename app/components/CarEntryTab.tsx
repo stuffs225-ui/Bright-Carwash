@@ -1005,18 +1005,56 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         </Modal>
       )}
 
+      {showCrewModal && (
+        <Modal title="تفاصيل مخصص عشرات العمال للوردية" onClose={()=>setShowCrewModal(false)}>
+          <p className="txt-muted text-sm mb-3">الأساس: {ownerView?shiftCarCount:workerSummary.cars} سيارة × 10 ريالات = {formatCurrency(ownerView?crewProvision:workerSummary.collectiveTens)} لجميع العمال، وليس لكل عامل.</p>
+          <div className="space-y-2">
+            {todayEntriesWithPending.length===0
+              ? <p className="txt-muted">لا توجد سيارات مسجلة في الوردية الحالية.</p>
+              : todayEntriesWithPending.map((entry,index)=>(
+                <button key={entry.id} type="button" className="w-full flex items-center justify-between text-start border-b py-3"
+                  onClick={()=>setSelectedEntry(entry)}>
+                  <span>#{index+1} · {entry.car_type} · {entry.service_type}
+                    {entry.pending?" · بانتظار المزامنة":""}</span>
+                  <strong>10 ر.س</strong>
+                </button>
+              ))}
+          </div>
+        </Modal>
+      )}
+
+      {selectedEntry && (
+        <Modal title="تفاصيل عملية السيارة" onClose={()=>setSelectedEntry(null)}>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div><p className="txt-muted text-sm">نوع السيارة</p><strong>{selectedEntry.car_type}</strong></div>
+              <div><p className="txt-muted text-sm">الخدمة</p><strong>{selectedEntry.service_type}</strong></div>
+              <div><p className="txt-muted text-sm">تاريخ التسجيل</p><strong>{new Date(selectedEntry.occurred_at).toLocaleString(dateLocale,{timeZone:"Asia/Riyadh"})}</strong></div>
+              <div><p className="txt-muted text-sm">حالة المزامنة</p><strong>{selectedEntry.pending?"بانتظار الرفع":"محفوظة على النظام"}</strong></div>
+              <div><p className="txt-muted text-sm">كاش</p><strong>{formatCurrency(selectedEntry.cash_paid)}</strong></div>
+              <div><p className="txt-muted text-sm">الشبكة</p><strong>{formatCurrency(selectedEntry.card_paid)}</strong></div>
+              <div><p className="txt-muted text-sm">خصم</p><strong>{formatCurrency(selectedEntry.discount_amount||0)}</strong></div>
+              <div><p className="txt-muted text-sm">المحصل فعليًا</p><strong>{formatCurrency(selectedEntry.gross)}</strong></div>
+              <div><p className="txt-muted text-sm">مخصص العمال الجماعي</p><strong>10.00 ر.س</strong></div>
+              <div><p className="txt-muted text-sm">رسالة الجاهزية</p><strong>{selectedEntry.ready_at?"الجاهزية مسجلة":"لم تسجل الجاهزية"}</strong></div>
+            </div>
+            {selectedEntry.notes && <div className="border-t pt-2"><p className="txt-muted text-sm">الملاحظات</p><p>{selectedEntry.notes}</p></div>}
+          </div>
+        </Modal>
+      )}
+
       {showTodayModal && (
-        <Modal title={tt("إدخالات اليوم - {weekday}", { weekday: new Date().toLocaleDateString(dateLocale, { weekday: "long" }) })} onClose={() => setShowTodayModal(false)}>
+        <Modal title={ownerView ? "تفاصيل تسجيلات اليوم" : "تفاصيل الوردية الحالية"} onClose={() => setShowTodayModal(false)}>
           <div className="overflow-x-auto" dir={lang === "en" ? "ltr" : "rtl"}>
             <table className="app-table">
               <thead>
                 <tr><th>{tt("الوقت")}</th><th>{tt("السيارة")}</th><th>{tt("الخدمة")}</th><th>{tt("الدفع")}</th><th>{tt("كاش")}</th><th>{tt("بطاقة")}</th><th>{tt("الإجمالي")}</th><th>{tt("إجراءات")}</th></tr>
               </thead>
               <tbody>
-                {todayEntriesWithPending.length === 0 ? (
-                  <tr><td colSpan={8} className="text-center txt-muted py-5">{tt("لا توجد إدخالات لليوم.")}</td></tr>
+                {visibleDetailEntries.length === 0 ? (
+                  <tr><td colSpan={8} className="text-center txt-muted py-5">لا توجد تسجيلات مطابقة.</td></tr>
                 ) : (
-                  todayEntriesWithPending.map((entry) => (
+                  visibleDetailEntries.map((entry) => (
                     <EntryRow
                       key={entry.id}
                       entry={entry}
