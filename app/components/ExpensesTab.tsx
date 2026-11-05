@@ -12,6 +12,7 @@ import { enqueue } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { riyadhDate, expenseEffectiveTimestamp, lateExpenseMonth } from "@/lib/expenseDates";
 import { MetricCard } from "./MetricCard";
+import { Modal } from "./Modal";
 import { PAYMENT_SOURCES, loadWorkers } from "@/lib/workers";
 import type { Worker } from "@/lib/types";
 
@@ -27,6 +28,7 @@ export function ExpensesTab() {
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showEntries, setShowEntries] = useState(false);
+  const [expenseDetails, setExpenseDetails] = useState<"total"|"count"|"average"|null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [expenseType, setExpenseType] = useState("");
@@ -279,12 +281,14 @@ export function ExpensesTab() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <MetricCard label="إجمالي المصروفات" value={formatCurrency(currentMonth?.total || 0)} tone="red" />
-          <MetricCard label="عدد العمليات" value={currentMonth?.entries.length || 0} tone="indigo" />
+          <MetricCard label="إجمالي المصروفات" value={formatCurrency(currentMonth?.total || 0)} tone="red" onClick={()=>setExpenseDetails("total")} hint="اضغط لعرض تفاصيل المصروفات" />
+          <MetricCard label="عدد العمليات" value={currentMonth?.entries.length || 0} tone="indigo" onClick={()=>setExpenseDetails("count")} hint="عرض القيود وتواريخها" />
           <MetricCard
             label="متوسط المصروف"
             value={formatCurrency(currentMonth && currentMonth.entries.length ? currentMonth.total / currentMonth.entries.length : 0)}
             tone="amber"
+            onClick={()=>setExpenseDetails("average")}
+            hint="كيفية حساب متوسط المصروف وتفاصيل القيود"
           />
         </div>
 
@@ -292,6 +296,25 @@ export function ExpensesTab() {
           {chartData && <Doughnut data={chartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }} />}
         </div>
       </section>
+
+      {expenseDetails && (
+        <Modal title={expenseDetails==="total"?"تفاصيل إجمالي المصروفات":expenseDetails==="count"?"تفاصيل عدد المصروفات":"حساب متوسط المصروف"} onClose={()=>setExpenseDetails(null)}>
+          <p className="font-bold mb-3">
+            {expenseDetails==="average"
+              ? `${formatCurrency(currentMonth?.total||0)} ÷ ${currentMonth?.entries.length||0} مصروف = ${formatCurrency(currentMonth&&currentMonth.entries.length?currentMonth.total/currentMonth.entries.length:0)}`
+              : expenseDetails==="count" ? `${currentMonth?.entries.length||0} مصروف` : formatCurrency(currentMonth?.total||0)}
+          </p>
+          <div className="space-y-2">
+            {(currentMonth?.entries||[]).length===0?<p className="txt-muted">لا توجد مصروفات خلال هذا الشهر.</p>:
+              (currentMonth?.entries||[]).map(exp=>(
+                <div key={exp.id} className="flex justify-between gap-3 border-b py-3">
+                  <span className="text-sm">{new Date(exp.occurred_at).toLocaleDateString("en-GB",{timeZone:"Asia/Riyadh"})} · {exp.expense_type}{exp.notes?" · "+exp.notes:""}</span>
+                  <strong>{formatCurrency(exp.amount)}</strong>
+                </div>
+              ))}
+          </div>
+        </Modal>
+      )}
 
       <section className="card overflow-hidden p-0">
         <button type="button" className={`accordion-button ${showEntries ? "active" : ""}`} onClick={() => setShowEntries((v) => !v)}>
