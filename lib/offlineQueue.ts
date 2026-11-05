@@ -2,7 +2,7 @@
 
 export type QueuedMutation = {
   id: string;
-  table: "entries" | "expenses";
+  table: "entries" | "expenses" | "ready_notice";
   payload: Record<string, unknown>;
   createdAt: string;
   actorId?: string | null;
