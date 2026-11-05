@@ -10,6 +10,7 @@ import { showToast } from "@/lib/toast";
 import type { Expense } from "@/lib/types";
 import { enqueue } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
+import { riyadhDate, expenseEffectiveTimestamp, lateExpenseMonth } from "@/lib/expenseDates";
 import { MetricCard } from "./MetricCard";
 import { PAYMENT_SOURCES, loadWorkers } from "@/lib/workers";
 import type { Worker } from "@/lib/types";
@@ -31,6 +32,7 @@ export function ExpensesTab() {
   const [expenseType, setExpenseType] = useState("");
   const [amount, setAmount] = useState("");
   const [notes, setNotes] = useState("");
+  const [expenseDate, setExpenseDate] = useState(() => riyadhDate());
 
   // ربط مصروف الراتب بدفتر العامل
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -123,18 +125,22 @@ export function ExpensesTab() {
       showToast("يجب أن يكون مبلغ المصروف أكبر من صفر.", "warning");
       return;
     }
+    if (lateExpenseMonth(expenseDate) && notes.trim().length < 5) {
+      showToast("المصروفات المتعلقة بشهر سابق تحتاج شرحًا لا يقل عن 5 أحرف.", "warning");
+      return;
+    }
     if (isSalary && !workerId) {
       showToast("اختر العامل الذي يخصه مصروف الراتب.", "warning");
       return;
     }
     setSubmitting(true);
-    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: new Date().toISOString(), salary_worker_id: isSalary ? workerId : null, salary_payment_source: isSalary ? paymentSource : null, client_mutation_id: crypto.randomUUID() };
+    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: expenseEffectiveTimestamp(expenseDate), client_recorded_at: new Date().toISOString(), salary_worker_id: isSalary ? workerId : null, salary_payment_source: isSalary ? paymentSource : null, client_mutation_id: crypto.randomUUID() };
 
     if (!navigator.onLine) {
       enqueue("expenses", payload);
       setSubmitting(false);
       showToast("لا يوجد اتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
-      setExpenseType(""); setAmount(""); setNotes("");
+      setExpenseType(""); setAmount(""); setNotes(""); setExpenseDate(riyadhDate()); setExpenseDate(riyadhDate());
       return;
     }
 
@@ -155,6 +161,7 @@ export function ExpensesTab() {
     setExpenseType("");
     setAmount("");
     setNotes("");
+    setExpenseDate(riyadhDate());
     setWorkerId("");
     loadExpenses();
   }
@@ -207,6 +214,11 @@ export function ExpensesTab() {
                 ))}
               </select>
             </div>
+          </div>
+          <div>
+            <label className="form-label">التاريخ الذي يخصه المصروف (بتوقيت الرياض)</label>
+            <input type="date" required max={riyadhDate()} value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
+            {lateExpenseMonth(expenseDate) && <p className="txt-warning text-sm mt-2">هذا مصروف يخص شهرًا سابقًا. سيحفظ النظام تاريخ التسجيل الفعلي منفصلًا، ويُلزمك بتوضيح السبب. إذا كان الشهر مقفلًا فستدخل عملية مراجعة الفترات المقفلة قبل اعتماد التقارير.</p>}
           </div>
           <div>
             <label className="form-label">المبلغ (ر.س)</label>
