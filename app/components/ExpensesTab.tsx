@@ -157,7 +157,8 @@ export function ExpensesTab() {
       return;
     }
 
-    // The database trigger creates/updates the linked worker payment atomically.\n    showToast("تم حفظ المصروف بنجاح.");
+    // The database trigger creates/updates the linked worker payment atomically.
+    showToast("تم حفظ المصروف بنجاح.");
     setExpenseType("");
     setAmount("");
     setNotes("");
