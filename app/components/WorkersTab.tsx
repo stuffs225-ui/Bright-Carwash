@@ -22,6 +22,7 @@ export function WorkersTab() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [openWorker, setOpenWorker] = useState<Worker | null>(null);
+  const [workerMetric, setWorkerMetric] = useState<"owed"|"advanced"|"paid"|null>(null);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState<"worker"|"team">("worker");
   const [newHourlyRate, setNewHourlyRate] = useState("0");
@@ -73,10 +74,26 @@ export function WorkersTab() {
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <MetricCard label="مستحق للعمال" value={formatCurrency(totals.owed)} tone="amber" />
-        <MetricCard label="سلف على العمال" value={formatCurrency(totals.advanced)} tone="purple" />
-        <MetricCard label="إجمالي المدفوع" value={formatCurrency(totals.paid)} tone="emerald" />
+        <MetricCard label="مستحق للعمال" value={formatCurrency(totals.owed)} tone="amber" onClick={()=>setWorkerMetric("owed")} hint="كشف حساب أرصدة العمال الدائنة" />
+        <MetricCard label="سلف على العمال" value={formatCurrency(totals.advanced)} tone="purple" onClick={()=>setWorkerMetric("advanced")} hint="تفاصيل سلف العمال" />
+        <MetricCard label="إجمالي المدفوع" value={formatCurrency(totals.paid)} tone="emerald" onClick={()=>setWorkerMetric("paid")} hint="تفاصيل مبالغ دفعت للعمال" />
       </section>
+
+      {workerMetric && (
+        <Modal title={workerMetric==="owed"?"تفاصيل المستحقات":workerMetric==="advanced"?"تفاصيل سلف العمال":"تفاصيل مدفوعات العمال"} onClose={()=>setWorkerMetric(null)}>
+          <p className="font-bold mb-3">{formatCurrency(totals[workerMetric])}</p>
+          <div className="space-y-2">
+            {balances.filter(b=>workerMetric==="owed"?b.balance>0:workerMetric==="advanced"?b.balance<0:b.paid>0)
+              .map(b=>(
+                <button type="button" key={b.worker.id} className="w-full text-start flex justify-between gap-2 border-b py-3 link-inline"
+                  onClick={()=>{setWorkerMetric(null);setOpenWorker(b.worker);}}>
+                  <span>{b.worker.name} · كشف حساب</span>
+                  <strong>{formatCurrency(workerMetric==="owed"?b.balance:workerMetric==="advanced"?-b.balance:b.paid)}</strong>
+                </button>
+              ))}
+          </div>
+        </Modal>
+      )}
 
       <section className="card">
         <h2 className="section-title mb-1">دفتر حساب العمال</h2>
