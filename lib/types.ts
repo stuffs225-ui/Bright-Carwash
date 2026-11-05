@@ -10,6 +10,8 @@ export type Entry = {
   occurred_at: string;
   worker_name: string | null;
   pending?: boolean;
+  shift_id?: string | null;
+  device_id?: string | null;
   discount_amount?: number;
   list_price?: number;
   customer_phone?: string | null;
