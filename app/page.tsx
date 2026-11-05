@@ -17,6 +17,7 @@ import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
 import { ShiftCloseTab } from "./components/ShiftCloseTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
+import { InstallAppButton } from "./components/InstallAppButton";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
@@ -30,7 +31,7 @@ const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[
   { key: "crewbonus", label: "⭐ مكافآت الوردية", allowed: ["owner","manager"] },
   { key: "months", label: "🗓️ اعتماد الشهور", allowed: ["owner"] },
   { key: "settings", label: "⚙ الإعدادات", allowed: ["owner"] },
-  { key: "users", label: "🔐 المستخدمون", allowed: ["owner"] },
+  { key: "users", label: "🔐 المستخدمون", allowed: ["owner","manager"] },
   { key: "alerts", label: "🔔 التنبيهات", allowed: ["owner","manager"] },
   { key: "reconciliation", label: "🧾 تدقيق الترحيل", allowed: ["owner"] },
 ];
@@ -62,6 +63,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           <div className="flex items-center justify-center gap-3 mt-3 text-sm">
             <span>{identity.email}</span>
             <button type="button" className="btn-secondary" onClick={logout}>تسجيل الخروج</button>
+            {identity.role==="worker"&&<InstallAppButton />}
           </div>
         </header>
         <nav className="tabs-bar" aria-label="القائمة الرئيسية">
@@ -78,7 +80,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           {canManage && actualTab === "crewbonus" && <CrewBonusesTab />}
           {isOwner && actualTab === "months" && <AccountingMonthsTab />}
           {isOwner && actualTab === "settings" && <SettingsTab />}
-          {isOwner && actualTab === "users" && <UsersTab />}
+          {canManage && actualTab === "users" && <UsersTab viewerRole={identity.role==="manager"?"manager":"owner"} />}
           {canManage && actualTab === "alerts" && <AlertsTab isOwner={isOwner} />}
           {isOwner && actualTab === "reconciliation" && <ReconciliationTab />}
         </div>
