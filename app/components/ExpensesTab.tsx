@@ -140,7 +140,7 @@ export function ExpensesTab() {
       enqueue("expenses", payload);
       setSubmitting(false);
       showToast("لا يوجد اتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
-      setExpenseType(""); setAmount(""); setNotes(""); setExpenseDate(riyadhDate()); setExpenseDate(riyadhDate());
+      setExpenseType(""); setAmount(""); setNotes(""); setExpenseDate(riyadhDate());
       return;
     }
 
@@ -150,7 +150,7 @@ export function ExpensesTab() {
       if (isNetworkError(error)) {
         enqueue("expenses", payload);
         showToast("تعذر الاتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
-        setExpenseType(""); setAmount(""); setNotes("");
+        setExpenseType(""); setAmount(""); setNotes(""); setExpenseDate(riyadhDate());
         return;
       }
       showToast("خطأ في حفظ المصروف: " + error.message, "error");
