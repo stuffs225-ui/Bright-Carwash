@@ -116,4 +116,18 @@ begin
 end
 $qa_own_date_reset$;
 reset role;
+-- Worker phone must be a single shared active account, not one per employee.
+insert into auth.users(id,phone)
+values('44444444-4444-4444-8444-444444444444','+966500000044');
+do $qa_single_worker_phone$
+declare rejected boolean:=false;
+begin
+ begin
+  insert into public.app_members(user_id,role,active)
+  values('44444444-4444-4444-8444-444444444444','worker',true);
+ exception when unique_violation then rejected:=true;
+ end;
+ if not rejected then raise exception 'Multiple active shared worker phone accounts accepted';end if;
+end
+$qa_single_worker_phone$;
 select 'CALENDAR DAY END-TO-END PASSED' as test_result;
