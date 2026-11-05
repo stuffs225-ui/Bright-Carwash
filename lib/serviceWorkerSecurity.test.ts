@@ -8,7 +8,7 @@ function boot(){
   const caching=vi.fn();
   const mockResponse={ok:true,clone:()=>mockResponse};
   const fetching=vi.fn(async()=>mockResponse);
-  const cache={match:vi.fn(async()=>null),put:caching};
+  const cache={match:vi.fn(async(_key?:unknown):Promise<unknown>=>null),put:caching};
   const caches={
     open:vi.fn(async()=>cache),
     keys:vi.fn(async()=>[]),
