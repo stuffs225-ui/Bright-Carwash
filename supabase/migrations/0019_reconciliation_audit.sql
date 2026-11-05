@@ -343,3 +343,276 @@ begin
 end $$;
 revoke all on function public.approve_carwash_month(text) from public,anon;
 grant execute on function public.approve_carwash_month(text) to authenticated;
+
+
+-- ===============================================================
+-- CARWASH SHIFT SESSION LIFECYCLE (isolated carwash dev only)
+-- A manager-approved settlement creates a fresh staff dashboard.
+-- Financial rows remain immutable audit/history; nothing is deleted.
+-- ===============================================================
+create table if not exists public.carwash_shifts (
+ id uuid primary key default gen_random_uuid(),
+ opened_at timestamptz not null default now(),
+ status text not null default 'open'
+  check(status in ('open','awaiting_owner','approved')),
+ approved_at timestamptz,
+ approved_by uuid references auth.users(id),
+ created_at timestamptz not null default now()
+);
+alter table public.carwash_shifts enable row level security;
+create unique index if not exists carwash_only_one_active_shift
+ on public.carwash_shifts ((true)) where status in ('open','awaiting_owner');
+create policy carwash_staff_read_active_shift on public.carwash_shifts
+ for select to authenticated
+ using(
+  private.current_app_role() in ('owner','manager')
+  or (private.current_app_role()='worker' and status in ('open','awaiting_owner'))
+ );
+grant select on public.carwash_shifts to authenticated;
+create trigger audit_change after insert or update or delete on public.carwash_shifts
+ for each row execute function private.audit_row();
+insert into public.carwash_shifts(status) select 'open'
+ where not exists (select 1 from public.carwash_shifts where status in ('open','awaiting_owner'));
+
+create table if not exists public.carwash_shift_devices (
+ id uuid primary key default gen_random_uuid(),
+ shift_id uuid not null references public.carwash_shifts(id),
+ device_id uuid not null,
+ account_id uuid not null references auth.users(id),
+ registered_at timestamptz not null default now(),
+ last_seen_at timestamptz not null default now(),
+ sealed_at timestamptz,
+ unique(shift_id,device_id)
+);
+alter table public.carwash_shift_devices enable row level security;
+create policy shift_device_management_read on public.carwash_shift_devices
+ for select to authenticated using(
+  private.current_app_role() in ('owner','manager')
+  or (private.current_app_role()='worker' and account_id=(select auth.uid()))
+ );
+grant select on public.carwash_shift_devices to authenticated;
+create trigger audit_change after insert or update or delete on public.carwash_shift_devices
+ for each row execute function private.audit_row();
+
+alter table public.entries
+ add column if not exists shift_id uuid references public.carwash_shifts(id),
+ add column if not exists device_id uuid;
+create index if not exists carwash_entries_shift_idx
+ on public.entries(shift_id,occurred_at desc);
+
+create or replace function private.assign_carwash_shift()
+returns trigger language plpgsql security definer set search_path='' as $$
+declare v_shift uuid; v_role text;
+begin
+ -- Historical source reconciliation remains separate from live shift totals.
+ if new.legacy_ref is not null then return new; end if;
+ v_role := private.current_app_role();
+ if v_role is null then raise exception 'Authorized carwash membership required'; end if;
+ select id into v_shift from public.carwash_shifts where status='open' for share;
+ if v_shift is null then raise exception 'No open shift. Manager/owner approval is pending'; end if;
+ if new.shift_id is not null and new.shift_id <> v_shift
+ then raise exception 'The original offline shift is now closed; do not silently reassign a queued entry'; end if;
+ new.shift_id:=v_shift;
+ if v_role='worker' then
+  if new.device_id is null then raise exception 'Register the staff device before recording a car'; end if;
+  if not exists(
+   select 1 from public.carwash_shift_devices d
+   where d.shift_id=v_shift and d.device_id=new.device_id
+    and d.account_id=(select auth.uid())
+  ) then raise exception 'Unregistered staff device for this shift'; end if;
+  update public.carwash_shift_devices set sealed_at=null,last_seen_at=now()
+   where shift_id=v_shift and device_id=new.device_id;
+ end if;
+ return new;
+end $$;
+revoke all on function private.assign_carwash_shift() from public;
+create trigger carwash_attach_shift_before_entry
+ before insert on public.entries for each row execute function private.assign_carwash_shift();
+
+-- Binding a shift session on each new entry is not optional: offline replays
+-- must never drift into the next shift.
+create or replace function public.register_carwash_device(p_device_id uuid,p_shift_id uuid)
+returns uuid language plpgsql security definer set search_path='' as $$
+declare v_shift uuid;
+begin
+ if private.current_app_role()<>'worker' or (select auth.uid()) is null
+ then raise exception 'Worker account required'; end if;
+ if p_device_id is null or p_shift_id is null then raise exception 'Device and shift required'; end if;
+ select id into v_shift from public.carwash_shifts
+  where id=p_shift_id and status='open' for share;
+ if v_shift is null then raise exception 'Shift not open'; end if;
+ insert into public.carwash_shift_devices(shift_id,device_id,account_id)
+ values(v_shift,p_device_id,(select auth.uid()))
+ on conflict(shift_id,device_id) do update
+  set last_seen_at=now(),sealed_at=null
+  where public.carwash_shift_devices.account_id=(select auth.uid());
+ return v_shift;
+end $$;
+revoke all on function public.register_carwash_device(uuid,uuid) from public,anon;
+grant execute on function public.register_carwash_device(uuid,uuid) to authenticated;
+
+create or replace function public.seal_carwash_device(p_device_id uuid,p_shift_id uuid)
+returns boolean language plpgsql security definer set search_path='' as $$
+declare v_shift uuid;
+begin
+ if private.current_app_role()<>'worker' or (select auth.uid()) is null
+ then raise exception 'Worker account required'; end if;
+ select id into v_shift from public.carwash_shifts
+ where id=p_shift_id and status='open' for share;
+ if v_shift is null then raise exception 'No open shift to seal'; end if;
+ update public.carwash_shift_devices
+ set sealed_at=now(),last_seen_at=now()
+ where shift_id=v_shift and device_id=p_device_id
+ and account_id=(select auth.uid());
+ if not found then raise exception 'Device is not registered'; end if;
+ return true;
+end $$;
+revoke all on function public.seal_carwash_device(uuid,uuid) from public,anon;
+grant execute on function public.seal_carwash_device(uuid,uuid) to authenticated;
+
+-- Sensitive POS statement and physical cash totals are manager/owner-only.
+create table if not exists public.carwash_shift_settlements (
+ id uuid primary key default gen_random_uuid(),
+ shift_id uuid not null unique references public.carwash_shifts(id),
+ recorded_cash numeric(12,2) not null check(recorded_cash>=0),
+ recorded_card numeric(12,2) not null check(recorded_card>=0),
+ actual_cash numeric(12,2) not null check(actual_cash>=0),
+ terminal_card numeric(12,2) not null check(terminal_card>=0),
+ cash_difference numeric(12,2) not null,
+ card_difference numeric(12,2) not null,
+ cars integer not null check(cars>=0),
+ crew_provision numeric(12,2) not null check(crew_provision>=0),
+ report_object_path text not null check(length(trim(report_object_path))>0),
+ difference_reason text,
+ manager_id uuid not null references auth.users(id),
+ manager_reviewed_at timestamptz not null default now(),
+ variance_approved_by uuid references auth.users(id),
+ variance_approved_at timestamptz,
+ constraint difference_reason_if_needed check(
+  (cash_difference=0 and card_difference=0)
+  or length(trim(coalesce(difference_reason,'')))>=5
+ )
+);
+alter table public.carwash_shift_settlements enable row level security;
+create policy manager_read_shift_settlements on public.carwash_shift_settlements
+ for select to authenticated using(private.current_app_role() in ('owner','manager'));
+grant select on public.carwash_shift_settlements to authenticated;
+create trigger audit_change after insert or update or delete on public.carwash_shift_settlements
+ for each row execute function private.audit_row();
+
+-- Private photo evidence bucket (server must confirm object existence).
+insert into storage.buckets(id,name,public)
+ values('carwash-pos-evidence','carwash-pos-evidence',false)
+ on conflict(id) do nothing;
+create policy carwash_pos_storage_read on storage.objects
+ for select to authenticated using(
+  bucket_id='carwash-pos-evidence'
+  and private.current_app_role() in ('manager','owner')
+ );
+create policy carwash_pos_storage_insert on storage.objects
+ for insert to authenticated with check(
+  bucket_id='carwash-pos-evidence'
+  and private.current_app_role() in ('manager','owner')
+ );
+create policy carwash_pos_storage_update on storage.objects
+ for update to authenticated using(
+  bucket_id='carwash-pos-evidence'
+  and private.current_app_role() in ('manager','owner')
+ ) with check(
+  bucket_id='carwash-pos-evidence'
+  and private.current_app_role() in ('manager','owner')
+ );
+
+create or replace function public.submit_carwash_shift_settlement(
+ p_shift_id uuid,p_actual_cash numeric,p_terminal_card numeric,
+ p_report_path text,p_reason text default null
+)
+returns text language plpgsql security definer set search_path='' as $$
+declare
+ v_shift public.carwash_shifts%rowtype;
+ v_cash numeric; v_card numeric; v_count integer;
+ v_cash_diff numeric; v_card_diff numeric; v_device_count integer;
+begin
+ if private.current_app_role() not in ('owner','manager') or (select auth.uid()) is null
+ then raise exception 'Carwash manager account required'; end if;
+ if p_actual_cash is null or p_terminal_card is null
+ or p_actual_cash < 0 or p_terminal_card < 0 then
+  raise exception 'Physical cash and POS total must be nonnegative'; end if;
+ select * into v_shift from public.carwash_shifts
+  where id=p_shift_id for update;
+ if not found or v_shift.status<>'open' then raise exception 'Shift not open'; end if;
+
+ select count(*) into v_device_count from public.carwash_shift_devices
+  where shift_id=p_shift_id;
+ if v_device_count=0 or exists(
+  select 1 from public.carwash_shift_devices
+  where shift_id=p_shift_id and sealed_at is null
+ ) then raise exception 'Every registered staff device must synchronize and seal before close'; end if;
+
+ if p_report_path is null
+ or p_report_path not like p_shift_id::text||'/%'
+ or not exists(
+  select 1 from storage.objects where bucket_id='carwash-pos-evidence'
+    and name=p_report_path
+ ) then raise exception 'Verified POS statement attachment required'; end if;
+
+ select coalesce(sum(cash_paid),0),coalesce(sum(card_paid),0),count(*)::integer
+  into v_cash,v_card,v_count from public.entries
+  where shift_id=p_shift_id and deleted_at is null;
+ v_cash_diff:=p_actual_cash-v_cash;
+ v_card_diff:=p_terminal_card-v_card;
+ if (v_cash_diff<>0 or v_card_diff<>0)
+ and length(trim(coalesce(p_reason,'')))<5 then
+  raise exception 'Write a reason for each imbalance before sending to owner'; end if;
+
+ insert into public.carwash_shift_settlements(
+  shift_id,recorded_cash,recorded_card,actual_cash,terminal_card,
+  cash_difference,card_difference,cars,crew_provision,
+  report_object_path,difference_reason,manager_id
+ ) values(
+  p_shift_id,v_cash,v_card,p_actual_cash,p_terminal_card,
+  v_cash_diff,v_card_diff,v_count,v_count*10,
+  p_report_path,nullif(trim(coalesce(p_reason,'')),''),(select auth.uid())
+ );
+
+ if v_cash_diff<>0 or v_card_diff<>0 then
+  update public.carwash_shifts set status='awaiting_owner' where id=p_shift_id;
+  return 'awaiting_owner';
+ end if;
+
+ update public.carwash_shifts set status='approved',
+  approved_at=now(),approved_by=(select auth.uid()) where id=p_shift_id;
+ insert into public.carwash_shifts(status) values('open');
+ return 'approved';
+end $$;
+revoke all on function public.submit_carwash_shift_settlement(uuid,numeric,numeric,text,text) from public,anon;
+grant execute on function public.submit_carwash_shift_settlement(uuid,numeric,numeric,text,text) to authenticated;
+
+create or replace function public.approve_carwash_shift_variance(
+ p_shift_id uuid
+)
+returns boolean language plpgsql security definer set search_path='' as $$
+declare v_shift public.carwash_shifts%rowtype;
+begin
+ if private.current_app_role()<>'owner' or (select auth.uid()) is null
+ then raise exception 'Owner account required to approve POS/cash variance'; end if;
+ select * into v_shift from public.carwash_shifts
+ where id=p_shift_id for update;
+ if not found or v_shift.status<>'awaiting_owner'
+ then raise exception 'No pending difference for shift'; end if;
+ update public.carwash_shift_settlements set
+ variance_approved_by=(select auth.uid()),variance_approved_at=now()
+ where shift_id=p_shift_id;
+ update public.carwash_shifts set status='approved',
+  approved_at=now(),approved_by=(select auth.uid()) where id=p_shift_id;
+ insert into public.carwash_shifts(status) values('open');
+ return true;
+end $$;
+revoke all on function public.approve_carwash_shift_variance(uuid) from public,anon;
+grant execute on function public.approve_carwash_shift_variance(uuid) to authenticated;
+
+-- No direct authenticated table mutation of sessions, device seals or
+-- financial settlements: user writes happen only through guarded RPCs.
+revoke insert,update,delete on public.carwash_shifts from anon,authenticated;
+revoke insert,update,delete on public.carwash_shift_devices from anon,authenticated;
+revoke insert,update,delete on public.carwash_shift_settlements from anon,authenticated;
