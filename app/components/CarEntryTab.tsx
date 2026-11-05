@@ -23,6 +23,8 @@ import { loadPresets, suggestionsFor } from "@/lib/presets";
 import { BREAKEVEN_WINDOW_DAYS, computeBreakEven, type BreakEven } from "@/lib/breakeven";
 import { getLang, setLang as persistLang, t, type Lang } from "@/lib/i18n";
 import { crewProvisionForCarCount } from "@/lib/carwashCompensation";
+import { workerShiftSummary } from "@/lib/workerShiftSummary";
+import { queueLength } from "@/lib/offlineQueue";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 import { PresetGrid } from "./PresetGrid";
@@ -49,6 +51,7 @@ function pendingEntriesFromQueue(): Entry[] {
       customer_phone: p.customer_phone ? String(p.customer_phone) : null,
       discount_amount: Number(p.discount_amount) || 0,
       ready_at: null,
+      shift_id: p.shift_id ? String(p.shift_id) : null,
       pending: true,
     };
   });
@@ -75,6 +78,13 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [showMonthly, setShowMonthly] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [showTodayModal, setShowTodayModal] = useState(false);
+  const [showCrewModal, setShowCrewModal] = useState(false);
+  const [activeShiftId, setActiveShiftId] = useState<string | null>(null);
+  const [shiftStatus, setShiftStatus] = useState<"open"|"awaiting_owner"|"approved"|null>(null);
+  const [deviceId,setDeviceId] = useState<string|null>(null);
+  const lastRegisteredShift = useRef<string|null>(null);
+  const [deviceSeal,setDeviceSeal] = useState<"unsealed"|"sealed"|"sealing">("unsealed");
+  const [shiftError,setShiftError] = useState("");
 
   const [carType, setCarType] = useState("");
   const [serviceType, setServiceType] = useState("");
@@ -124,27 +134,33 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }, []);
 
   const loadToday = useCallback(async () => {
+    if (!ownerView) {
+      if (!activeShiftId) { setTodayEntries([]); return; }
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      const rows = await fetchAllRows<Entry>((from,to)=>
+        supabase.from("entries").select("*").is("deleted_at",null)
+          .eq("shift_id",activeShiftId).order("occurred_at",{ascending:false}).range(from,to)
+      );
+      setTodayEntries(rows);
+      return;
+    }
     const { start, end } = getDayBounds(new Date());
-    const { data } = await supabase
-      .from("entries")
-      .select("*")
-      .is("deleted_at", null)
-      .gte("occurred_at", start.toISOString())
-      .lt("occurred_at", end.toISOString())
-      .order("occurred_at", { ascending: false });
-    setTodayEntries((data as Entry[]) || []);
-  }, []);
+    const { data, error } = await supabase.from("entries")
+      .select("*").is("deleted_at",null)
+      .gte("occurred_at",start.toISOString()).lt("occurred_at",end.toISOString())
+      .order("occurred_at",{ascending:false});
+    if (!error) setTodayEntries((data as Entry[])||[]);
+  },[ownerView,activeShiftId]);
 
   const loadShift = useCallback(async () => {
-    const { start, end } = getOperationalShiftBounds(new Date());
-    const rows = await fetchAllRows<Entry>((from, to) =>
-      supabase.from("entries").select("*").is("deleted_at", null)
-        .gte("occurred_at", start.toISOString())
-        .lt("occurred_at", end.toISOString())
-        .order("occurred_at", { ascending: false }).range(from, to)
+    if (!activeShiftId) { setShiftEntries([]); return; }
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    const rows=await fetchAllRows<Entry>((from,to)=>
+      supabase.from("entries").select("*").is("deleted_at",null)
+        .eq("shift_id",activeShiftId).order("occurred_at",{ascending:false}).range(from,to)
     );
     setShiftEntries(rows);
-  }, []);
+  },[activeShiftId]);
 
   const loadMonth = useCallback(async () => {
     const now = new Date();
@@ -164,6 +180,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }, []);
 
   const loadGoal = useCallback(async (currentSettings: AppSettings) => {
+    if (!ownerView) { setGoal(null); return; }
     const since = new Date();
     since.setDate(since.getDate() - BREAKEVEN_WINDOW_DAYS);
     const sinceIso = since.toISOString();
@@ -187,7 +204,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
       windowDays: BREAKEVEN_WINDOW_DAYS,
       manualDailyTarget: currentSettings.daily_expense_target,
     }));
-  }, []);
+  }, [ownerView]);
 
   const refreshAll = useCallback((currentSettings: AppSettings) => {
     loadToday();
@@ -218,13 +235,20 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }, []);
 
   const todayEntriesWithPending = useMemo(() => {
+    if (!ownerView) {
+      if (!activeShiftId) return [];
+      return [
+        ...pendingEntries.filter(e=>e.shift_id===activeShiftId),
+        ...todayEntries.filter(e=>e.shift_id===activeShiftId),
+      ];
+    }
     const { start, end } = getDayBounds(new Date());
     const relevant = pendingEntries.filter((e) => {
       const t = new Date(e.occurred_at);
       return t >= start && t < end;
     });
     return [...relevant, ...todayEntries];
-  }, [todayEntries, pendingEntries]);
+  }, [todayEntries,pendingEntries,ownerView,activeShiftId]);
 
   const monthEntriesWithPending = useMemo(() => {
     const now = new Date();
@@ -243,14 +267,14 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     return { count: todayEntriesWithPending.length, cash, card, total: cash + card };
   }, [todayEntriesWithPending]);
 
-  const shiftCarCount = useMemo(() => {
-    const { start, end } = getOperationalShiftBounds(new Date());
-    const unsynced = pendingEntries.filter(e => {
-      const t = new Date(e.occurred_at);
-      return t >= start && t < end;
-    });
-    return shiftEntries.length + unsynced.length;
-  }, [shiftEntries, pendingEntries]);
+  const shiftCarCount = useMemo(()=>
+    shiftEntries.filter(e=>e.shift_id===activeShiftId).length
+    + pendingEntries.filter(e=>e.shift_id===activeShiftId).length,
+    [shiftEntries,pendingEntries,activeShiftId]);
+  const workerSummary = useMemo(
+    ()=>workerShiftSummary(todayEntriesWithPending,activeShiftId),
+    [todayEntriesWithPending,activeShiftId]
+  );
 
   const crewProvision = useMemo(() => crewProvisionForCarCount(shiftCarCount), [shiftCarCount]);
 
