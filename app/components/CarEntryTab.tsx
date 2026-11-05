@@ -83,6 +83,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [shiftStatus, setShiftStatus] = useState<"open"|"awaiting_owner"|"approved"|null>(null);
   const [deviceId,setDeviceId] = useState<string|null>(null);
   const lastRegisteredShift = useRef<string|null>(null);
+  const knownShiftId = useRef<string|null>(null);
   const [deviceSeal,setDeviceSeal] = useState<"unsealed"|"sealed"|"sealing">("unsealed");
   const [shiftError,setShiftError] = useState("");
 
@@ -233,6 +234,78 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Each signed-in device gets the current server shift. Once manager approves,
+  // the active shift changes and worker totals reset without deleting history.
+  useEffect(() => {
+    let cancelled=false;
+    let staffDevice: string|null=null;
+    if (!ownerView) {
+      const raw=localStorage.getItem("carwash_device_id_v2");
+      staffDevice=raw && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(raw) ? raw : crypto.randomUUID();
+      localStorage.setItem("carwash_device_id_v2",staffDevice);
+      setDeviceId(staffDevice);
+      const cached=localStorage.getItem("carwash_active_shift_v2");
+      if(cached){knownShiftId.current=cached;setActiveShiftId(cached);}
+    }
+    async function checkShift() {
+      if(!navigator.onLine)return;
+      const {data,error}=await supabase.from("carwash_shifts")
+        .select("id,status").in("status",["open","awaiting_owner"])
+        .order("opened_at",{ascending:false}).limit(1).maybeSingle();
+      if(cancelled)return;
+      if(error){setShiftError("تعذر التحقق من الوردية: "+error.message);return;}
+      const next=data?.id||null;
+      setShiftStatus((data?.status as "open"|"awaiting_owner")||null);
+      if(knownShiftId.current!==next){
+        knownShiftId.current=next;
+        setTodayEntries([]);setShiftEntries([]);setActiveShiftId(next);
+        if(next)localStorage.setItem("carwash_active_shift_v2",next);
+        else localStorage.removeItem("carwash_active_shift_v2");
+        lastRegisteredShift.current=null;
+        setDeviceSeal("unsealed");
+      }
+      if(!ownerView && next && data?.status==="open" && staffDevice &&
+        lastRegisteredShift.current!==next){
+        const result=await supabase.rpc("register_carwash_device",
+          {p_device_id:staffDevice,p_shift_id:next});
+        if(cancelled)return;
+        if(result.error)setShiftError("تعذر تسجيل الجهاز: "+result.error.message);
+        else {lastRegisteredShift.current=next;setShiftError("");}
+      }else setShiftError("");
+    }
+    void checkShift();
+    const timer=setInterval(()=>void checkShift(),12000);
+    const onResume=()=>{if(!document.hidden)void checkShift();};
+    const onOnline=()=>void checkShift();
+    window.addEventListener("online",onOnline);
+    document.addEventListener("visibilitychange",onResume);
+    return()=>{cancelled=true;clearInterval(timer);
+      window.removeEventListener("online",onOnline);
+      document.removeEventListener("visibilitychange",onResume);
+    };
+  },[ownerView]);
+
+  useEffect(()=>{
+    void loadToday();void loadShift();
+    const timer=setInterval(()=>{if(navigator.onLine){void loadToday();void loadShift();}},12000);
+    return()=>clearInterval(timer);
+  },[loadToday,loadShift]);
+
+  async function sealStaffDevice(){
+    if(!activeShiftId||!deviceId||shiftStatus!=="open"){
+      showToast("لا توجد وردية مفتوحة لتأكيدها.","warning");return;
+    }
+    if(!navigator.onLine||queueLength()>0){
+      showToast("زامن جميع التسجيلات أولًا؛ لا يمكن تأكيد جهاز عليه عمليات معلقة.","warning");return;
+    }
+    if(!confirm("تأكيد اكتمال تسجيلات هذا الجهاز؟ لا يستطيع المدير اعتماد الموازنة إلا بعد تأكيد جميع الأجهزة."))return;
+    setDeviceSeal("sealing");
+    const {error}=await supabase.rpc("seal_carwash_device",
+      {p_device_id:deviceId,p_shift_id:activeShiftId});
+    if(error){setDeviceSeal("unsealed");showToast(error.message,"error");return;}
+    setDeviceSeal("sealed");showToast("تم تأكيد مزامنة الجهاز؛ يمكن للمدير مراجعة الموازنة.");
+  }
 
   const todayEntriesWithPending = useMemo(() => {
     if (!ownerView) {
