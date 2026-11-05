@@ -276,6 +276,15 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         if(result.error)setShiftError("تعذر تسجيل الجهاز: "+result.error.message);
         else {lastRegisteredShift.current=next;setShiftError("");}
       }else setShiftError("");
+      // A sealed device stays sealed on page refresh; merely checking in
+      // must not allow new arrivals or unblock manager settlement incorrectly.
+      if(!ownerView && next && staffDevice && data?.status==="open"){
+        const checked=await supabase.from("carwash_shift_devices")
+          .select("sealed_at").eq("shift_id",next)
+          .eq("device_id",staffDevice).maybeSingle();
+        if(!cancelled && !checked.error && checked.data?.sealed_at)
+          setDeviceSeal("sealed");
+      }
     }
     void checkShift();
     const timer=setInterval(()=>void checkShift(),12000);
