@@ -120,7 +120,7 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
               <form onSubmit={verifyCode} className="space-y-4">
                 <p className="txt-muted">أرسلنا رمز تحقق إلى {verifiedPhone}</p>
                 <label className="block">رمز التحقق
-                  <input className="w-full" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otp} onChange={e => setOtp(e.target.value.replace(/\\D/g, "").slice(0,6))} placeholder="000000" />
+                  <input className="w-full" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={otp} onChange={e => setOtp(e.target.value.replace(/\D/g, "").slice(0,6))} placeholder="000000" />
                 </label>
                 <button className="btn-primary w-full" disabled={submitting} type="submit">{submitting ? "جارٍ التحقق..." : "دخول"}</button>
                 <button type="button" className="btn-secondary w-full" onClick={() => { setStage("phone"); setOtp(""); setError(""); }}>تغيير الرقم أو إعادة إرسال الرمز</button>
