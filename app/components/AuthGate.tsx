@@ -24,6 +24,21 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     setLoading(true);
     setError("");
     const { data, error: authError } = await supabase.auth.getUser();
+    if ((authError || !data.user) && typeof navigator!=="undefined" && !navigator.onLine) {
+      // Offline worker access is UI-only using a previously server-verified
+      // identity AND a local Supabase auth session. Never unlock management.
+      const cached=localStorage.getItem("carwash_verified_worker_v2");
+      const {data:sessionData}=await supabase.auth.getSession();
+      try {
+        const value=cached?JSON.parse(cached):null;
+        if(sessionData.session?.user.id===value?.userId && value?.role==="worker"
+          && Date.now()-Number(value?.verifiedAt)<14*24*3600*1000) {
+          setOfflineActor(value.userId);
+          setIdentity({userId:value.userId,email:"حساب العمال — وضع دون إنترنت",role:"worker"});
+          setNeedsAccess(false);setLoading(false);return;
+        }
+      }catch{}
+    }
     if (authError || !data.user) {
       setOfflineActor(null);
       setIdentity(null);
@@ -43,6 +58,11 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     const role = member?.active && ["owner", "manager", "worker"].includes(member.role)
       ? member.role as AppRole : null;
     setOfflineActor(role ? data.user.id : null);
+    if(role==="worker"){
+      localStorage.setItem("carwash_verified_worker_v2",JSON.stringify({
+        userId:data.user.id,role:"worker",verifiedAt:Date.now(),
+      }));
+    }else localStorage.removeItem("carwash_verified_worker_v2");
     setIdentity(role ? { userId: data.user.id, email: data.user.phone || data.user.email || "", role } : null);
     setNeedsAccess(!role);
     setLoading(false);
@@ -89,6 +109,7 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
       return;
     }
     await supabase.auth.signOut({ scope: "local" });
+    localStorage.removeItem("carwash_verified_worker_v2");
     setIdentity(null);
     setNeedsAccess(false);
     setStage("phone"); setOtp("");
