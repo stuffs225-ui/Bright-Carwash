@@ -21,7 +21,7 @@ function boot(){
     clients:{claim:()=>{}},
   };
   runInNewContext(source,{self,caches,fetch:fetching,URL});
-  return {listeners,caching,fetching};
+  return {listeners,caching,fetching,cache};
 }
 function request(url:string,destination="document",headers=new Headers()){
   return {url,method:"GET",destination,headers};
@@ -40,6 +40,26 @@ describe("Carwash worker service worker private data isolation",()=>{
     expect(respondWith).not.toHaveBeenCalled();
     expect(caching).not.toHaveBeenCalled();
     expect(fetching).not.toHaveBeenCalled();
+  });
+  it("uses network-first navigation for / without ever caching private HTML",async()=>{
+    const {listeners,caching,fetching}=boot();
+    const respondWith=vi.fn();
+    listeners.get("fetch")?.({request:{...request("https://carwash.example/"),mode:"navigate"},respondWith});
+    expect(respondWith).toHaveBeenCalledTimes(1);
+    await respondWith.mock.calls[0][0];
+    expect(fetching).toHaveBeenCalledTimes(1);
+    expect(caching).not.toHaveBeenCalled();
+  });
+  it("falls back ONLY to reviewed public offline.html if home network request fails",async()=>{
+    const {listeners,cache,fetching,caching}=boot();
+    fetching.mockRejectedValueOnce(Error("network disconnected"));
+    const offline={status:200,body:"reviewed public offline HTML"};
+    cache.match.mockResolvedValueOnce(offline);
+    const respondWith=vi.fn();
+    listeners.get("fetch")?.({request:{...request("https://carwash.example/"),mode:"navigate"},respondWith});
+    expect(await respondWith.mock.calls[0][0]).toBe(offline);
+    expect(caching).not.toHaveBeenCalled();
+    expect(cache.match).toHaveBeenCalledWith("/offline.html");
   });
   it("does cache a public static hashed JS asset",async()=>{
     const {listeners,caching}=boot();
