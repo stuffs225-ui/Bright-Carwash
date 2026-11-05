@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getQueue, removeFromQueue } from "./offlineQueue";
+import { readyNoticeRpcParams } from "./readyNoticeParams";
 
 // Network failures must never cause silent deletion of locally captured jobs.
 export function isNetworkError(error: { code?: string } | null | undefined): boolean {
@@ -24,7 +25,7 @@ export async function flushOfflineQueue() {
         break;
       }
       const { error } = item.table === "ready_notice"
-        ? await supabase.rpc("request_ready_notice", item.payload as { p_entry_id?: string; p_client_mutation_id?: string })
+        ? await supabase.rpc("request_ready_notice", readyNoticeRpcParams(item.payload))
         : await supabase.from(item.table).insert(item.payload);
       if (!error) {
         removeFromQueue(item.id);
