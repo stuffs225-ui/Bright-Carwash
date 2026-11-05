@@ -16,6 +16,7 @@ import {
 import { showToast } from "@/lib/toast";
 import type { Entry, EntryPreset } from "@/lib/types";
 import { enqueue, getQueueByTable } from "@/lib/offlineQueue";
+import { normalizeSaudiMobile } from "@/lib/phone";
 import { isNetworkError } from "@/lib/offlineSync";
 import { DEFAULT_SETTINGS, loadSettings, type AppSettings } from "@/lib/settings";
 import { loadPresets, suggestionsFor } from "@/lib/presets";
@@ -78,6 +79,10 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   const [cashPaid, setCashPaid] = useState("");
   const [cardPaid, setCardPaid] = useState("");
   const [notes, setNotes] = useState("");
+  const [discountAmount, setDiscountAmount] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [readyBusy, setReadyBusy] = useState<string | null>(null);
 
   const [presets, setPresets] = useState<EntryPreset[]>([]);
   const [goal, setGoal] = useState<BreakEven | null>(null);
@@ -268,6 +273,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     setCashPaid("");
     setCardPaid("");
     setNotes("");
+    setDiscountAmount("");
+    setCustomerPhone("");
+    setSmsConsent(false);
   }
 
   // مسار الحفظ الموحّد: يستخدمه النموذج اليدوي والأزرار الجاهزة معاً، فيمر
@@ -303,6 +311,20 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     e.preventDefault();
     const cash = Number(cashPaid) || 0;
     const card = Number(cardPaid) || 0;
+    const discount = Number(discountAmount) || 0;
+    const normalizedPhone = customerPhone.trim() ? normalizeSaudiMobile(customerPhone) : null;
+    if (!Number.isFinite(discount) || discount < 0 || (!ownerView && discount > 10)) {
+      showToast("الحد الأقصى لخصم حساب العمال هو 10 ريالات لكل سيارة.", "warning");
+      return;
+    }
+    if (customerPhone.trim() && !normalizedPhone) {
+      showToast("رقم جوال العميل غير صحيح؛ أصلحه أو اتركه فارغًا.", "warning");
+      return;
+    }
+    if (normalizedPhone && !smsConsent) {
+      showToast("احصل على موافقة العميل على رسالة الجاهزية أو احذف رقم الجوال.", "warning");
+      return;
+    }
     if (!carType || !serviceType) {
       showToast(tt("يرجى اختيار نوع السيارة ونوع الخدمة."), "warning");
       return;
@@ -322,6 +344,9 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         service_type: serviceType,
         cash_paid: cash,
         card_paid: card,
+        discount_amount: discount,
+        customer_phone: normalizedPhone,
+        sms_consent: !!normalizedPhone && smsConsent,
         notes: notes || null,
         worker_name: ownerView ? performer || null : null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
@@ -333,24 +358,39 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
   }
 
   async function handlePresetPick(preset: EntryPreset, method: "cash" | "card") {
+    const discount = Number(discountAmount) || 0;
+    const normalizedPhone = customerPhone.trim() ? normalizeSaudiMobile(customerPhone) : null;
+    if (!Number.isFinite(discount) || discount < 0 || (!ownerView && discount > 10) || discount >= preset.amount) {
+      showToast("الخصم يتجاوز السعر أو الحد المسموح.", "warning");
+      return;
+    }
+    if ((customerPhone.trim() && !normalizedPhone) || (normalizedPhone && !smsConsent)) {
+      showToast("راجع رقم جوال العميل والموافقة على رسالة الجاهزية.", "warning");
+      return;
+    }
     if (entryDay === "custom" && !customDate) {
       showToast(tt("اختر التاريخ أولاً."), "warning");
       return;
     }
     setSubmitting(true);
-    await saveEntry(
+    const net = Number((preset.amount - discount).toFixed(2));
+    const saved = await saveEntry(
       {
         car_type: preset.car_type,
         service_type: preset.service_type,
-        cash_paid: method === "cash" ? preset.amount : 0,
-        card_paid: method === "card" ? preset.amount : 0,
+        cash_paid: method === "cash" ? net : 0,
+        card_paid: method === "card" ? net : 0,
+        discount_amount: discount,
+        customer_phone: normalizedPhone,
+        sms_consent: !!normalizedPhone && smsConsent,
         notes: null,
         worker_name: performer || null,
         occurred_at: resolveOccurredAt(entryDay, customDate),
       },
-      `${tt("تم تسجيل")} ${preset.car_type} · ${formatCurrency(preset.amount)}`
+      `${tt("تم تسجيل")} ${preset.car_type} · ${formatCurrency(net)}`
     );
     setSubmitting(false);
+    if (saved) clearForm();
   }
 
   function updateBulkRow(index: number, patch: Partial<BulkRow>) {
@@ -502,6 +542,18 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         )}
       </section>}
 
+      <section className="card">
+        <h2 className="section-title">رقم العميل لإشعار الجاهزية — اختياري</h2>
+        <input type="tel" inputMode="tel" placeholder="05XXXXXXXX" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
+        {customerPhone.trim() && (
+          <label className="flex items-center gap-2 mt-3 text-sm">
+            <input type="checkbox" checked={smsConsent} onChange={e => setSmsConsent(e.target.checked)} />
+            وافق العميل على استلام رسالة واحدة عند جاهزية السيارة.
+          </label>
+        )}
+        <p className="txt-muted text-sm mt-2">الرقم لإشعار الجاهزية فقط. لن تُرسل رسالة فعلية قبل تفعيل مزود SMS.</p>
+      </section>
+
       {!bulkMode && presets.length > 0 && (
         <section className="card">
           <h2 className="section-title">{tt("تسجيل سريع")}</h2>
@@ -570,11 +622,11 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
             )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="form-label">{tt("كاش")}</label>
+                <label className="form-label">{tt("الكاش المحصل عند الوصول")}</label>
                 <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cashPaid} onChange={(e) => setCashPaid(e.target.value)} />
               </div>
               <div>
-                <label className="form-label">{tt("بطاقة")}</label>
+                <label className="form-label">{tt("الشبكة المحصلة عند الوصول")}</label>
                 <input type="number" min="0" step="0.01" inputMode="decimal" placeholder="0.00" value={cardPaid} onChange={(e) => setCardPaid(e.target.value)} />
               </div>
             </div>
@@ -585,6 +637,11 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                 {performers.map(name => <option key={name} value={name}>{name}</option>)}
               </select>
             </div>}
+            <div>
+              <label className="form-label">الخصم (ر.س) — الحد للعامل 10 ريالات</label>
+              <input type="number" min="0" max={ownerView ? undefined : 10} step="0.01" inputMode="decimal" value={discountAmount} onChange={e => setDiscountAmount(e.target.value)} placeholder="0.00" />
+              <p className="txt-muted text-sm mt-1">السعر قبل الخصم = الكاش + الشبكة + الخصم؛ ادخل المبلغ المحصل فعليًا.</p>
+            </div>
             <div>
               <label className="form-label">{tt("ملاحظات")}</label>
               <input type="text" placeholder={tt("أي تفاصيل إضافية...")} value={notes} onChange={(e) => setNotes(e.target.value)} />
