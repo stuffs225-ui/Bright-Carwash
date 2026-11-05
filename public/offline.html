@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#1d4ed8">
+  <title>المغسلة — التسجيل دون إنترنت</title>
+  <style>
+    *{box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:#0b1220;color:#f1f5f9;padding:16px;margin:0}
+    main{max-width:580px;margin:0 auto}
+    section{padding:18px;margin:14px 0;border:1px solid #334155;border-radius:16px;background:#182237}
+    h1{font-size:1.45rem;margin:6px 0}
+    h2{font-size:1.1rem;margin:0 0 12px}
+    p{line-height:1.7;color:#cbd5e1}
+    label{display:block;margin:12px 0;font-weight:650}
+    input,select{display:block;width:100%;padding:14px 12px;margin-top:6px;font-size:1.05rem;
+      background:#0f1c30;color:#f8fafc;border:1px solid #475569;border-radius:12px}
+    input[type=checkbox]{display:inline;width:20px;vertical-align:middle}
+    button{font-size:1.05rem;padding:14px;border-radius:12px;border:0;font-weight:750;cursor:pointer}
+    #save{background:#22c55e;color:#052e16;width:100%;margin-top:15px;min-height:64px}
+    #online{background:#2563eb;color:white;width:100%;margin-top:9px}
+    .muted{color:#94a3b8;font-size:.88rem}
+    .yellow{color:#fbbf24}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .chip{background:#26385a;color:#fff;padding:10px}
+    .chip.active{outline:2px solid #60a5fa}
+    .tag{padding:10px 12px;background:#263851;border-radius:9px;display:inline-block;margin:5px 0}
+    #status{min-height:22px;font-weight:750}
+    details{padding:10px 0;border-bottom:1px solid #334155}
+    strong{font-variant-numeric:tabular-nums}
+  </style>
+</head>
+<body><main>
+ <section>
+  <h1>🚗 مغسلة سيارتك اللامعة</h1>
+  <strong class="yellow">وضع العامل دون إنترنت</strong>
+  <p>هذه صفحة احتياطية تم حفظها على جهازك وقت الاتصال. لا يُرسل منها شيء الآن؛ وعند رجوع النت تُراجع العمليات قبل رفعها.</p>
+  <p class="muted">اليوم المحاسبي ينتهي الساعة 12 منتصف الليل بتوقيت الرياض. كل عملية تُحفظ بتاريخ وقت تسجيلها.</p>
+ </section>
+ <section id="locked" hidden>
+  <h2>يلزم الدخول مرة واحدة أثناء الاتصال</h2>
+  <p>لإجراء تسجيلات دون نت، افتح التطبيق أولًا بالاتصال وسجّل دخول العامل المصرّح به، ثم حمّل قائمة الأسعار وسجّل الجهاز.</p>
+  <button type="button" id="online">فتح الموقع عند توفر الإنترنت</button>
+ </section>
+ <section id="entry" hidden>
+  <h2>تسجيل سيارة دون نت</h2>
+  <p class="muted">الأرقام هنا أسعار معتمدة مخزنة من آخر اتصال، ويعيد الخادم التحقق منها عند الرفع.</p>
+  <label>نوع السيارة والخدمة<select id="service"></select></label>
+  <div id="extras"></div>
+  <label>الخصم — الحد الأعلى 10 ر.س<input type="number" id="discount" min="0" max="10" step=".01" value="0"></label>
+  <label>طريقة الدفع
+   <select id="method"><option value="cash">كاش</option><option value="card">شبكة</option><option value="mixed">مختلط</option></select>
+  </label>
+  <div class="grid">
+   <label>كاش<input type="number" id="cash" min="0" step=".01" value="0" inputmode="decimal"></label>
+   <label>شبكة<input type="number" id="card" min="0" step=".01" value="0" inputmode="decimal"></label>
+  </div>
+  <p>مبلغ الخدمة بعد الخصم: <strong id="net">0.00 ر.س</strong></p>
+  <p class="muted">لخصوصية العملاء، إدخال أرقام جوالاتهم وإرسال إشعار الجاهزية غير متاح في شاشة الطوارئ.</p>
+  <button id="save" type="button">حفظ السيارة على الجهاز</button>
+  <p id="status" role="status"></p>
+ </section>
+ <section id="queueSection">
+  <h2>التسجيلات المعلقة على هذا الجهاز</h2>
+  <div class="grid">
+   <div><span class="muted">عدد السيارات</span><h1 id="qty">0</h1></div>
+   <div><span class="muted">مجموع العشرات للفريق</span><h1 id="crew">0 ر.س</h1></div>
+  </div>
+  <p class="muted">هذه أرقام السجلات المحلية غير المرفوعة فقط، وليست إجمالي يوم المغسلة على الخادم.</p>
+  <div id="queueDays"></div>
+  <button type="button" id="online2">العودة للنظام ومحاولة المزامنة</button>
+ </section>
+</main>
+<script>
+(function(){
+ "use strict";
+ const actorKey="carwash_verified_worker_v2";
+ const queueKey="carwash_offline_queue_v1";
+ const tariffKey="carwash_worker_tariff_cache";
+ const devKey="carwash_device_id_v2";
+ const byId=id=>document.getElementById(id);
+ const text=(id,value)=>{byId(id).textContent=String(value)};
+ const money=n=>Number(n||0).toFixed(2)+" ر.س";
+ function parse(key){
+   try{return JSON.parse(localStorage.getItem(key)||"null")}catch{return null}
+ }
+ function dateKey(value){
+   const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Riyadh",
+     year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date(value));
+   const g=t=>parts.find(p=>p.type===t)?.value||"";
+   return g("year")+"-"+g("month")+"-"+g("day");
+ }
+ const worker=parse(actorKey);
+ const device=localStorage.getItem(devKey);
+ const catalog=parse(tariffKey);
+ const valid=worker?.role==="worker" && typeof worker.userId==="string" &&
+   Date.now()-Number(worker.verifiedAt)<14*86400000 &&
+   !!device && Array.isArray(catalog?.presets) && catalog.presets.length>0;
+ byId("locked").hidden=!!valid;
+ byId("entry").hidden=!valid;
+ const presets=valid?catalog.presets.filter(p=>p.active!==false):[];
+ const addons=valid?(catalog.addons||[]).filter(a=>a.active!==false):[];
+ if(valid){
+   const select=byId("service");
+   for(const item of presets){
+     const option=document.createElement("option");
+     option.value=item.id;option.textContent=item.car_type+" · "+item.service_type+" — "+money(item.amount);
+     select.append(option);
+   }
+   for(const item of addons){
+     const label=document.createElement("label");
+     const checkbox=document.createElement("input");
+     checkbox.type="checkbox";checkbox.value=item.id;checkbox.className="addon";
+     label.append(checkbox,document.createTextNode(" "+item.name+" — "+money(item.price)));
+     byId("extras").append(label);
+   }
+ }
+ function chosen(){
+   return [...document.querySelectorAll("input.addon:checked")].map(x=>x.value);
+ }
+ function expectedPrice(){
+   const item=presets.find(p=>p.id===byId("service").value);
+   if(!item)return 0;
+   const extras=chosen().reduce((sum,id)=>sum+Number(addons.find(a=>a.id===id)?.price||0),0);
+   return Math.round((Number(item.amount)+extras-Number(byId("discount").value||0))*100)/100;
+ }
+ function recompute(){
+   const expected=Math.max(0,expectedPrice());
+   text("net",money(expected));
+   const method=byId("method").value;
+   if(method==="cash"){byId("cash").value=String(expected);byId("card").value="0"}
+   else if(method==="card"){byId("cash").value="0";byId("card").value=String(expected)}
+   else{
+     const half=Math.round(expected*50)/100;
+     byId("cash").value=String(half);byId("card").value=String(Math.round((expected-half)*100)/100);
+   }
+ }
+ if(valid){
+   byId("service").addEventListener("change",recompute);
+   byId("method").addEventListener("change",recompute);
+   byId("discount").addEventListener("input",recompute);
+   byId("extras").addEventListener("change",recompute);
+   recompute();
+ }
+ function getQueue(){const q=parse(queueKey);return Array.isArray(q)?q:[];}
+ function render(){
+   const q=getQueue().filter(x=>x.table==="entries"&&x.actorId===worker?.userId);
+   text("qty",q.length);text("crew",money(q.length*10));
+   const map=new Map();
+   for(const row of q){
+     const date=dateKey(row.payload.occurred_at||row.createdAt);
+     map.set(date,(map.get(date)||0)+1);
+   }
+   const area=byId("queueDays");area.replaceChildren();
+   for(const [date,count] of [...map.entries()].sort((a,b)=>b[0].localeCompare(a[0]))){
+     const item=document.createElement("div");item.className="tag";
+     item.textContent=date+" · "+count+" سيارة · عشرات "+money(count*10);
+     area.append(item,document.createElement("br"));
+   }
+ }
+ byId("save").addEventListener("click",()=>{
+   if(!valid)return;
+   const discount=Number(byId("discount").value);
+   const cash=Number(byId("cash").value),card=Number(byId("card").value);
+   const expected=expectedPrice();
+   if(![cash,card,discount].every(Number.isFinite)||cash<0||card<0||
+     discount<0||discount>10||expected<=0||
+     Math.round((cash+card)*100)!==Math.round(expected*100)){
+      text("status","⚠️ راجع السعر والخصم ومبلغ الكاش والشبكة.");return;
+   }
+   const preset=presets.find(p=>p.id===byId("service").value);
+   const id=crypto.randomUUID();
+   const at=new Date().toISOString();
+   const payload={
+     car_type:preset.car_type,service_type:preset.service_type,cash_paid:cash,card_paid:card,
+     discount_amount:discount,addon_ids:chosen(),customer_phone:null,sms_consent:false,
+     notes:"Offline emergency capture",occurred_at:at,device_id:device,client_mutation_id:id
+   };
+   const q=getQueue();
+   q.push({id,table:"entries",payload,createdAt:at,actorId:worker.userId});
+   try{
+     localStorage.setItem(queueKey,JSON.stringify(q));
+     text("status","✓ تم الحفظ المحلي؛ تُرفع العملية عند عودة الإنترنت وفتح التطبيق.");
+     render();
+   }catch(e){
+     text("status","⛔ لم يُحفظ السجل: مساحة التخزين ممتلئة أو غير متاحة.");
+   }
+ });
+ const online=()=>{if(navigator.onLine)location.replace("/")};
+ byId("online").addEventListener("click",online);
+ byId("online2").addEventListener("click",online);
+ window.addEventListener("online",online);
+ render();
+})();
+</script>
+</body>
+</html>
