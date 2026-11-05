@@ -7,7 +7,7 @@ type Member = { user_id:string; phone:string|null; role:Role; active:boolean; cr
 const ROLE_LABEL:Record<Role,string> = {owner:"مالك",manager:"مدير",worker:"عامل"};
 const roles:Role[] = ["worker","manager","owner"];
 
-export function UsersTab() {
+export function UsersTab({viewerRole="owner"}:{viewerRole?:"owner"|"manager"}) {
   const [members,setMembers] = useState<Member[]>([]);
   const [phone,setPhone] = useState("");
   const [role,setRole] = useState<Role>("worker");
@@ -41,7 +41,7 @@ export function UsersTab() {
   async function invite(e:React.FormEvent) {
     e.preventDefault(); setSaving(true);setError("");setSuccess("");
     try {
-      await request("POST",{phone,role});
+      await request("POST",{phone,role:viewerRole==="manager"?"worker":role});
       setSuccess("تم تفعيل رقم الجوال وصلاحية الحساب؛ يستطيع المستخدم طلب رمز SMS عند الدخول.");
       setPhone("");await refresh();
     } catch(e) {setError(e instanceof Error?e.message:String(e));}
@@ -60,15 +60,17 @@ export function UsersTab() {
   return <div className="space-y-5" dir="rtl">
     <section className="card">
       <h2 className="section-title">إدارة المستخدمين والصلاحيات</h2>
-      <p className="txt-muted text-sm">أنشئ حساب الموظف برقم جوال سعودي؛ ثم يدخل برمز SMS. لا تمنح رابط الموقع وحده أي صلاحية.</p>
+      <p className="txt-muted text-sm">أضف رقم الجوال المسموح به للمغسلة فقط. العامل يدخل برمز تحقق SMS بعد تفعيل مزود الرسائل وقاعدة البيانات. المدير يستطيع إضافة حساب عامل أو تعطيله، ولا يستطيع منح صلاحية مدير أو مالك.</p>
       <form onSubmit={invite} className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
         <label className="form-label">رقم الجوال
           <input type="tel" required value={phone} onChange={e=>setPhone(e.target.value)} placeholder="05XXXXXXXX" />
         </label>
         <label className="form-label">الدور
-          <select value={role} onChange={e=>setRole(e.target.value as Role)}>
-            {roles.map(r=><option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-          </select>
+          {viewerRole==="manager"
+            ? <p className="font-semibold py-3">عامل — حساب مشترك</p>
+            : <select value={role} onChange={e=>setRole(e.target.value as Role)}>
+                {roles.map(r=><option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              </select>}
         </label>
         <div className="flex items-end"><button type="submit" disabled={saving} className="btn-primary w-full">إضافة حساب الجوال</button></div>
       </form>
@@ -82,9 +84,10 @@ export function UsersTab() {
         <tbody>{members.map(m=><tr key={m.user_id}>
           <td>{m.phone||m.user_id.slice(0,8)}</td>
           <td>
-            <select disabled={saving} value={m.role} onChange={e=>void update(m,{role:e.target.value as Role})}>
-              {roles.map(r=><option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-            </select>
+            {viewerRole==="manager"?<strong>{ROLE_LABEL[m.role]}</strong>:
+              <select disabled={saving} value={m.role} onChange={e=>void update(m,{role:e.target.value as Role})}>
+                {roles.map(r=><option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              </select>}
           </td>
           <td>{m.active?"نشط":"موقف"}</td>
           <td><button type="button" disabled={saving} className="btn-secondary" onClick={()=>void update(m,{active:!m.active})}>{m.active?"تعطيل":"تفعيل"}</button></td>
