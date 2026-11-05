@@ -207,29 +207,62 @@ grant select on public.accounting_month_report_versions to authenticated;
 
 create or replace function private.prevent_edits_to_approved_month()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare v_period text;
+declare
+ v_period text;
+ v_old_period text;
+ v_status text;
 begin
  v_period := to_char(new.occurred_at at time zone 'Asia/Riyadh','YYYY-MM');
- if exists (
-  select 1 from public.accounting_months
-   where period=v_period and status='approved'
- ) then
-  raise exception 'Accounting month % is approved. Owner must reopen before this entry.',v_period;
+ -- SHARE lock serializes changes with an owner approval's FOR UPDATE lock.
+ select status into v_status from public.accounting_months
+ where period=v_period for share;
+ if v_status='approved' then
+  raise exception 'Accounting month % approved: owner must reopen before financial edits',v_period;
  end if;
- if TG_OP='UPDATE' and
-   to_char(old.occurred_at at time zone 'Asia/Riyadh','YYYY-MM') <> v_period
-   and exists (
-    select 1 from public.accounting_months
-    where period=to_char(old.occurred_at at time zone 'Asia/Riyadh','YYYY-MM')
-      and status='approved'
-   )
- then raise exception 'Cannot move an expense out of approved month without owner reopening'; end if;
+ if TG_OP='UPDATE' then
+  v_old_period := to_char(old.occurred_at at time zone 'Asia/Riyadh','YYYY-MM');
+  if v_old_period is distinct from v_period then
+   select status into v_status from public.accounting_months
+   where period=v_old_period for share;
+   if v_status='approved' then
+    raise exception 'Original accounting month % is approved',v_old_period;
+   end if;
+  end if;
+ end if;
  return new;
 end $$;
 revoke all on function private.prevent_edits_to_approved_month() from public;
+
 create trigger expenses_approved_month_guard
  before insert or update on public.expenses
  for each row execute function private.prevent_edits_to_approved_month();
+
+-- Readiness itself is not financial, so an approved car may later be marked ready.
+create trigger entries_approved_month_guard
+ before insert or update of car_type,service_type,cash_paid,card_paid,
+ discount_amount,occurred_at,deleted_at on public.entries
+ for each row execute function private.prevent_edits_to_approved_month();
+
+create or replace function private.prevent_bonus_edits_in_approved_month()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare v_status text;
+begin
+ select status into v_status from public.accounting_months
+ where period=to_char(new.shift_date,'YYYY-MM') for share;
+ if v_status='approved' then
+  raise exception 'Cannot add or change crew bonus in approved month';
+ end if;
+ if TG_OP='UPDATE' and old.shift_date is distinct from new.shift_date then
+  select status into v_status from public.accounting_months
+  where period=to_char(old.shift_date,'YYYY-MM') for share;
+  if v_status='approved' then raise exception 'Previous crew bonus month approved'; end if;
+ end if;
+ return new;
+end $$;
+revoke all on function private.prevent_bonus_edits_in_approved_month() from public;
+create trigger crew_bonus_approved_month_guard
+ before insert or update on public.crew_shift_bonuses
+ for each row execute function private.prevent_bonus_edits_in_approved_month();
 
 create or replace function public.reopen_carwash_month(
  p_period text, p_reason text
@@ -288,6 +321,12 @@ begin
     where occurred_at >=v_start and occurred_at <v_end and deleted_at is null),0),
   'cars', (select count(*) from public.entries
     where occurred_at >=v_start and occurred_at <v_end and deleted_at is null),
+  'crew_provision',10 * (select count(*) from public.entries
+    where occurred_at >=v_start and occurred_at <v_end and deleted_at is null),
+  'crew_extra_bonuses',coalesce((select sum(amount) from public.crew_shift_bonuses
+    where shift_date >= (p_period || '-01')::date
+      and shift_date < ((p_period || '-01')::date + interval '1 month')::date
+      and deleted_at is null),0),
   'expenses',coalesce((select sum(amount) from public.expenses
     where occurred_at >=v_start and occurred_at <v_end and deleted_at is null),0),
   'captured_at',now()
