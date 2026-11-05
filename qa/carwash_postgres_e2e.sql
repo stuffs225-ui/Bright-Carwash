@@ -24,12 +24,12 @@ select public.register_carwash_device(
 );
 insert into public.entries(
  car_type,service_type,cash_paid,card_paid,discount_amount,shift_id,device_id,
- client_mutation_id,customer_phone,sms_consent
+ client_mutation_id,customer_phone,sms_consent,occurred_at
 ) values (
  'سيارة صغيرة','غسيل كامل',15,0,10,
  current_setting('qa.shift_id')::uuid,
  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
- 'carwash-synthetic-1','+966500000004',true
+ 'carwash-synthetic-1','+966500000004',true,'2025-04-01 12:00:00+03'::timestamptz
 );
 
 do $qa_ready_once$
@@ -70,12 +70,12 @@ end $qa_worker_discount_guard$;
 -- while forged arbitrary worker prices must be rejected server-side.
 insert into public.entries(
  car_type,service_type,cash_paid,card_paid,discount_amount,
- shift_id,device_id,client_mutation_id,addon_ids
+ shift_id,device_id,client_mutation_id,addon_ids,occurred_at
 ) values(
  'سيارة صغيرة','غسيل كامل',30,0,0,
  current_setting('qa.shift_id')::uuid,
  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
- 'carwash-valid-extra','["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab"]'::jsonb
+ 'carwash-valid-extra','["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab"]'::jsonb,'2025-04-01 13:00:00+03'::timestamptz
 );
 do $carwash_price_e2e$
 declare blocked boolean:=false; valid_addon_total numeric;
@@ -205,12 +205,12 @@ select public.register_carwash_device(
 );
 insert into public.entries(
  car_type,service_type,cash_paid,card_paid,discount_amount,shift_id,device_id,
- client_mutation_id
+ client_mutation_id,occurred_at
 ) values(
  'سيارة كبيرة','غسيل كامل',30,0,0,
  current_setting('qa.shift2')::uuid,
  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
- 'carwash-synthetic-2'
+ 'carwash-synthetic-2','2025-04-02 12:00:00+03'::timestamptz
 );
 select public.seal_carwash_device(
  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
