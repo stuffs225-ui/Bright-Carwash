@@ -78,6 +78,7 @@ export function AnalysisTab() {
   const [pendingReviewCount, setPendingReviewCount] = useState<number | null>(null);
   const [showDaily, setShowDaily] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [kpiDetails, setKpiDetails] = useState<"cars"|"revenue"|"expenses"|"net"|"cash"|"card"|"avgTicket"|"avgCars"|null>(null);
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [activePeriod, setActivePeriod] = useState<"today" | "week" | "month" | "year" | null>(null);
   const [presets, setPresets] = useState<EntryPreset[]>([]);
@@ -484,14 +485,14 @@ export function AnalysisTab() {
 
       <div id="printable-report" className="space-y-6">
         <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard label="عدد السيارات" value={m.cars} tone="blue" />
-          <MetricCard label="الإيرادات" value={formatCurrency(m.revenue)} tone="emerald" />
-          <MetricCard label="المصروفات" value={formatCurrency(m.expenses)} tone="red" />
-          <MetricCard label="صافي الدخل" value={formatCurrency(m.net)} tone="indigo" />
-          <MetricCard label="الكاش" value={formatCurrency(m.cash)} tone="cyan" />
-          <MetricCard label="البطاقة" value={formatCurrency(m.card)} tone="purple" />
-          <MetricCard label="متوسط الفاتورة" value={formatCurrency(m.avgTicket)} tone="amber" />
-          <MetricCard label="متوسط السيارات / يوم عمل" value={m.avgCarsPerActiveDay.toFixed(2)} tone="slate" />
+          <MetricCard label="عدد السيارات" value={m.cars} tone="blue" onClick={()=>setKpiDetails("cars")} hint="انقر لتفاصيل السيارات" />
+          <MetricCard label="الإيرادات" value={formatCurrency(m.revenue)} tone="emerald" onClick={()=>setKpiDetails("revenue")} hint="تفاصيل الإيرادات" />
+          <MetricCard label="المصروفات" value={formatCurrency(m.expenses)} tone="red" onClick={()=>setKpiDetails("expenses")} hint="تفاصيل المصروفات" />
+          <MetricCard label="صافي الدخل" value={formatCurrency(m.net)} tone="indigo" onClick={()=>setKpiDetails("net")} hint="تفسير صافي الدخل وحركاته" />
+          <MetricCard label="الكاش" value={formatCurrency(m.cash)} tone="cyan" onClick={()=>setKpiDetails("cash")} hint="تفاصيل النقد المقبوض" />
+          <MetricCard label="البطاقة" value={formatCurrency(m.card)} tone="purple" onClick={()=>setKpiDetails("card")} hint="تفاصيل الشبكة" />
+          <MetricCard label="متوسط الفاتورة" value={formatCurrency(m.avgTicket)} tone="amber" onClick={()=>setKpiDetails("avgTicket")} hint="حساب المتوسط ومصدره" />
+          <MetricCard label="متوسط السيارات / يوم عمل" value={m.avgCarsPerActiveDay.toFixed(2)} tone="slate" onClick={()=>setKpiDetails("avgCars")} hint="تفاصيل أيام العمل" />
         </section>
 
         <section className="card">
@@ -620,6 +621,48 @@ export function AnalysisTab() {
           </div>
         </div>
       </section>
+
+      {kpiDetails && (
+        <Modal title={({
+          cars:"تفاصيل عدد السيارات",revenue:"تفاصيل الإيرادات",expenses:"تفاصيل المصروفات",
+          net:"تفاصيل صافي الدخل",cash:"تفاصيل الكاش",card:"تفاصيل الشبكة",
+          avgTicket:"متوسط الفاتورة",avgCars:"متوسط السيارات لكل يوم عمل"
+        } as const)[kpiDetails]} onClose={()=>setKpiDetails(null)}>
+          <p className="font-bold mb-3">
+            {kpiDetails==="net"
+              ? `الإيراد ${formatCurrency(m.revenue)} − المصروفات ${formatCurrency(m.expenses)} = ${formatCurrency(m.net)}`
+              :kpiDetails==="avgTicket"
+                ? `${formatCurrency(m.revenue)} ÷ ${m.cars} سيارة = ${formatCurrency(m.avgTicket)}`
+                :kpiDetails==="avgCars"
+                  ? `${m.cars} سيارة ÷ أيام العمل الفعلية = ${m.avgCarsPerActiveDay.toFixed(2)}`
+                  :kpiDetails==="expenses"?formatCurrency(m.expenses)
+                    :kpiDetails==="cash"?formatCurrency(m.cash)
+                      :kpiDetails==="card"?formatCurrency(m.card)
+                        :kpiDetails==="revenue"?formatCurrency(m.revenue):`${m.cars} سيارة`}
+          </p>
+          {(kpiDetails==="expenses"||kpiDetails==="net") && <>
+            <h4 className="font-semibold mb-2">تفاصيل المصروفات</h4>
+            <div className="space-y-2 mb-4">{expenses.length===0?<p className="txt-muted">لا توجد مصروفات.</p>:
+              expenses.map((e,i)=><div key={e.id||i} className="border-b py-2 flex justify-between gap-2">
+                <span>{new Date(e.occurred_at).toLocaleDateString("en-GB",{timeZone:"Asia/Riyadh"})} · {e.expense_type} · {e.notes||"—"}</span>
+                <strong>{formatCurrency(e.amount)}</strong>
+              </div>)}</div>
+          </>}
+          {kpiDetails!=="expenses" && <>
+            <h4 className="font-semibold mb-2">تفاصيل السيارات والتحصيل</h4>
+            <div className="space-y-2">{entries.filter(e=>
+              kpiDetails==="cash"?Number(e.cash_paid)>0:
+              kpiDetails==="card"?Number(e.card_paid)>0:true
+            ).map((e,i)=><div key={e.id} className="border-b py-2">
+              <div className="flex justify-between gap-2">
+                <span>#{i+1} · {e.car_type} · {e.service_type}</span>
+                <strong>{formatCurrency(kpiDetails==="cash"?e.cash_paid:kpiDetails==="card"?e.card_paid:e.gross)}</strong>
+              </div>
+              <p className="txt-muted text-sm">{new Date(e.occurred_at).toLocaleString("en-GB",{timeZone:"Asia/Riyadh"})} · كاش {formatCurrency(e.cash_paid)} · شبكة {formatCurrency(e.card_paid)} · خصم {formatCurrency(e.discount_amount||0)}</p>
+            </div>)}</div>
+          </>}
+        </Modal>
+      )}
 
       {activePeriod && (
         <Modal title={`سيارات ${periodLabels[activePeriod]} (${periodEntries.length})`} onClose={() => setActivePeriod(null)}>
