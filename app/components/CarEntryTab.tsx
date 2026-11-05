@@ -46,6 +46,9 @@ function pendingEntriesFromQueue(): Entry[] {
       notes: (p.notes as string | null) ?? null,
       occurred_at: String(p.occurred_at),
       worker_name: p.worker_name ? String(p.worker_name) : null,
+      customer_phone: p.customer_phone ? String(p.customer_phone) : null,
+      discount_amount: Number(p.discount_amount) || 0,
+      ready_at: null,
       pending: true,
     };
   });
@@ -393,6 +396,40 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
     if (saved) clearForm();
   }
 
+  async function requestReady(entry: Entry) {
+    if (entry.ready_at) return;
+    const isLocallyPending = entry.id.startsWith("pending-");
+    const payload: { p_entry_id?: string; p_client_mutation_id?: string } =
+      isLocallyPending ? { p_client_mutation_id: entry.id.slice("pending-".length) } : { p_entry_id: entry.id };
+    if (getQueueByTable("ready_notice").some(item =>
+      (payload.p_entry_id && item.payload.p_entry_id === payload.p_entry_id)
+      || (payload.p_client_mutation_id && item.payload.p_client_mutation_id === payload.p_client_mutation_id))) {
+      showToast("طلب الجاهزية محفوظ بالفعل بانتظار المزامنة.", "warning");
+      return;
+    }
+    if (!confirm("هل انتهى الغسيل وتريد تسجيل جاهزية السيارة وإعداد إشعار العميل؟")) return;
+    setReadyBusy(entry.id);
+    if (isLocallyPending || !navigator.onLine) {
+      enqueue("ready_notice", payload);
+      showToast("تم حفظ طلب الجاهزية محليًا. لن تُرسل الرسالة قبل المزامنة وتفعيل مزود SMS.", "warning");
+      setReadyBusy(null);
+      return;
+    }
+    const { data, error } = await supabase.rpc("request_ready_notice", payload);
+    if (error) {
+      if (isNetworkError(error)) {
+        enqueue("ready_notice", payload);
+        showToast("تعذر الاتصال؛ تم حفظ الطلب محليًا.", "warning");
+      } else showToast("تعذر تسجيل الجاهزية: " + error.message, "error");
+    } else if (data === "pending_provider") {
+      showToast("تم تسجيل الجاهزية، والإشعار ينتظر تفعيل مزود SMS.", "warning");
+    } else {
+      showToast("تم تسجيل الجاهزية دون إرسال رسالة.");
+    }
+    setReadyBusy(null);
+    refreshAll(settingsRef.current);
+  }
+
   function updateBulkRow(index: number, patch: Partial<BulkRow>) {
     setBulkRows((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
   }
@@ -732,6 +769,25 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
           <MetricCard label="إجمالي مخصص العمال — 10 ر.س لكل سيارة" value={formatCurrency(crewProvision)} tone="emerald" />
         </div>
       </section>
+
+      {!ownerView && (
+        <section className="card">
+          <h2 className="section-title">إشعارات السيارات الجاهزة</h2>
+          <p className="txt-muted text-sm">عند انتهاء الغسيل اضغط «السيارة جاهزة». عند انقطاع الإنترنت يُحفظ الطلب حتى المزامنة. إرسال SMS غير مفعّل في هذه النسخة التجريبية.</p>
+          <div className="space-y-2 mt-3">
+            {todayEntriesWithPending.filter(e=>Boolean(e.customer_phone)).slice(0,50).length === 0
+              ? <p className="txt-muted text-sm">لا توجد سيارات برقم جوال اليوم.</p>
+              : todayEntriesWithPending.filter(e=>Boolean(e.customer_phone)).slice(0,50).map(entry=>(
+                <div key={entry.id} className="flex items-center justify-between gap-2 border-b pb-2">
+                  <span className="text-sm">{entry.car_type} · {entry.service_type} · {new Date(entry.occurred_at).toLocaleTimeString(dateLocale,{hour:"2-digit",minute:"2-digit"})}</span>
+                  {entry.ready_at
+                    ? <span className="text-sm txt-cash">جاهزة</span>
+                    : <button type="button" className="btn-secondary" disabled={readyBusy===entry.id} onClick={()=>void requestReady(entry)}>السيارة جاهزة</button>}
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
 
       <section className="card overflow-hidden p-0" hidden={!ownerView}>
         <button type="button" className={`accordion-button ${showMonthly ? "active" : ""}`} onClick={() => setShowMonthly((v) => !v)}>
