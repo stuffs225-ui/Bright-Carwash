@@ -20,3 +20,12 @@ grant select on public.legacy_import_issues to authenticated;
 grant update(status,resolution_note,resolved_at,resolved_by)
  on public.legacy_import_issues to authenticated;
 grant select on public.legacy_source_rows to authenticated;
+
+-- Mobile manager may enter an expense for a past accounting month. The
+-- effective occurred_at date can differ from the actual input and upload time.
+-- created_at remains the server-side insertion time; this is the capture time
+-- on the device, used to review delayed uploads and offline reconciliation.
+alter table public.expenses
+  add column if not exists client_recorded_at timestamptz;
+comment on column public.expenses.client_recorded_at is
+  'Client capture timestamp; created_at remains the authoritative server receipt timestamp.';
