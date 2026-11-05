@@ -1,4 +1,9 @@
 -- Bright-Carwash V2 (isolated, not WorkshopOS): midnight-to-midnight Riyadh calendar settlement.
+-- One SHARED active worker login for every worker/device in the wash.
+-- Deactivate previous shared worker account before replacing its phone.
+create unique index if not exists carwash_only_one_active_worker_account
+ on public.app_members ((role)) where role='worker' and active=true;
+
 -- Applied only to the standalone Carwash Supabase database. Old shift tables
 -- remain for historical audit, but are not used by new worker/manager flows.
 
