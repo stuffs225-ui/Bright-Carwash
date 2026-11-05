@@ -1,26 +1,42 @@
-/* Carwash service worker: cache ONLY hashed public static assets.
- * NEVER cache HTML, protected routes, private dashboards, Auth OTP, or /api/*
- * responses; customer information and financial data must stay network-only.
+/* Bright-Carwash installable PWA.
+ * Only a PUBLIC offline worker-entry shell and hashed JS/CSS assets are cached.
+ * The authenticated app HTML, API responses, financial rows and OTP traffic
+ * are NEVER cached. Main / navigation is network-first, offline fallback ONLY.
  */
-const CACHE_NAME="carwash-static-v2";
-self.addEventListener("install",()=>self.skipWaiting());
+const ASSETS_CACHE="carwash-static-v3";
+const OFFLINE_CACHE="carwash-offline-shell-v3";
+const FALLBACK="/offline.html";
+
+self.addEventListener("install",event=>{
+  event.waitUntil(caches.open(OFFLINE_CACHE)
+    .then(cache=>cache.add(FALLBACK))
+    .then(()=>self.skipWaiting()));
+});
 self.addEventListener("activate",event=>{
   event.waitUntil(caches.keys().then(keys=>Promise.all(
-    keys.filter(key=>key!==CACHE_NAME).map(key=>caches.delete(key))
-  )));
-  self.clients.claim();
+    keys.filter(key=>key!==ASSETS_CACHE&&key!==OFFLINE_CACHE)
+      .map(key=>caches.delete(key))
+  )).then(()=>self.clients.claim()));
 });
 self.addEventListener("fetch",event=>{
   const request=event.request;
   const url=new URL(request.url);
-  const publicHashedAsset=url.origin===self.location.origin &&
-    url.pathname.startsWith("/_next/static/") &&
-    ["script","style","font","image"].includes(request.destination);
-  if(!publicHashedAsset || request.method!=="GET" ||
-     request.headers.has("authorization") || request.headers.has("cookie")) {
-    return; // Deliberately never intercept private requests.
+  if(url.origin!==self.location.origin || request.method!=="GET")return;
+
+  // Important: NEVER persist the server's home-page response. We only serve
+  // a separately reviewed static offline form when the network truly fails.
+  if(request.mode==="navigate" && url.pathname==="/"){
+    event.respondWith(fetch(request).catch(async()=>{
+      const cache=await caches.open(OFFLINE_CACHE);
+      return (await cache.match(FALLBACK))||Response.error();
+    }));
+    return;
   }
-  event.respondWith(caches.open(CACHE_NAME).then(async cache=>{
+  const publicHashedAsset=url.pathname.startsWith("/_next/static/") &&
+    ["script","style","font","image"].includes(request.destination);
+  if(!publicHashedAsset || request.headers.has("authorization") ||
+      request.headers.has("cookie"))return;
+  event.respondWith(caches.open(ASSETS_CACHE).then(async cache=>{
     const existing=await cache.match(request);
     if(existing)return existing;
     const response=await fetch(request);
