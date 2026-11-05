@@ -4,7 +4,7 @@ import { normalizeSaudiMobile } from "@/lib/phone";
 
 type AppRole = "owner" | "manager" | "worker";
 const ROLES: AppRole[] = ["owner", "manager", "worker"];
-async function ownerAccess(request: Request) {
+async function managerAccess(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
@@ -13,16 +13,18 @@ async function ownerAccess(request: Request) {
   if (error || !data.user) return null;
   const { data: member } = await admin.from("app_members").select("role,active")
     .eq("user_id", data.user.id).maybeSingle();
-  if (!member?.active || member.role !== "owner") return null;
-  return { admin, ownerId: data.user.id };
+  if (!member?.active || !["owner","manager"].includes(member.role)) return null;
+  return { admin, viewerId: data.user.id, viewerRole: member.role as "owner"|"manager" };
 }
-const unauthorized = () => NextResponse.json({error:"Owner authorization required"},{status:403});
+const unauthorized = () => NextResponse.json({error:"Carwash management authorization required"},{status:403});
 
 export async function GET(request: Request) {
-  const access = await ownerAccess(request);
+  const access = await managerAccess(request);
   if (!access) return unauthorized();
-  const {data: members, error} = await access.admin.from("app_members")
+  let query=access.admin.from("app_members")
     .select("user_id,role,active,created_at").order("created_at",{ascending:false});
+  if(access.viewerRole==="manager")query=query.eq("role","worker");
+  const {data: members, error}=await query;
   if(error) return NextResponse.json({error:error.message},{status:500});
   const users = [];
   for(let page=1;page<=20;page++) {
@@ -36,12 +38,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const access = await ownerAccess(request);
+  const access = await managerAccess(request);
   if (!access) return unauthorized();
   const body = await request.json().catch(()=>null);
   const phone = normalizeSaudiMobile(typeof body?.phone === "string" ? body.phone : "");
   const role: AppRole = body?.role;
-  if (!phone || !ROLES.includes(role)) {
+  if (!phone || !ROLES.includes(role) || (access.viewerRole==="manager" && role!=="worker")) {
     return NextResponse.json({error:"Invalid Saudi phone number or role"},{status:400});
   }
   // Only an authorized owner can pre-provision the phone number.
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = await ownerAccess(request);
+  const access = await managerAccess(request);
   if(!access) return unauthorized();
   const body = await request.json().catch(()=>null);
   const id = typeof body?.user_id==="string" ? body.user_id : "";
@@ -70,10 +72,19 @@ export async function PATCH(request: Request) {
   if(!/^[a-f0-9-]{36}$/i.test(id) || !ROLES.includes(role) || typeof body?.active!=="boolean") {
     return NextResponse.json({error:"Invalid user, role or active status"},{status:400});
   }
-  if(id === access.ownerId && (role !== "owner" || !body.active)) {
+  if(id === access.viewerId && (role !== "owner" || !body.active)) {
     return NextResponse.json({error:"Cannot demote or deactivate your own owner account"},{status:400});
   }
-  const {error} = await access.admin.from("app_members").update({role,active:body.active}).eq("user_id",id);
+  if(access.viewerRole==="manager"){
+    // Manager can only switch active status of the shared worker account.
+    const {data:target}=await access.admin.from("app_members")
+      .select("role").eq("user_id",id).maybeSingle();
+    if(target?.role!=="worker"||role!=="worker"){
+      return NextResponse.json({error:"Managers may only manage the worker account"},{status:403});
+    }
+  }
+  const {error} = await access.admin.from("app_members")
+    .update({role,active:body.active}).eq("user_id",id);
   if(error) return NextResponse.json({error:error.message},{status:500});
   return NextResponse.json({ok:true});
 }
