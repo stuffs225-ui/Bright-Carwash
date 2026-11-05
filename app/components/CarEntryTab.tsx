@@ -862,28 +862,56 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
         )}
       </section>
 
+      {!ownerView && (
+        <section className="card space-y-3">
+          <h2 className="section-title">وردية العامل الحالية</h2>
+          <p className="txt-muted text-sm">
+            {shiftStatus==="awaiting_owner"
+              ? "الموازنة قيد اعتماد المالك، ولا يمكن بدء تسجيلات جديدة حتى تُفتح وردية جديدة."
+              : shiftStatus==="open"
+                ? "تستمر هذه النتائج حتى يعتمد المدير الموازنة. بعدها تُفتح وردية جديدة، ولا تُحذف السجلات."
+                : "لا توجد وردية معتمدة للتسجيل على هذا الجهاز."}
+          </p>
+          {shiftError && <p role="alert" className="txt-warning text-sm">{shiftError}</p>}
+          <p className="txt-muted text-sm">المزامنة المعلقة: {queueLength()} · حالة الجهاز: {deviceSeal==="sealed"?"مكتمل ومعتمد للمراجعة":"يستقبل التسجيلات"}</p>
+          <button type="button" className="btn-secondary w-full" onClick={()=>void sealStaffDevice()}
+            disabled={deviceSeal!=="unsealed"||shiftStatus!=="open"||queueLength()>0}>
+            {deviceSeal==="sealing"?"جارٍ تأكيد الجهاز":deviceSeal==="sealed"?"تم تأكيد هذا الجهاز":"مزامنة وتأكيد انتهاء تسجيلات الجهاز"}
+          </button>
+        </section>
+      )}
+
       <section className="card text-center">
-        <button type="button" className="section-title text-center w-full underline decoration-dotted" onClick={() => setShowTodayModal(true)}>
-          {tt("اليوم - ")}{new Date().toLocaleDateString(dateLocale, { weekday: "long" })} ({new Date().toLocaleDateString("en-GB")})
+        <button type="button" className="section-title text-center w-full underline decoration-dotted"
+          onClick={() => {setDetailFilter("all");setShowTodayModal(true);}}>
+          {ownerView ? "تسجيلات اليوم" : "تسجيلات الوردية الحالية"} · {dailyTotals.count} سيارة
         </button>
         {ownerView ? (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard label={tt("السيارات")} value={dailyTotals.count} tone="blue" />
-            <MetricCard label={tt("كاش")} value={formatCurrency(dailyTotals.cash)} tone="green" />
-            <MetricCard label={tt("بطاقة")} value={formatCurrency(dailyTotals.card)} tone="purple" />
-            <MetricCard label={tt("الإجمالي")} value={formatCurrency(dailyTotals.total)} tone="slate" />
+            <MetricCard label="السيارات" value={dailyTotals.count} tone="blue"
+              onClick={()=>{setDetailFilter("all");setShowTodayModal(true);}} hint="اضغط لعرض السيارات" />
+            <MetricCard label="كاش" value={formatCurrency(dailyTotals.cash)} tone="green"
+              onClick={()=>{setDetailFilter("cash");setShowTodayModal(true);}} hint="عمليات الكاش" />
+            <MetricCard label="الشبكة" value={formatCurrency(dailyTotals.card)} tone="purple"
+              onClick={()=>{setDetailFilter("card");setShowTodayModal(true);}} hint="عمليات الشبكة" />
+            <MetricCard label="المقبوض" value={formatCurrency(dailyTotals.total)} tone="slate"
+              onClick={()=>{setDetailFilter("all");setShowTodayModal(true);}} hint="جميع العمليات وتفاصيلها" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4">
-            <MetricCard label={tt("سيارات اليوم")} value={dailyTotals.count} tone="blue" />
+          <div className="grid grid-cols-2 gap-3">
+            <MetricCard label="سيارات الوردية" value={workerSummary.cars} tone="blue"
+              onClick={()=>{setDetailFilter("all");setShowTodayModal(true);}} hint="تفاصيل كل سيارة" />
+            <MetricCard label="مجموع العشرات للفريق" value={formatCurrency(workerSummary.collectiveTens)} tone="emerald"
+              onClick={()=>setShowCrewModal(true)} hint="10 ريالات لكل سيارة للفريق كاملًا" />
           </div>
         )}
-        <hr className="my-5 rule" />
-        <h3 className="subsection-title text-center">مخصص عمال الوردية (جماعي)</h3>
-        <p className="txt-muted text-center text-sm">عدد سيارات الوردية: {shiftCarCount} — من 3 عصرًا حتى 4 فجرًا. مكافأة 2 ر.س القديمة مجمّدة ولا تُحتسب.</p>
-        <div className="grid grid-cols-1 gap-4">
-          <MetricCard label="إجمالي مخصص العمال — 10 ر.س لكل سيارة" value={formatCurrency(crewProvision)} tone="emerald" />
-        </div>
+        <p className="txt-muted text-sm mt-3">المستحق جماعي لجميع العمال؛ مكافأة ريالين القديمة مجمّدة. لا يحدد الحساب المشترك مستحق كل عامل منفردًا.</p>
+        {ownerView && (
+          <div className="mt-3">
+            <MetricCard label="مخصص عمال الوردية المفتوحة" value={formatCurrency(crewProvision)} tone="emerald"
+              onClick={()=>setShowCrewModal(true)} hint="تفاصيل السيارات ومخصص 10 ريالات عن كل واحدة" />
+          </div>
+        )}
       </section>
 
       {!ownerView && (
@@ -967,6 +995,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                       onSave={(patch) => handleUpdate(entry, patch)}
                       onDelete={() => handleDelete(entry.id)}
                       lang={lang}
+                      onDetails={() => setSelectedEntry(entry)}
                     />
                   ))
                 )}
@@ -1000,6 +1029,7 @@ export function CarEntryTab({ ownerView = true }: { ownerView?: boolean }) {
                       onSave={(patch) => handleUpdate(entry, patch)}
                       onDelete={() => handleDelete(entry.id)}
                       lang={lang}
+                      onDetails={() => setSelectedEntry(entry)}
                     />
                   ))
                 )}
