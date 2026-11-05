@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabaseAdmin";
+import { normalizeSaudiMobile } from "@/lib/phone";
 
 type AppRole = "owner" | "manager" | "worker";
 const ROLES: AppRole[] = ["owner", "manager", "worker"];
@@ -30,27 +31,33 @@ export async function GET(request: Request) {
     users.push(...result.data.users);
     if(result.data.users.length < 100) break;
   }
-  const emails = new Map(users.map(u=>[u.id,u.email]));
-  return NextResponse.json({members:(members||[]).map(m=>({...m,email:emails.get(m.user_id)||null}))});
+  const phones = new Map(users.map(u=>[u.id,u.phone]));
+  return NextResponse.json({members:(members||[]).map(m=>({...m,phone:phones.get(m.user_id)||null}))});
 }
 
 export async function POST(request: Request) {
   const access = await ownerAccess(request);
   if (!access) return unauthorized();
   const body = await request.json().catch(()=>null);
-  const email = typeof body?.email==="string" ? body.email.trim().toLowerCase() : "";
+  const phone = normalizeSaudiMobile(typeof body?.phone === "string" ? body.phone : "");
   const role: AppRole = body?.role;
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !ROLES.includes(role)) {
-    return NextResponse.json({error:"Invalid email or role"},{status:400});
+  if (!phone || !ROLES.includes(role)) {
+    return NextResponse.json({error:"Invalid Saudi phone number or role"},{status:400});
   }
-  const invitation = await access.admin.auth.admin.inviteUserByEmail(email);
-  if (invitation.error || !invitation.data.user) {
-    return NextResponse.json({error:"Invite failed. Check SMTP configuration or whether user exists."},{status:409});
+  // Only an authorized owner can pre-provision the phone number.
+  // Public OTP sign-up is disabled in the client (shouldCreateUser:false).
+  const creation = await access.admin.auth.admin.createUser({phone, phone_confirm:true});
+  if (creation.error || !creation.data.user) {
+    return NextResponse.json({error:"Unable to provision phone account. It may already exist."},{status:409});
   }
   const {error} = await access.admin.from("app_members").insert({
-    user_id:invitation.data.user.id,role,active:true,
+    user_id:creation.data.user.id, role, active:true,
   });
-  if(error) return NextResponse.json({error:"Invite created but role assignment failed: "+error.message},{status:500});
+  if(error) {
+    // Roll back only the newly created, unlinked Auth user from this request.
+    await access.admin.auth.admin.deleteUser(creation.data.user.id);
+    return NextResponse.json({error:"Phone account setup failed; nothing was activated."},{status:500});
+  }
   return NextResponse.json({ok:true,user_id:invitation.data.user.id});
 }
 
