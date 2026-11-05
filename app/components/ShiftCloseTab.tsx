@@ -56,6 +56,7 @@ export function ShiftCloseTab({isOwner}:{isOwner:boolean}){
     setActive((open as Shift)||null);
     setHistory((past||[]) as Shift[]);
     if(!open){setEntries([]);setDevices([]);setSettlement(null);setError("");return;}
+    try {
     const [cars,dev,review]=await Promise.all([
       fetchAllRows<Entry>((from,to)=>supabase.from("entries")
         .select("*").eq("shift_id",open.id).is("deleted_at",null)
@@ -69,6 +70,9 @@ export function ShiftCloseTab({isOwner}:{isOwner:boolean}){
     if(dev.error||review.error){setError(dev.error?.message||review.error?.message||"تعذر فحص الأجهزة");return;}
     setEntries(cars);setDevices((dev.data||[]) as Device[]);
     setSettlement((review.data as Settlement)||null);setError("");
+    } catch (cause) {
+      setError("تعذر جلب جميع تسجيلات الوردية: "+(cause instanceof Error?cause.message:"خطأ اتصال"));
+    }
   },[]);
 
   useEffect(()=>{
@@ -141,6 +145,7 @@ export function ShiftCloseTab({isOwner}:{isOwner:boolean}){
 
   async function showHistory(shift:Shift){
     setHistorySelected(shift);setHistoryEntries([]);setHistorySettlement(null);
+    try {
     const [rows,review]=await Promise.all([
       fetchAllRows<Entry>((from,to)=>supabase.from("entries")
         .select("*").eq("shift_id",shift.id).is("deleted_at",null)
@@ -148,7 +153,9 @@ export function ShiftCloseTab({isOwner}:{isOwner:boolean}){
       supabase.from("carwash_shift_settlements").select("*")
         .eq("shift_id",shift.id).maybeSingle(),
     ]);
+    if(review.error)throw review.error;
     setHistoryEntries(rows);setHistorySettlement((review.data as Settlement)||null);
+    } catch(cause){setError("تعذر استرجاع الوردية من الأرشيف: "+(cause instanceof Error?cause.message:"خطأ اتصال"));}
   }
 
   function beginEdit(entry:Entry){
