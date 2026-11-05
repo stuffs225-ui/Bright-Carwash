@@ -420,7 +420,10 @@ begin
    where d.shift_id=v_shift and d.device_id=new.device_id
     and d.account_id=(select auth.uid())
   ) then raise exception 'Unregistered staff device for this shift'; end if;
-  update public.carwash_shift_devices set sealed_at=null,last_seen_at=now()
+  if exists(select 1 from public.carwash_shift_devices
+    where shift_id=v_shift and device_id=new.device_id and sealed_at is not null)
+  then raise exception 'Device already sealed. Wait for manager to approve the next shift'; end if;
+  update public.carwash_shift_devices set last_seen_at=now()
    where shift_id=v_shift and device_id=new.device_id;
  end if;
  return new;
@@ -444,7 +447,7 @@ begin
  insert into public.carwash_shift_devices(shift_id,device_id,account_id)
  values(v_shift,p_device_id,(select auth.uid()))
  on conflict(shift_id,device_id) do update
-  set last_seen_at=now(),sealed_at=null
+  set last_seen_at=now()
   where public.carwash_shift_devices.account_id=(select auth.uid());
  return v_shift;
 end $$;
