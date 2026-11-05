@@ -19,7 +19,7 @@ export default function WorkerPage() {
           <p className="text-sm mt-1">المستخدم: {identity.email}</p>
           <button type="button" className="btn-secondary mt-3" onClick={async () => {
             if (queueLength()) { alert("زامن التسجيلات المحفوظة محليًا قبل الخروج."); return; }
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
           }}>تسجيل الخروج</button>
         </header>
         <div className="content-section-wrapper is-standalone"><CarEntryTab ownerView={false} /></div>
