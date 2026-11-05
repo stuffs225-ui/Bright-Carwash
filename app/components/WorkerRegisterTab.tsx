@@ -118,9 +118,9 @@ export function WorkerRegisterTab(){
    setPresets((p.data||[]) as EntryPreset[]);
    setAddons((a.data||[]) as CatalogAddon[]);
    if(!presetId&&p.data?.length)setPresetId(p.data[0].id);
-   sessionStorage.setItem("carwash_worker_tariff_cache",JSON.stringify({presets:p.data||[],addons:a.data||[]}));
+   localStorage.setItem("carwash_worker_tariff_cache",JSON.stringify({presets:p.data||[],addons:a.data||[]}));
   }
-  const raw=sessionStorage.getItem("carwash_worker_tariff_cache");
+  const raw=localStorage.getItem("carwash_worker_tariff_cache");
   if(raw)try{
    const parsed=JSON.parse(raw);setPresets(parsed.presets||[]);setAddons(parsed.addons||[]);
    if(parsed.presets?.length)setPresetId(v=>v||parsed.presets[0].id);
