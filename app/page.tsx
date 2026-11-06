@@ -32,7 +32,7 @@ const NAV: { key: Tab; label: string; allowed: ("manager" | "worker")[] }[] = [
   { key: "crewbonus", label: "⭐ مكافآت العاملين", allowed: ["manager"] },
   { key: "months", label: "🗓️ تقارير الشهور", allowed: ["manager"] },
   { key: "settings", label: "⚙ الإعدادات", allowed: ["manager"] },
-  { key: "users", label: "📱 حساب العامل", allowed: ["manager"] },
+  { key: "users", label: "📧 حساب العامل", allowed: ["manager"] },
   { key: "alerts", label: "🔔 التنبيهات", allowed: ["manager"] },
   { key: "reconciliation", label: "🧾 تدقيق البيانات", allowed: ["manager"] },
   { key: "account", label: "👤 معلومات الحساب", allowed: ["manager","worker"] },
