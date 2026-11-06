@@ -15,7 +15,7 @@ type Settlement={business_date:string;recorded_cash:number;recorded_card:number;
  cars:number;collective_tens:number;report_object_path:string;difference_reason:string|null};
 function toMoney(v:number){return Math.round(v*100)/100;}
 
-export function DaySettlementTab({isOwner}:{isOwner:boolean}){
+export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolean}){
  const [now,setNow]=useState(new Date());
  const [days,setDays]=useState<Day[]>([]);
  const [selected,setSelected]=useState("");
@@ -91,7 +91,7 @@ export function DaySettlementTab({isOwner}:{isOwner:boolean}){
    setError("أدخل الكاش الفعلي والإجمالي الصحيح لتقرير الشبكة.");return;
   }
   if(!posStatement){setError("ارفق صورة أو PDF لتقرير جهاز الشبكة.");return;}
-  if(hasVariance&&reason.trim().length<5){setError("اكتب سبب الفروقات؛ سيراجعه المالك.");return;}
+  if(hasVariance&&reason.trim().length<5){setError("اكتب سبب الفروقات؛ سيراجعه المدير.");return;}
   if(posStatement.size>10*1024*1024||
      !["image/jpeg","image/png","image/webp","application/pdf"].includes(posStatement.type)){
    setError("مرفق POS يجب أن يكون JPG/PNG/WebP/PDF وبحجم أقل من 10MB.");return;
@@ -113,17 +113,17 @@ export function DaySettlementTab({isOwner}:{isOwner:boolean}){
   if(error){setError("فشل الاعتماد: "+error.message);return;}
   setCashActual("");setPosActual("");setPosStatement(null);setReason("");
   alert(data==="approved"
-   ?"تم اعتماد يوم "+selected+"؛ اختفت تسجيلاته من حساب العمال وبقي الأرشيف محفوظًا.":"فرق الموازنة محفوظ ويحتاج موافقة المالك؛ اليوم لا يزال ظاهرًا للعامل.");
+   ?"تم اعتماد يوم "+selected+"؛ اختفت تسجيلاته من حساب العمال وبقي الأرشيف محفوظًا.":"فرق الموازنة محفوظ ويحتاج موافقة المدير؛ اليوم لا يزال ظاهرًا للعامل.");
   await reloadDays();await reloadDay();
  }
- async function ownerApprove(){
-  if(!isOwner||current?.status!=="awaiting_owner")return;
-  if(!confirm("اعتماد المالك فرق يوم "+selected+"؟"))return;
+ async function managerApproveDifference(){
+  if(!canApproveVariance||current?.status!=="awaiting_owner")return;
+  if(!confirm("اعتماد المدير فرق يوم "+selected+"؟"))return;
   setBusy(true);
   const {error}=await supabase.rpc("approve_carwash_day_difference",{p_date:selected});
   setBusy(false);
   if(error){setError(error.message);return;}
-  alert("اعتمد المالك اليوم المحدد، وبقيت بقية الأيام غير المعتمدة ظاهرة للعامل.");
+  alert("اعتمد المدير اليوم المحدد، وبقيت بقية الأيام غير المعتمدة ظاهرة للعامل.");
   await reloadDays();await reloadDay();
  }
  async function correct(){
@@ -158,7 +158,7 @@ export function DaySettlementTab({isOwner}:{isOwner:boolean}){
      {days.map(d=><button type="button" key={d.business_date}
        className={selected===d.business_date?"btn-primary":"btn-secondary"}
        onClick={()=>{setSelected(d.business_date);setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);}}>
-       {d.business_date} · {d.status==="approved"?"✓ معتمد":d.status==="awaiting_owner"?"بانتظار المالك":"غير معتمد"}
+       {d.business_date} · {d.status==="approved"?"✓ معتمد":d.status==="awaiting_owner"?"بانتظار المدير":"غير معتمد"}
       </button>)}
     </div>}
   </section>
@@ -200,14 +200,14 @@ export function DaySettlementTab({isOwner}:{isOwner:boolean}){
      </button>
     </section>:<section className="card"><p className="txt-muted">يوم {selected} لم ينتهِ بعد. يمكن مراجعته ولكن لا يعتمد قبل 12 صباحًا بتوقيت الرياض.</p></section>):
     <section className="card space-y-3">
-     <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"فرق مالي ينتظر اعتماد المالك"}</h3>
+     <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"فرق مالي ينتظر اعتماد المدير"}</h3>
      {settlement?<><p>الكاش المسجل: {formatCurrency(settlement.recorded_cash)} · الكاش الفعلي: {formatCurrency(settlement.actual_cash)}</p>
       <p>الشبكة المسجلة: {formatCurrency(settlement.recorded_card)} · تقرير الشبكة: {formatCurrency(settlement.terminal_card)}</p>
       <p>فرق الكاش: {formatCurrency(settlement.cash_difference)} · فرق الشبكة: {formatCurrency(settlement.card_difference)}</p>
       {settlement.difference_reason&&<p>سبب الفرق: {settlement.difference_reason}</p>}
-      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالمدير والمالك.</p></>:null}
-     {current.status==="awaiting_owner"&&isOwner&&
-      <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void ownerApprove()}>اعتماد فرق اليوم كمالك</button>}
+      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالمدير والمدير.</p></>:null}
+     {current.status==="awaiting_owner"&&canApproveVariance&&
+      <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void managerApproveDifference()}>اعتماد فرق اليوم كمدير</button>}
     </section>}
   </>}
   {error&&<div className="card"><p role="alert" className="txt-danger">{error}</p></div>}
