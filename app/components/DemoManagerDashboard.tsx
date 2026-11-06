@@ -42,6 +42,34 @@ export function DemoManagerDashboard({page,rows,statuses}:Props){
   return [...out.entries()];
  },[expenses,floor,today]);
  const periodLabels={today:"اليوم",week:"آخر 7 أيام",month:"الشهر الحالي",year:"السنة الحالية",all:"كل الفترات"};
+ const getPeriod=(period:"today"|"week"|"month"|"year")=>{
+  const start=period==="today"?today:period==="week"?plusDay(today,-6):
+   period==="month"?today.slice(0,7)+"-01":today.slice(0,4)+"-01-01";
+  const cars=rows.filter(x=>x.day>=start&&x.day<=today);
+  const costs=expenses.filter(x=>x.day>=start&&x.day<=today);
+  const inc=sum(cars.map(x=>x.cash+x.card));
+  const exp=sum(costs.map(x=>x.amount));
+  return {cars:cars.length,income:inc,expenses:exp,profit:inc-exp};
+ };
+ const dayTotal=getPeriod("today"),weekTotal=getPeriod("week"),
+   monthTotal=getPeriod("month"),yearTotal=getPeriod("year");
+ const ratio=(p:{expenses:number;profit:number})=>
+  p.expenses>0?Math.round(p.profit/p.expenses*100):0;
+ const activeDays=new Set([...filteredCars.map(x=>x.day),...filteredExpenses.map(x=>x.day)]).size;
+ const averageDailyProfit=activeDays>0?(income-expensesTotal)/activeDays:0;
+ const legacyKpis=[
+  {label:"دخل اليوم",value:cash(dayTotal.income),period:"today" as const,detail:"income" as const},
+  {label:"سيارات اليوم",value:String(dayTotal.cars),period:"today" as const,detail:"cars" as const},
+  {label:"دخل الأسبوع",value:cash(weekTotal.income),period:"week" as const,detail:"income" as const},
+  {label:"صافي الأسبوع (قديم)",value:cash(weekTotal.profit),period:"week" as const,detail:"profit" as const},
+  {label:"دخل الشهر",value:cash(monthTotal.income),period:"month" as const,detail:"income" as const},
+  {label:"صافي الشهر (قديم)",value:cash(monthTotal.profit),period:"month" as const,detail:"profit" as const},
+  {label:"دخل السنة",value:cash(yearTotal.income),period:"year" as const,detail:"income" as const},
+  {label:"صافي السنة (قديم)",value:cash(yearTotal.profit),period:"year" as const,detail:"profit" as const},
+  {label:"العائد مقابل المصروفات شهريًا",value:String(ratio(monthTotal))+"%",period:"month" as const,detail:"profit" as const},
+  {label:"العائد مقابل المصروفات سنويًا",value:String(ratio(yearTotal))+"%",period:"year" as const,detail:"profit" as const},
+  {label:"متوسط صافي الربح اليومي (قديم)",value:cash(averageDailyProfit),period:range,detail:"profit" as const},
+ ];
  const cardRows=[
   {id:"cars" as const,label:"عدد السيارات",value:String(filteredCars.length)},
   {id:"income" as const,label:"إجمالي الإيرادات",value:cash(income)},
@@ -113,6 +141,17 @@ export function DemoManagerDashboard({page,rows,statuses}:Props){
     <p className="txt-muted text-xs mt-2">اضغط لعرض التفاصيل</p>
    </button>)}
   </div>
+  <section className="card space-y-3">
+   <h3 className="subsection-title">مؤشرات اللوحة الشاملة في نظام Google Apps Script الأصلي</h3>
+   <p className="txt-muted text-sm">تظهر مؤشرات اليوم والأسبوع والشهر والسنة معًا. مؤشرات «قديم» تستخدم المعادلة الأصلية: الربح = الدخل − المصروفات، والعائد = الربح ÷ المصروفات، ولا تتضمن مخصص عشرات العمال غير المصروف.</p>
+   <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+    {legacyKpis.map(k=><button type="button" key={k.label} className="rounded-xl border p-3 text-center"
+     onClick={()=>{setRange(k.period);setDetail(k.detail);}}>
+      <p className="txt-muted text-xs leading-relaxed">{k.label}</p>
+      <strong className="block mt-2 text-base">{k.value}</strong>
+    </button>)}
+   </div>
+  </section>
   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
    <section className="card">
     <h3 className="subsection-title">تحليل الدخل والمصروفات اليومي</h3>
