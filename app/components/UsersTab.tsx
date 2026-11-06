@@ -67,7 +67,7 @@ export function UsersTab(){
   try{
    const data=await request("/api/owner/invites","POST");
    setBackupUrl(data.url);
-   setStatus("تم إنشاء رابط احتياطي لربط جهاز مدير جديد. صالح مرة واحدة خلال 7 أيام.");
+   setStatus("تم إنشاء رابط إدارة مباشر يعمل من أي جهاز دون تفعيل، ويمكن فتحه أكثر من مرة.");
   }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء الرابط الاحتياطي");}
   finally{setBusy(false);}
  }
@@ -112,15 +112,15 @@ export function UsersTab(){
     })}
   </section>
   <section className="card space-y-3">
-   <h2 className="subsection-title">رابط احتياطي للمدير</h2>
-   <p className="txt-muted text-sm">حساب الإدارة محفوظ في جهازك دون كلمة مرور. يمكنك إنشاء رابط احتياطي خاص لنقل وصول المدير إلى جهازك الآخر. لا ترسله لأي عامل.</p>
+   <h2 className="subsection-title">رابط مباشر إضافي للإدارة</h2>
+   <p className="txt-muted text-sm">رابط الإدارة الخاص يفتح اللوحة كاملة مباشرة، دون تسجيل أو تفعيل، على أي جوال أو كمبيوتر. لا ترسله للعمال لأنه يمنح جميع صلاحيات المدير.</p>
    <button className="btn-secondary w-full" type="button" disabled={busy}
-    onClick={()=>void createOwnerBackup()}>إنشاء رابط احتياطي للإدارة</button>
+    onClick={()=>void createOwnerBackup()}>إنشاء رابط إدارة مباشر إضافي</button>
    {backupUrl&&<div className="space-y-2">
     <input aria-label="رابط الإدارة الاحتياطي" type="text" dir="ltr" readOnly value={backupUrl}
       onFocus={e=>e.currentTarget.select()}/>
     <button type="button" className="btn-secondary w-full" onClick={()=>void copy(backupUrl)}>نسخ الرابط الاحتياطي</button>
-    <p className="txt-warning text-xs">رابط سري يمنح صلاحيات مدير كاملة، صالح مرة واحدة فقط.</p>
+    <p className="txt-warning text-xs">رابط سري يمنح جميع صلاحيات الإدارة، يمكن استخدامه عدة مرات ومن أي جهاز. احفظه بعيدًا عن الآخرين.</p>
    </div>}
   </section>
  </div>;
