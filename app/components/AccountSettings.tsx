@@ -72,7 +72,7 @@ export function AccountSettings({identity}:{identity:AppIdentity}){
   try{
    const response=await fetch("/api/auth/pin/enroll",{method:"POST",
     headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},
-    body:JSON.stringify({newPin:enrollPin,confirmPin:enrollConfirm,understandPasswordReplacement:true}),cache:"no-store"});
+    body:JSON.stringify({newPin:enrollPin,confirmPin:enrollConfirm,confirmEnrollment:true}),cache:"no-store"});
    const data=await response.json().catch(()=>({}));
    if(!response.ok)throw new Error(data.error||"تعذّر إعداد رمز PIN");
    setEnrollPin("");setEnrollConfirm("");
@@ -121,11 +121,11 @@ export function AccountSettings({identity}:{identity:AppIdentity}){
   </section>
   {isManager&&account?.phoneVerified&&!account.pinEnrolled&&<section className="card space-y-3">
    <h3 className="subsection-title">إعداد رمز PIN لأول مرة</h3>
-   <p className="txt-warning text-sm">سيستبدل هذا الإعداد كلمة مرور Supabase الحالية برمز مُشتق وآمن من PIN. سيبقى الدخول برابط البريد الإلكتروني متاحًا؛ قد تتوقف كلمة المرور القديمة. لا تُكمل الإعداد إلا إذا وافقت على ذلك.</p>
+   <p className="txt-warning text-sm">سيُنشئ هذا الإعداد PIN مستقلاً للجوال، دون تغيير كلمة مرور البريد الإلكتروني.</p>
    <form onSubmit={enrollFirstPin} className="space-y-3">
     <label className="form-label">PIN جديد (4 أرقام)<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" required value={enrollPin} onChange={e=>setEnrollPin(e.target.value.replace(/\\D/g,"").slice(0,4))}/></label>
     <label className="form-label">تأكيد PIN<input type="password" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" required value={enrollConfirm} onChange={e=>setEnrollConfirm(e.target.value.replace(/\\D/g,"").slice(0,4))}/></label>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirmReplace} onChange={e=>setConfirmReplace(e.target.checked)}/> أوافق على استبدال كلمة المرور الحالية وإعادة تسجيل الدخول</label>
+    <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirmReplace} onChange={e=>setConfirmReplace(e.target.checked)}/> أوافق على إعداد PIN مستقل</label>
     <button className="btn-primary w-full" type="submit" disabled={busy||!confirmReplace}>تفعيل PIN وتسجيل الخروج</button>
    </form>
   </section>}
