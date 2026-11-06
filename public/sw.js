@@ -25,7 +25,7 @@ self.addEventListener("fetch",event=>{
 
   // Shared worker capability URL is NEVER written to a Cache. On an offline
   // cold launch only a generic public worker form is served at the original URL.
-  if(request.mode==="navigate" && /^\\/w\\/[a-f0-9]{64}$/.test(url.pathname)){
+  if(request.mode==="navigate" && /^\/w\/[a-f0-9]{64}$/.test(url.pathname)){
     event.respondWith(fetch(request).catch(async()=>{
       const cache=await caches.open(OFFLINE_CACHE);
       return (await cache.match("/offline-worker.html"))||Response.error();
