@@ -1,8 +1,6 @@
 "use client";
 export const dynamic = "force-dynamic";
 import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { queueLength } from "@/lib/offlineQueue";
 import { AuthGate, type AppIdentity } from "./components/AuthGate";
 import { ExpensesTab } from "./components/ExpensesTab";
 import { AnalysisTab } from "./components/AnalysisTab";
@@ -32,7 +30,7 @@ const NAV: { key: Tab; label: string; allowed: ("manager" | "worker")[] }[] = [
   { key: "crewbonus", label: "⭐ مكافآت العاملين", allowed: ["manager"] },
   { key: "months", label: "🗓️ تقارير الشهور", allowed: ["manager"] },
   { key: "settings", label: "⚙ الإعدادات", allowed: ["manager"] },
-  { key: "users", label: "📧 حساب العامل", allowed: ["manager"] },
+  { key: "users", label: "🔗 روابط العمال", allowed: ["manager"] },
   { key: "alerts", label: "🔔 التنبيهات", allowed: ["manager"] },
   { key: "reconciliation", label: "🧾 تدقيق البيانات", allowed: ["manager"] },
   { key: "account", label: "👤 معلومات الحساب", allowed: ["manager","worker"] },
@@ -44,13 +42,6 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
   const actualTab = permitted.some((t) => t.key === tab) ? tab : (identity.role==="manager"?"analysis":"car");
   const canManage = identity.role === "manager";
 
-  async function logout() {
-    if (queueLength() > 0) {
-      alert("يوجد تسجيلات غير متزامنة. أعد الاتصال بالإنترنت قبل الخروج.");
-      return;
-    }
-    await supabase.auth.signOut({ scope: "local" });
-  }
 
   return (
     <ErrorBoundary>
@@ -62,9 +53,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
             {identity.role==="manager"?"لوحة المدير — الإدارة الشاملة":"تسجيل السيارات — العامل"}
           </p>
           <div className="flex items-center justify-center gap-3 mt-3 text-sm">
-            <span>{identity.email}</span>
-            <button type="button" className="btn-secondary" onClick={logout}>تسجيل الخروج</button>
-            {identity.role==="worker"&&<InstallAppButton />}
+            <span>لوحة الإدارة — هذا الجهاز معتمد</span>
           </div>
         </header>
         <nav className="tabs-bar" aria-label="القائمة الرئيسية">
