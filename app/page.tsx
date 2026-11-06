@@ -18,10 +18,11 @@ import { DaySettlementTab } from "./components/DaySettlementTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import { InstallAppButton } from "./components/InstallAppButton";
+import { AccountSettings } from "./components/AccountSettings";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
-type Tab = "car" | "settlement" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation";
+type Tab = "car" | "settlement" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation" | "account";
 const NAV: { key: Tab; label: string; allowed: ("manager" | "worker")[] }[] = [
   { key: "car", label: "🚗 تسجيل السيارات", allowed: ["worker"] },
   { key: "settlement", label: "🧾 موازنة الأيام", allowed: ["manager"] },
@@ -34,6 +35,7 @@ const NAV: { key: Tab; label: string; allowed: ("manager" | "worker")[] }[] = [
   { key: "users", label: "📱 حساب العامل", allowed: ["manager"] },
   { key: "alerts", label: "🔔 التنبيهات", allowed: ["manager"] },
   { key: "reconciliation", label: "🧾 تدقيق البيانات", allowed: ["manager"] },
+  { key: "account", label: "👤 معلومات الحساب", allowed: ["manager","worker"] },
 ];
 
 function CarwashApp({ identity }: { identity: AppIdentity }) {
@@ -82,6 +84,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           {canManage && actualTab === "users" && <UsersTab />}
           {canManage && actualTab === "alerts" && <AlertsTab isOwner={canManage} />}
           {canManage && actualTab === "reconciliation" && <ReconciliationTab />}
+          {actualTab === "account" && <AccountSettings identity={identity} />}
         </div>
         <div id="toast-container" />
         <OfflineStatusBadge />
