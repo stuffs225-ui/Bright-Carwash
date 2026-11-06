@@ -711,3 +711,28 @@ button.metric-card:hover { filter: brightness(1.04); }
   border-top: 1px solid var(--border);
   border-radius: 0 0 18px 18px;
 }
+
+/* Executive manager uses many sections. Never compress them into unreadable
+   10-column tabs on an iPhone; a horizontally swipeable mobile tab strip
+   preserves every original dashboard feature. */
+.tabs-bar{
+  display:flex;flex-wrap:nowrap;justify-content:flex-start;
+  overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;
+  -webkit-overflow-scrolling:touch;
+}
+.tabs-bar .tab-button{
+  flex:0 0 auto;min-width:125px;max-width:220px;
+  white-space:nowrap;scroll-snap-align:start;
+}
+.app-header .flex.items-center.justify-center{flex-wrap:wrap}
+.app-table{width:100%;min-width:580px}
+@media(max-width:640px){
+ .app-shell{width:calc(100% - 16px);margin:8px auto 18px}
+ .app-header{padding:17px 10px}
+ .tabs-bar{gap:7px;padding:9px}
+ .tabs-bar .tab-button{padding:13px 12px;min-height:47px;min-width:122px;font-size:.88rem}
+ .content-section-wrapper{padding:10px}
+ .card{padding:14px}
+ .section-title{font-size:1.18rem;line-height:1.5}
+ .subsection-title{font-size:1.05rem}
+}
