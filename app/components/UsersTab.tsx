@@ -1,96 +1,83 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import {useCallback,useEffect,useState} from "react";
+import {supabase} from "@/lib/supabaseClient";
 
-type Role = "manager" | "worker";
-type Member = { user_id:string; phone:string|null; role:Role; active:boolean; created_at:string };
-const ROLE_LABEL:Record<Role,string> = {manager:"مدير",worker:"عامل"};
-const roles:Role[] = ["worker"];
+type Member={user_id:string;email:string|null;role:"worker";active:boolean;created_at:string};
+export function UsersTab(){
+ const [members,setMembers]=useState<Member[]>([]);
+ const [email,setEmail]=useState("");
+ const [saving,setSaving]=useState(false);
+ const [error,setError]=useState("");
+ const [success,setSuccess]=useState("");
 
-export function UsersTab() {
-  const [members,setMembers] = useState<Member[]>([]);
-  const [phone,setPhone] = useState("");
-  const [initialPin,setInitialPin]=useState("");
-  const [role,setRole] = useState<Role>("worker");
-  const [saving,setSaving] = useState(false);
-  const [error,setError] = useState("");
-  const [success,setSuccess] = useState("");
+ const request=useCallback(async(method:"GET"|"POST"|"PATCH",body?:object)=>{
+  const {data:{session}}=await supabase.auth.getSession();
+  if(!session)throw Error("انتهت الجلسة، سجّل الدخول مجددًا");
+  const res=await fetch("/api/users",{
+   method,headers:{"authorization":"Bearer "+session.access_token,"content-type":"application/json"},
+   body:body?JSON.stringify(body):undefined,cache:"no-store"
+  });
+  const payload=await res.json().catch(()=>({}));
+  if(!res.ok)throw Error(payload.error||"فشل الطلب");
+  return payload;
+ },[]);
 
-  const request = useCallback(async (method:"GET"|"POST"|"PATCH", body?:object) => {
-    const {data:{session}} = await supabase.auth.getSession();
-    if(!session) throw new Error("انتهت صلاحية تسجيل الدخول");
-    const res = await fetch("/api/users", {
-      method, headers:{"authorization":"Bearer "+session.access_token,"content-type":"application/json"},
-      body:body?JSON.stringify(body):undefined,
-      cache:"no-store",
-    });
-    const payload = await res.json();
-    if(!res.ok) throw new Error(payload.error || "فشل الطلب");
-    return payload;
-  },[]);
+ const refresh=useCallback(async()=>{
+  try{const result=await request("GET");setMembers(result.members||[]);}
+  catch(e){setError(e instanceof Error?e.message:"تعذرت قراءة الحسابات");}
+ },[request]);
+ useEffect(()=>{void refresh();},[refresh]);
 
-  const refresh = useCallback(async () => {
-    try {
-      const result = await request("GET");
-      setMembers(result.members || []);
-    } catch (e) {
-      setError(e instanceof Error?e.message:String(e));
-    }
-  },[request]);
-  useEffect(()=>{void refresh();},[refresh]);
+ async function addWorker(e:React.FormEvent){
+  e.preventDefault();setSaving(true);setError("");setSuccess("");
+  try{
+   const address=email.trim().toLowerCase();
+   if(!/^\S+@\S+\.\S+$/.test(address))throw Error("أدخل إيميل العامل الصحيح");
+   await request("POST",{email:address,role:"worker"});
+   setEmail("");
+   setSuccess("تم إنشاء حساب العامل. يفتح العامل صفحة الدخول، يختار «أول مرة أو نسيت PIN»، ويتحقق من الإيميل ليختار رمزه بنفسه.");
+   await refresh();
+  }catch(e){setError(e instanceof Error?e.message:"تعذرت إضافة العامل");}
+  finally{setSaving(false);}
+ }
+ async function update(member:Member,active:boolean){
+  setSaving(true);setError("");setSuccess("");
+  try{
+   await request("PATCH",{user_id:member.user_id,role:"worker",active});
+   setSuccess(active?"تم تفعيل حساب العامل.":"تم إيقاف حساب العامل.");
+   await refresh();
+  }catch(e){setError(e instanceof Error?e.message:"تعذر تحديث الحالة");}
+  finally{setSaving(false);}
+ }
 
-  async function invite(e:React.FormEvent) {
-    e.preventDefault(); setSaving(true);setError("");setSuccess("");
-    try {
-      if(!/^\d{4}$/.test(initialPin))throw Error("أدخل رمز العامل الأولي من أربعة أرقام");
-      await request("POST",{phone,role:"worker",pin:initialPin});
-      setSuccess("تم تفعيل رقم الجوال وصلاحية الحساب؛ يستطيع المستخدم طلب رمز SMS عند الدخول.");
-      setPhone("");setInitialPin("");await refresh();
-    } catch(e) {setError(e instanceof Error?e.message:String(e));}
-    finally {setSaving(false);}
-  }
-
-  async function update(member:Member, patch:Partial<Member>) {
-    setSaving(true);setError("");setSuccess("");
-    try {
-      await request("PATCH",{user_id:member.user_id,role:patch.role??member.role,active:patch.active??member.active});
-      setSuccess("تم تحديث الصلاحية.");await refresh();
-    } catch(e) {setError(e instanceof Error?e.message:String(e));}
-    finally {setSaving(false);}
-  }
-
-  return <div className="space-y-5" dir="rtl">
-    <section className="card">
-      <h2 className="section-title">إدارة المستخدمين والصلاحيات</h2>
-      <p className="txt-muted text-sm">أضف رقم الجوال المشترك للعاملين، وحدد رمزًا أوليًا من 4 أرقام. لا يظهر الرمز بعد حفظه؛ يستطيع العامل تغييره من معلومات الحساب. يمكن تفعيل حساب عامل واحد فقط في الوقت نفسه.</p>
-      <form onSubmit={invite} className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-        <label className="form-label">رقم الجوال
-          <input type="tel" required value={phone} onChange={e=>setPhone(e.target.value)} placeholder="05XXXXXXXX" />
-        </label>
-        <label className="form-label">رمز العامل الأولي (4 أرقام)
-          <input type="password" inputMode="numeric" autoComplete="new-password"
-            required maxLength={4} pattern="[0-9]{4}"
-            value={initialPin} onChange={e=>setInitialPin(e.target.value.replace(/\D/g,"").slice(0,4))}
-            placeholder="••••" />
-        </label>
-        <div className="flex items-end"><button type="submit" disabled={saving} className="btn-primary w-full">إضافة حساب الجوال</button></div>
-      </form>
-    </section>
-    {error && <p role="alert" className="txt-danger">{error}</p>}
-    {success && <p role="status" className="text-green-700">{success}</p>}
-    <section className="card">
-      <h2 className="section-title mb-3">حسابات المغسلة ({members.length})</h2>
-      <div className="overflow-x-auto"><table className="app-table">
-        <thead><tr><th>المستخدم</th><th>الدور</th><th>الحالة</th><th>الإجراء</th></tr></thead>
-        <tbody>{members.map(m=><tr key={m.user_id}>
-          <td>{m.phone||m.user_id.slice(0,8)}</td>
-          <td>
-            <strong>{ROLE_LABEL[m.role]}</strong>
-          </td>
-          <td>{m.active?"نشط":"موقف"}</td>
-          <td><button type="button" disabled={saving} className="btn-secondary" onClick={()=>void update(m,{active:!m.active})}>{m.active?"تعطيل":"تفعيل"}</button></td>
-        </tr>)}</tbody>
-      </table></div>
-    </section>
-  </div>;
+ return <div className="space-y-5" dir="rtl">
+  <section className="card space-y-3">
+   <h2 className="section-title">إدارة حساب العامل</h2>
+   <p className="txt-muted text-sm">الدخول للإدارة والعامل بالإيميل وPIN من 4 أرقام. حساب العامل محدود الصلاحيات، ويمكنه إعداد الرمز أو استعادته عبر بريده بنفسه، دون جوال.</p>
+   <form onSubmit={addWorker} className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+    <label className="form-label">الإيميل المخصص للعامل
+     <input type="email" inputMode="email" autoComplete="off" required
+      value={email} onChange={e=>setEmail(e.target.value)} placeholder="worker@example.com"/>
+    </label>
+    <div className="flex items-end"><button className="btn-primary w-full" type="submit" disabled={saving}>
+     {saving?"جارٍ الحفظ...":"إضافة حساب العامل"}
+    </button></div>
+   </form>
+   <p className="txt-muted text-xs">يبقى نظام الحساب المشترك للعاملين كما كان: حساب عامل نشط واحد في الوقت نفسه.</p>
+  </section>
+  {error&&<p role="alert" className="txt-danger">{error}</p>}
+  {success&&<p role="status" className="text-green-700">{success}</p>}
+  <section className="card">
+   <h2 className="section-title mb-3">الحسابات ({members.length})</h2>
+   <div className="overflow-x-auto"><table className="app-table">
+    <thead><tr><th>الإيميل</th><th>الدور</th><th>الحالة</th><th>الإجراء</th></tr></thead>
+    <tbody>{members.map(m=><tr key={m.user_id}>
+     <td>{m.email||"البريد غير متوفر"}</td><td>عامل</td>
+     <td>{m.active?"نشط":"متوقف"}</td>
+     <td><button type="button" className="btn-secondary" disabled={saving}
+      onClick={()=>void update(m,!m.active)}>{m.active?"تعطيل":"تفعيل"}</button></td>
+    </tr>)}</tbody>
+   </table></div>
+  </section>
+ </div>;
 }
