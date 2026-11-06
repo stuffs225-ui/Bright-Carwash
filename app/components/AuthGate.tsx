@@ -6,7 +6,7 @@ import { queueLength, setOfflineActor } from "@/lib/offlineQueue";
 import { normalizeSaudiMobile } from "@/lib/phone";
 import { DemoCarwashApp } from "./DemoCarwashApp";
 
-export type AppRole = "owner" | "manager" | "worker";
+export type AppRole = "manager" | "worker";
 export type AppIdentity = { userId: string; email: string; role: AppRole };
 
 export function AuthGate({ children }: { children: (identity: AppIdentity) => React.ReactNode }) {
@@ -55,8 +55,9 @@ export function AuthGate({ children }: { children: (identity: AppIdentity) => Re
     if (membershipError) {
       setError("تعذر التحقق من الصلاحيات. راجع إعدادات قاعدة البيانات.");
     }
-    const role = member?.active && ["owner", "manager", "worker"].includes(member.role)
-      ? member.role as AppRole : null;
+    const role:AppRole|null = !member?.active?null:
+      member.role==="worker"?"worker":
+      member.role==="manager"||member.role==="owner"?"manager":null;
     setOfflineActor(role ? data.user.id : null);
     if(role==="worker"){
       localStorage.setItem("carwash_verified_worker_v2",JSON.stringify({
