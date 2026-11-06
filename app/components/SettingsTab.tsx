@@ -115,7 +115,7 @@ export function SettingsTab() {
       {category === "access" && (
         <div className="space-y-6">
           <Section title="صلاحيات الموظفين" hint="الوصول محمي بحسابات Supabase Auth وصلاحيات قاعدة البيانات. لا يوجد PIN في المتصفح.">
-            <p className="txt-muted text-sm">المالك يدير الحسابات والصلاحيات من Supabase Auth وجدول app_members. لا تشارك حساب المالك.</p>
+            <p className="txt-muted text-sm">المدير يدير رقم العامل المشترك والصلاحيات من صفحة المستخدمين. لا تشارك رمز دخول المدير.</p>
           </Section>
           <Section title="رابط تسجيل الموظف">
             <div className="flex flex-wrap gap-2 items-center">
