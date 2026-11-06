@@ -40,13 +40,13 @@ export async function POST(request:Request){
    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
    {auth:{persistSession:false,autoRefreshToken:false}});
   const old=await client.auth.signInWithPassword({
-   phone:user.phone,password:deriveCarwashAuthPassword(user.phone,body.oldPin),
+   phone:user.phone,password:deriveCarwashAuthPassword(user.id,body.oldPin),
   });
   if(old.error||old.data.user?.id!==user.id){
    return fail(401,"الرمز الحالي غير صحيح");
   }
   const {error}=await admin.auth.admin.updateUserById(user.id,{
-   password:deriveCarwashAuthPassword(user.phone,body.newPin),
+   password:deriveCarwashAuthPassword(user.id,body.newPin),
   });
   if(error)return fail(503,"لم يكتمل تغيير الرمز");
   await admin.rpc("carwash_pin_clear_attempts",{p_key_hash:key});
