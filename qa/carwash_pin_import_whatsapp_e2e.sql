@@ -85,7 +85,7 @@ select * from public.carwash_claim_whatsapp_ready(50);
 do $qa_sender_claim$
 declare n integer; the_id uuid;ok boolean;
 begin
- select count(*),max(id) into n,the_id from public.ready_sms_outbox
+ select count(*),(array_agg(id))[1] into n,the_id from public.ready_sms_outbox
  where destination_phone='+966500000009' and status='queued' and attempt_count=1;
  if n<>1 then raise exception 'WhatsApp outbox not reserved exactly once';end if;
  ok:=public.carwash_complete_whatsapp_ready(the_id,'sent','wamid.synthetic.carwash',null);
