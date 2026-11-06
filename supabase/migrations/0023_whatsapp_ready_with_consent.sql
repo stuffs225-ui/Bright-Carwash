@@ -18,6 +18,9 @@ alter table public.ready_sms_outbox
 alter table public.ready_sms_outbox
  add constraint carwash_ready_channel_check check(channel='whatsapp');
 
+-- Trusted service_role may update provider delivery receipts; ordinary app roles cannot.
+grant select,update on public.ready_sms_outbox to service_role;
+
 create index if not exists carwash_ready_pending_channel
  on public.ready_sms_outbox(created_at,id)
  where status='pending_provider' and channel='whatsapp';
