@@ -139,10 +139,10 @@ export function AnalysisTab() {
     try {
       const [e, x] = await Promise.all([
         fetchAllRows<Entry>((from, to) =>
-          supabase.from("entries").select("id,occurred_at,gross,cash_paid,card_paid,discount_amount,car_type,service_type,notes,payment_method").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+          supabase.from("entries").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
         ),
         fetchAllRows<Expense>((from, to) =>
-          supabase.from("expenses").select("id,occurred_at,amount,expense_type").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+          supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
         ),
       ]);
       setAllEntries(e);
