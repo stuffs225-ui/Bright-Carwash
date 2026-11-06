@@ -10,7 +10,7 @@ export default function DirectManagerPage({params}:{params:{token:string}}){
   started.current=true;
   const token=params.token||"";
   // Hide the secret portion from browser history and outgoing referers.
-  window.history.replaceState(null,"","/admin");
+  window.history.replaceState(null,"","/");
   async function open(){
    if(!/^[a-f0-9]{64}$/.test(token)){
     setError("رابط الإدارة غير صالح. استخدم الرابط الكامل الذي تم إصداره.");return;
