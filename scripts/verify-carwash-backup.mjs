@@ -4,6 +4,8 @@
 import {readFileSync,writeFileSync} from "node:fs";
 import {createDecipheriv,createHash} from "node:crypto";
 import {gunzipSync} from "node:zlib";
+import {resolve} from "node:path";
+import {pathToFileURL} from "node:url";
 
 export function inspectEncryptedBackup(bytes,keyBase64){
  const encoded=String(keyBase64||"").trim();
@@ -50,6 +52,6 @@ function main(){
  }
  process.stdout.write(JSON.stringify(result.summary,null,2)+"\n");
 }
-if(process.argv[1]&&import.meta.url===new URL("file://"+process.argv[1]).href){
+if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).href){
  try{main()}catch(error){process.stderr.write("Backup verification failed: "+(error?.message||"unknown error")+"\n");process.exitCode=1;}
 }
