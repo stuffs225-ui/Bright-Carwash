@@ -736,3 +736,17 @@ button.metric-card:hover { filter: brightness(1.04); }
  .section-title{font-size:1.18rem;line-height:1.5}
  .subsection-title{font-size:1.05rem}
 }
+
+/* Saudi-phone and month controls were browser-default white on mobile dark
+   mode, making the manager onboarding box look unfinished. */
+input[type="tel"],input[type="month"],input[type="file"]{
+ width:100%;max-width:100%;min-height:var(--control-h);
+ border:1px solid var(--border-strong);border-radius:11px;
+ padding:10px 13px;background:var(--surface);color:var(--text);
+ font-size:var(--control-fs);outline:none;
+}
+input[type="tel"],input[type="month"]{direction:ltr;text-align:right}
+input[type="file"]{font-size:.89rem}
+.form-label>input,.form-label>select,.form-label>textarea{
+ display:block;margin-top:7px;max-width:100%;min-width:0
+}
