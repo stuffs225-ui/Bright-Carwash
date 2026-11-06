@@ -20,11 +20,13 @@ export function assertDedicatedCarwashDatabase(){
  if(!expected||!/^\w{20}$/.test(expected)||hostname!==expected+".supabase.co")
   throw new Error("Isolated Bright-Carwash database reference is not verified");
 }
-export function deriveCarwashAuthPassword(phone:string,pin:string):string{
- if(!/^\+9665\d{8}$/.test(phone)||!validFourDigitPin(pin))
-  throw new Error("Invalid carwash phone or PIN");
+export function deriveCarwashAuthPassword(userId:string,pin:string):string{
+ if(!/^[0-9a-f-]{36}$/i.test(userId)||!validFourDigitPin(pin))
+  throw new Error("Invalid carwash account or PIN");
+ // Stable Auth account ID lets the employee verify/change their phone
+ // through Supabase OTP without invalidating the personal PIN.
  return "CarwashV2#"+createHmac("sha256",pinPepper())
-  .update("pin-v1|"+phone+"|"+pin).digest("hex");
+  .update("pin-v2|"+userId+"|"+pin).digest("hex");
 }
 export function carwashRateKey(type:"phone"|"ip",value:string):string{
  return createHmac("sha256",pinPepper()).update("ratelimit-v1|"+type+"|"+value)
