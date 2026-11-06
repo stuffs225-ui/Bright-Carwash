@@ -8,8 +8,8 @@ export type AppIdentity={userId:string;email:string;role:AppRole};
 
 /**
  * No username, password, phone or PIN form:
- * - A one-use manager setup link pairs this device.
- * - The server restores manager's real Supabase session from a private,
+ * - The reusable secret manager URL opens this account from any device.
+ * - The server restores a real manager Supabase session from a private,
  *   HttpOnly device cookie, only while the manager membership is active.
  * - The worker does NOT use this gate; its scoped /w/<token> route is separate.
  */
@@ -45,7 +45,7 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
     .select("role,active").eq("user_id",user.id).maybeSingle();
    if(memberError||membership?.role!=="manager"||!membership.active){
     setIdentity(null);setOfflineActor(null);
-    setError("هذا الجهاز لا يمتلك صلاحية المدير. افتح رابط الإدارة الخاص بك.");return;
+    setError("افتح رابط الإدارة المباشر الخاص بك.");return;
    }
    setOfflineActor(user.id);
    setIdentity({userId:user.id,email:user.email||"",role:"manager"});
@@ -79,10 +79,10 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
   <div className="card w-full max-w-md space-y-4 text-center">
    <h1 className="section-title">مغسلة سيارتك اللامعة</h1>
    <h2 className="subsection-title">لوحة الإدارة الخاصة</h2>
-   <p className="txt-muted">لا توجد شاشة تسجيل دخول أو كلمة مرور. افتح رابط تفعيل الإدارة الخاص بجهازك مرة واحدة، وبعدها ستفتح لوحة الإدارة تلقائيًا على هذا الجهاز.</p>
+   <p className="txt-muted">لا تحتاج إيميل أو كلمة مرور أو تفعيل. افتح رابط الإدارة المباشر الخاص بك من أي جهاز لفتح اللوحة تلقائيًا.</p>
    {error&&<p className="txt-warning text-sm">{error}</p>}
    <button className="btn-secondary w-full" onClick={()=>void refresh()}>إعادة محاولة فتح الإدارة</button>
-   <p className="txt-muted text-xs">العامل يدخل فقط بالرابط المخصص لتسجيل السيارات، ولا يحصل على صلاحيات الإدارة.</p>
+   <p className="txt-muted text-xs">رابط العامل يفتح تسجيل السيارات فقط، بينما رابط الإدارة يفتح جميع صلاحيات المدير.</p>
   </div>
  </main>;
  return <>{children(identity)}</>;
