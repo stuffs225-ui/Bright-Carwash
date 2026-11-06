@@ -4,7 +4,6 @@ import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { queueLength } from "@/lib/offlineQueue";
 import { AuthGate, type AppIdentity } from "./components/AuthGate";
-import { CarEntryTab } from "./components/CarEntryTab";
 import { ExpensesTab } from "./components/ExpensesTab";
 import { AnalysisTab } from "./components/AnalysisTab";
 import { WorkersTab } from "./components/WorkersTab";
@@ -14,7 +13,6 @@ import { AlertsTab } from "./components/AlertsTab";
 import { ReconciliationTab } from "./components/ReconciliationTab";
 import { CrewBonusesTab } from "./components/CrewBonusesTab";
 import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
-import { ShiftCloseTab } from "./components/ShiftCloseTab";
 import { WorkerRegisterTab } from "./components/WorkerRegisterTab";
 import { DaySettlementTab } from "./components/DaySettlementTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
@@ -24,26 +22,25 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
 type Tab = "car" | "settlement" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation";
-const NAV: { key: Tab; label: string; allowed: ("owner" | "manager" | "worker")[] }[] = [
-  { key: "car", label: "🚗 تسجيل السيارات", allowed: ["owner","worker"] },
-  { key: "settlement", label: "🧾 موازنة الوردية", allowed: ["owner","manager"] },
-  { key: "expenses", label: "💳 المصروفات", allowed: ["owner","manager"] },
-  { key: "analysis", label: "📊 التحليلات", allowed: ["owner","manager"] },
-  { key: "workers", label: "👷 العمال", allowed: ["owner","manager"] },
-  { key: "crewbonus", label: "⭐ مكافآت الوردية", allowed: ["owner","manager"] },
-  { key: "months", label: "🗓️ اعتماد الشهور", allowed: ["owner"] },
-  { key: "settings", label: "⚙ الإعدادات", allowed: ["owner"] },
-  { key: "users", label: "🔐 المستخدمون", allowed: ["owner","manager"] },
-  { key: "alerts", label: "🔔 التنبيهات", allowed: ["owner","manager"] },
-  { key: "reconciliation", label: "🧾 تدقيق الترحيل", allowed: ["owner"] },
+const NAV: { key: Tab; label: string; allowed: ("manager" | "worker")[] }[] = [
+  { key: "car", label: "🚗 تسجيل السيارات", allowed: ["worker"] },
+  { key: "settlement", label: "🧾 موازنة الأيام", allowed: ["manager"] },
+  { key: "expenses", label: "💳 المصروفات", allowed: ["manager"] },
+  { key: "analysis", label: "📊 اللوحة الرئيسية", allowed: ["manager"] },
+  { key: "workers", label: "👷 العمال والرواتب", allowed: ["manager"] },
+  { key: "crewbonus", label: "⭐ مكافآت العاملين", allowed: ["manager"] },
+  { key: "months", label: "🗓️ تقارير الشهور", allowed: ["manager"] },
+  { key: "settings", label: "⚙ الإعدادات", allowed: ["manager"] },
+  { key: "users", label: "📱 حساب العامل", allowed: ["manager"] },
+  { key: "alerts", label: "🔔 التنبيهات", allowed: ["manager"] },
+  { key: "reconciliation", label: "🧾 تدقيق البيانات", allowed: ["manager"] },
 ];
 
 function CarwashApp({ identity }: { identity: AppIdentity }) {
-  const [tab, setTab] = useState<Tab>(identity.role==="manager"?"settlement":"car");
+  const [tab, setTab] = useState<Tab>(identity.role==="manager"?"analysis":"car");
   const permitted = NAV.filter((item) => item.allowed.includes(identity.role));
-  const actualTab = permitted.some((t) => t.key === tab) ? tab : (identity.role==="manager"?"settlement":"car");
-  const isOwner = identity.role === "owner";
-  const canManage = identity.role === "owner" || identity.role === "manager";
+  const actualTab = permitted.some((t) => t.key === tab) ? tab : (identity.role==="manager"?"analysis":"car");
+  const canManage = identity.role === "manager";
 
   async function logout() {
     if (queueLength() > 0) {
@@ -60,7 +57,7 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
         <header className="app-header">
           <h1 className="text-2xl sm:text-3xl font-extrabold">مغسلة سيارتك اللامعة</h1>
           <p className="text-sm opacity-90 mt-2">
-            {identity.role === "owner" ? "لوحة المالك" : identity.role === "manager" ? "إدارة المغسلة" : "تسجيل السيارات"}
+            {identity.role==="manager"?"لوحة المدير — الإدارة الشاملة":"تسجيل السيارات — العامل"}
           </p>
           <div className="flex items-center justify-center gap-3 mt-3 text-sm">
             <span>{identity.email}</span>
@@ -74,17 +71,17 @@ function CarwashApp({ identity }: { identity: AppIdentity }) {
           )}
         </nav>
         <div className="content-section-wrapper">
-          {actualTab === "car" && (identity.role==="worker"?<WorkerRegisterTab/>:<CarEntryTab ownerView />)}
-          {canManage && actualTab === "settlement" && <DaySettlementTab isOwner={isOwner} />}
+          {actualTab === "car" && <WorkerRegisterTab/>}
+          {canManage && actualTab === "settlement" && <DaySettlementTab canApproveVariance />}
           {canManage && actualTab === "expenses" && <ExpensesTab />}
           {canManage && actualTab === "analysis" && <AnalysisTab />}
           {canManage && actualTab === "workers" && <WorkersTab />}
           {canManage && actualTab === "crewbonus" && <CrewBonusesTab />}
-          {isOwner && actualTab === "months" && <AccountingMonthsTab />}
-          {isOwner && actualTab === "settings" && <SettingsTab />}
-          {canManage && actualTab === "users" && <UsersTab viewerRole={identity.role==="manager"?"manager":"owner"} />}
-          {canManage && actualTab === "alerts" && <AlertsTab isOwner={isOwner} />}
-          {isOwner && actualTab === "reconciliation" && <ReconciliationTab />}
+          {canManage && actualTab === "months" && <AccountingMonthsTab />}
+          {canManage && actualTab === "settings" && <SettingsTab />}
+          {canManage && actualTab === "users" && <UsersTab />}
+          {canManage && actualTab === "alerts" && <AlertsTab isOwner={canManage} />}
+          {canManage && actualTab === "reconciliation" && <ReconciliationTab />}
         </div>
         <div id="toast-container" />
         <OfflineStatusBadge />
