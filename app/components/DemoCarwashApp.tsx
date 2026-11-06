@@ -4,25 +4,50 @@ import {riyadhDayKey,dayIsFinished} from "@/lib/carwashCalendarDay";
 import {formatCurrency} from "@/lib/business";
 import {InstallAppButton} from "./InstallAppButton";
 import {ServiceWorkerRegister} from "./ServiceWorkerRegister";
+import {DemoManagerDashboard} from "./DemoManagerDashboard";
+import {DemoManagerOperations} from "./DemoManagerOperations";
+import {plusDay,type DemoManagerPage,saveDemoFinance,defaultDemoFinance} from "@/lib/demoManagerData";
 
 type Row={id:string;day:string;car:"سيارة صغيرة"|"سيارة كبيرة";
   service:string;cash:number;card:number;ready:boolean};
 type Status="open"|"awaiting_owner"|"approved";
 type DemoState={rows:Row[];statuses:Record<string,Status>};
-type Role="manager"|"worker"|"owner";
-const KEY="carwash_demo_preview_not_real_v2";
+type Role="manager"|"worker";
+const KEY="carwash_demo_preview_not_real_v3";
+const managerPages:{key:DemoManagerPage;label:string}[]=[
+ {key:"dashboard",label:"📊 اللوحة الرئيسية"},
+ {key:"cars",label:"🚘 السيارات"},
+ {key:"expenses",label:"💳 المصروفات"},
+ {key:"workers",label:"👷 العمال والرواتب"},
+ {key:"reports",label:"📄 التقارير"},
+ {key:"settlement",label:"🧾 موازنة الأيام"},
+ {key:"settings",label:"⚙️ الإعدادات"},
+ {key:"alerts",label:"🔔 التنبيهات"},
+ {key:"users",label:"📱 حساب العامل"},
+];
 function yesterday(today:string){
  const date=new Date(today+"T12:00:00+03:00");
  date.setUTCDate(date.getUTCDate()-1);
  return riyadhDayKey(date);
 }
 function seed(today:string):DemoState{
- const old=yesterday(today);
- return {statuses:{[old]:"open",[today]:"open"},rows:[
- {id:"demo-1",day:old,car:"سيارة صغيرة",service:"غسيل كامل",cash:25,card:0,ready:true},
- {id:"demo-2",day:old,car:"سيارة كبيرة",service:"غسيل كامل",cash:0,card:30,ready:false},
- {id:"demo-3",day:today,car:"سيارة صغيرة",service:"غسيل كامل",cash:25,card:0,ready:false},
- ]};
+ const rows:Row[]=[];
+ const statuses:Record<string,Status>={};
+ for(let ago=29;ago>=0;ago--){
+  const date=plusDay(today,-ago);
+  statuses[date]=ago>1?"approved":"open";
+  const count=ago===0?1:ago===1?2:3+(ago%5);
+  for(let i=0;i<count;i++){
+   const large=(i+ago)%3===0;
+   const fee=large?30:25;
+   const pay=(i+ago)%3;
+   rows.push({id:"demo-"+ago+"-"+i,day:date,
+    car:large?"سيارة كبيرة":"سيارة صغيرة",service:"غسيل كامل",
+    cash:pay===0?fee:pay===2?fee/2:0,
+    card:pay===1?fee:pay===2?fee/2:0,ready:i%3===0});
+  }
+ }
+ return {rows,statuses};
 }
 function totals(rows:Row[]){return {
  count:rows.length,cash:rows.reduce((n,r)=>n+r.cash,0),
@@ -42,6 +67,7 @@ function snapshot():DemoState{
 export function DemoCarwashApp(){
  const [started,setStarted]=useState(false);
  const [role,setRole]=useState<Role>("manager");
+ const [managerPage,setManagerPage]=useState<DemoManagerPage>("dashboard");
  const [now,setNow]=useState<Date>(new Date());
  const [data,setData]=useState<DemoState|null>(null);
  const [car,setCar]=useState<Row["car"]>("سيارة صغيرة");
@@ -110,14 +136,14 @@ export function DemoCarwashApp(){
    <h1 className="text-2xl font-bold">مغسلة سيارتك اللامعة</h1>
    <p className="mt-2">وضع تجربة محلي — لا توجد عمليات حقيقية أو رسائل SMS</p>
    <div className="flex flex-wrap gap-2 justify-center mt-4">
-    {(["manager","worker","owner"] as Role[]).map(r=><button key={r} type="button"
+    {(["manager","worker"] as Role[]).map(r=><button key={r} type="button"
       className={role===r?"btn-primary":"btn-secondary"} onClick={()=>{setRole(r);setSelectedDay(null);}}>
-      {r==="manager"?"👔 مدير":r==="worker"?"🚗 عامل":"🔐 مالك (محاكاة)"}
+      {r==="manager"?"👔 المدير — إدارة كاملة":"🚗 العامل — تسجيل فقط"}
     </button>)}
    </div>
    <div className="flex flex-wrap justify-center gap-2 mt-3"><InstallAppButton />
     <button className="btn-secondary" type="button" onClick={()=>{
-      if(confirm("إعادة ضبط جميع البيانات التجريبية فقط؟")){sessionStorage.removeItem(KEY);setData(seed(today));}
+      if(confirm("إعادة ضبط جميع البيانات التجريبية فقط؟")){sessionStorage.removeItem(KEY);saveDemoFinance(defaultDemoFinance(today));setData(seed(today));}
     }}>إعادة ضبط بيانات التجربة</button>
    </div>
   </header>
