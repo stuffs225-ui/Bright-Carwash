@@ -66,7 +66,7 @@ export function AccountingMonthsTab(){
   return <div className="space-y-6">
     <section className="card space-y-4">
       <h2 className="section-title">اعتماد تقارير الشهور وإعادة فتحها</h2>
-      <p className="txt-muted text-sm">المالك وحده يستطيع اعتماد شهر مكتمل، أو إعادة فتح شهر معتمد مع تسجيل السبب؛ وبعد تسجيل المصروفات القديمة يجب إعادة الاعتماد. يُحتفظ بكل إصدارات التقارير السابقة.</p>
+      <p className="txt-muted text-sm">المدير وحده يستطيع اعتماد شهر مكتمل، أو إعادة فتح شهر معتمد مع تسجيل السبب؛ وبعد تسجيل المصروفات القديمة يجب إعادة الاعتماد. يُحتفظ بكل إصدارات التقارير السابقة.</p>
       <label className="form-label">الشهر
         <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
       </label>
