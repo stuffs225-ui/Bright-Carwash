@@ -77,7 +77,7 @@ export async function POST(request:Request){
    if(generated.error||generated.data.user?.id!==accountId||!tokenHash)return fail(503);
    const verified=await login.auth.verifyOtp({token_hash:tokenHash,type:"magiclink"});
    if(verified.error||!verified.data.session||verified.data.user?.id!==accountId)return fail(503);
-   data=verified.data;
+   data={user:verified.data.user!,session:verified.data.session!};
   }
   const check=await admin.from("app_members").select("role,active")
    .eq("user_id",data.user.id).maybeSingle();
