@@ -3,8 +3,8 @@ import { createAdminClient } from "@/lib/supabaseAdmin";
 import { normalizeSaudiMobile } from "@/lib/phone";
 import { canInviteCarwashAccount, canModifyCarwashAccount } from "@/lib/carwashMemberPermissions";
 
-type AppRole = "owner" | "manager" | "worker";
-const ROLES: AppRole[] = ["owner", "manager", "worker"];
+type AppRole = "manager" | "worker";
+const ROLES: AppRole[] = ["worker"];
 async function managerAccess(request: Request) {
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
@@ -14,8 +14,8 @@ async function managerAccess(request: Request) {
   if (error || !data.user) return null;
   const { data: member } = await admin.from("app_members").select("role,active")
     .eq("user_id", data.user.id).maybeSingle();
-  if (!member?.active || !["owner","manager"].includes(member.role)) return null;
-  return { admin, viewerId: data.user.id, viewerRole: member.role as "owner"|"manager" };
+  if (!member?.active || member.role!=="manager") return null;
+  return { admin, viewerId: data.user.id, viewerRole: "manager" as const };
 }
 const unauthorized = () => NextResponse.json({error:"Carwash management authorization required"},{status:403});
 
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   if (!access) return unauthorized();
   let query=access.admin.from("app_members")
     .select("user_id,role,active,created_at").order("created_at",{ascending:false});
-  if(access.viewerRole==="manager")query=query.eq("role","worker");
+  query=query.eq("role","worker");
   const {data: members, error}=await query;
   if(error) return NextResponse.json({error:error.message},{status:500});
   const users = [];
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       error:"يوجد حساب عامل مشترك نشط بالفعل؛ عطله أولًا إذا كنت تريد تغيير رقم الجوال."
     },{status:409});
   }
-  // Only an authorized manager/owner can pre-provision a phone after checking
+  // Only an authorized manager can pre-provision a phone after checking
   // the allowed role. Public OTP sign-up stays disabled.
   const creation = await access.admin.auth.admin.createUser({phone, phone_confirm:true});
   if (creation.error || !creation.data.user) {
@@ -82,8 +82,8 @@ export async function PATCH(request: Request) {
   if(!/^[a-f0-9-]{36}$/i.test(id) || !ROLES.includes(role) || typeof body?.active!=="boolean") {
     return NextResponse.json({error:"Invalid user, role or active status"},{status:400});
   }
-  if(id === access.viewerId && (role !== "owner" || !body.active)) {
-    return NextResponse.json({error:"Cannot demote or deactivate your own owner account"},{status:400});
+  if(id === access.viewerId) {
+    return NextResponse.json({error:"Manager account cannot be edited from the worker user management endpoint"},{status:400});
   }
   if(access.viewerRole==="manager"){
     // Manager can only switch active status of the shared worker account.
