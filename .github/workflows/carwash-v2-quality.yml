@@ -22,6 +22,12 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Domain tests
         run: npm test
+      - name: Private snapshot importer safety preflight (synthetic, no database)
+        run: |
+          node --check scripts/bootstrap-carwash-manager.mjs
+          node --check scripts/import-private-carwash-snapshot.mjs
+          node scripts/import-private-carwash-snapshot.mjs qa/synthetic_carwash_import.json > /tmp/carwash-import-check.txt
+          grep 'DRY RUN ONLY' /tmp/carwash-import-check.txt
       - name: Type checking
         run: npx tsc --noEmit
       - name: Next.js build
