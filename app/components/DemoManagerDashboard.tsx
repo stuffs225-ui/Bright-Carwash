@@ -14,6 +14,7 @@ export function DemoManagerDashboard({page,rows,statuses}:Props){
  const [expenses,setExpenses]=useState<DemoExpense[]>([]);
  const [range,setRange]=useState<"today"|"week"|"month"|"year"|"all">("month");
  const [detail,setDetail]=useState<Detail>(null);
+ const [legacyMetric,setLegacyMetric]=useState<string|null>(null);
  const [selectedCar,setSelectedCar]=useState<DemoRow|null>(null);
  const [search,setSearch]=useState("");
  const [date,setDate]=useState("");
@@ -134,7 +135,7 @@ export function DemoManagerDashboard({page,rows,statuses}:Props){
    <p className="txt-warning mt-3 text-sm">جميع الأرقام أمثلة تجريبية. صافي الربح = الإيرادات − المصروفات − مخصص 10 ريالات لكل سيارة، ولا يمثل بيانًا ماليًا معتمدًا.</p>
   </section>
   <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-   {cardRows.map(c=><button key={c.id} type="button" onClick={()=>setDetail(c.id)}
+   {cardRows.map(c=><button key={c.id} type="button" onClick={()=>{setLegacyMetric(null);setDetail(c.id);}}
     className="card text-center min-h-[105px] hover:brightness-105">
     <p className="txt-muted text-sm">{c.label}</p>
     <strong className="block mt-2 text-lg sm:text-xl">{c.value}</strong>
@@ -146,7 +147,7 @@ export function DemoManagerDashboard({page,rows,statuses}:Props){
    <p className="txt-muted text-sm">تظهر مؤشرات اليوم والأسبوع والشهر والسنة معًا. مؤشرات «قديم» تستخدم المعادلة الأصلية: الربح = الدخل − المصروفات، والعائد = الربح ÷ المصروفات، ولا تتضمن مخصص عشرات العمال غير المصروف.</p>
    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
     {legacyKpis.map(k=><button type="button" key={k.label} className="rounded-xl border p-3 text-center"
-     onClick={()=>{setRange(k.period);setDetail(k.detail);}}>
+     onClick={()=>{setRange(k.period);setLegacyMetric(k.label);setDetail(k.detail);}}>
       <p className="txt-muted text-xs leading-relaxed">{k.label}</p>
       <strong className="block mt-2 text-base">{k.value}</strong>
     </button>)}
@@ -204,7 +205,11 @@ export function DemoManagerDashboard({page,rows,statuses}:Props){
    </tr>)}</tbody></table>
   </section>
   {detail&&<Modal title="تفاصيل المؤشر" onClose={()=>setDetail(null)}>
-   <p className="font-semibold mb-3">{detail==="profit"?
+   <p className="font-semibold mb-3">{legacyMetric&&legacyMetric.includes("العائد")?
+    "طريقة النظام السابق: (دخل "+cash(income)+" − مصروفات "+cash(expensesTotal)+") ÷ مصروفات "+cash(expensesTotal)+" × 100 = "+(expensesTotal>0?Math.round((income-expensesTotal)/expensesTotal*100):0)+"%":
+    legacyMetric&&(legacyMetric.includes("صافي")||legacyMetric.includes("متوسط"))?
+    "معادلة النظام القديم: دخل "+cash(income)+" − مصروفات "+cash(expensesTotal)+" = "+cash(income-expensesTotal)+"، دون خصم مخصص العشرات غير المصروف.":
+    detail==="profit"?
     "الإيرادات "+cash(income)+" − المصروفات "+cash(expensesTotal)+" − مستحق العشرات "+cash(crew)+" = "+cash(net):
     detail==="crew"?"10 ريالات جماعية × "+filteredCars.length+" سيارة = "+cash(crew):
     detail==="income"?"الإيرادات "+cash(income):detail==="expenses"?"المصروفات "+cash(expensesTotal):
