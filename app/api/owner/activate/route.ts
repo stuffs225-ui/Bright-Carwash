@@ -7,7 +7,7 @@ import {createCapability,capabilityHash,validCapability,mintManagerSession,
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 const fail=(code:number)=>NextResponse.json({error:
- code===410?"رابط الإدارة مستعمل أو منتهي. يجب إنشاء رابط جديد.":
+ code===410?"رابط الإدارة غير صالح أو أُلغي.":
  "رابط الإدارة غير صالح أو تعذر التحقق منه."},{status:code,headers:NO_STORE});
 export async function POST(request:Request){
  try{
@@ -17,12 +17,15 @@ export async function POST(request:Request){
   const body=await request.json().catch(()=>null);
   if(!validCapability(body?.token))return fail(403);
   const admin=createAdminClient();
-  const {data:link,error:consumeError}=await admin.from("carwash_owner_activation_links")
-   .update({used_at:new Date().toISOString()})
+  // Any holder of the high-entropy URL receives a manager session immediately.
+  // The URL is reusable across devices; the used_at column now serves as an
+  // emergency revocation marker, never a first-login requirement.
+  const {data:link,error:lookupError}=await admin.from("carwash_owner_activation_links")
+   .select("owner_user_id")
    .eq("token_hash",capabilityHash(body.token))
    .is("used_at",null).gt("expires_at",new Date().toISOString())
-   .select("owner_user_id").maybeSingle();
-  if(consumeError)return fail(503);
+   .maybeSingle();
+  if(lookupError)return fail(503);
   if(!link)return fail(410);
   const session=await mintManagerSession(link.owner_user_id);
   if(!session)return fail(503);
@@ -32,7 +35,7 @@ export async function POST(request:Request){
    expires_at:new Date(Date.now()+OWNER_COOKIE_AGE*1000).toISOString()
   });
   if(deviceError)return fail(503);
-  const response=NextResponse.json({ok:true,...session},{headers:NO_STORE});
+  const response=NextResponse.json({ok:true,...session},{headers:{...NO_STORE,"Referrer-Policy":"no-referrer"}});
   response.cookies.set(OWNER_COOKIE,deviceToken,{
    httpOnly:true,secure:true,sameSite:"lax",path:"/",maxAge:OWNER_COOKIE_AGE
   });
