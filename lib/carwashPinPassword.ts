@@ -1,5 +1,5 @@
 import "server-only";
-import {createHmac} from "node:crypto";
+import {createHmac,timingSafeEqual} from "node:crypto";
 import {validFourDigitPin} from "./carwashPinRules";
 
 /**
@@ -31,4 +31,21 @@ export function deriveCarwashAuthPassword(userId:string,pin:string):string{
 export function carwashRateKey(type:"phone"|"ip",value:string):string{
  return createHmac("sha256",pinPepper()).update("ratelimit-v1|"+type+"|"+value)
   .digest("hex");
+}
+
+/**
+ * Independent HMAC verifier for manager phone/PIN.
+ * Never replace the manager's Supabase Auth email/password when enrolling a PIN.
+ * Only the service-role can read the verifier table.
+ */
+export function deriveManagerPinVerifier(userId:string,pin:string):string{
+ if(!/^[0-9a-f-]{36}$/i.test(userId)||!validFourDigitPin(pin))
+  throw new Error("Invalid account or PIN");
+ return createHmac("sha256",pinPepper())
+  .update("manager-pin-verifier-v1|"+userId+"|"+pin).digest("hex");
+}
+export function matchesManagerPinVerifier(stored:string,userId:string,pin:string):boolean{
+ if(!/^[0-9a-f]{64}$/.test(stored)||!validFourDigitPin(pin))return false;
+ return timingSafeEqual(Buffer.from(stored,"hex"),
+  Buffer.from(deriveManagerPinVerifier(userId,pin),"hex"));
 }
