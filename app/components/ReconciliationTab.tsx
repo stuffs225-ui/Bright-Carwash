@@ -40,7 +40,7 @@ export function ReconciliationTab() {
     if(note.length<10){setError("وثّق سبب المعالجة أو التجاوز بما لا يقل عن 10 أحرف.");return;}
     setPending(true);setError("");setSuccess("");
     const {data:{user}}=await supabase.auth.getUser();
-    if(!user){setError("سجّل دخول المالك مجددًا.");setPending(false);return;}
+    if(!user){setError("سجّل دخول المدير مجددًا.");setPending(false);return;}
     const {error:updateError}=await supabase.from("legacy_import_issues").update({
       status,resolution_note:note,resolved_at:new Date().toISOString(),resolved_by:user.id,
     }).eq("id",item.id).eq("status","pending");
