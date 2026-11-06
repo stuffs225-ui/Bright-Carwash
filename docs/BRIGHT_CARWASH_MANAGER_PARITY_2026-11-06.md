@@ -32,12 +32,12 @@ Those source formulas are shown separately from new *provisional* income - expen
 
 ## Critical status, remaining gaps
 - **The preview contains FAKE session-only values**. It is not a manager account or access to original Google Sheet rows.
-- **No independent Supabase project has been provisioned** due free project quota. Migrations 0001–0021 have been validated in disposable PostgreSQL, **not applied** to a production carwash environment.
-- **No SMS provider**: worker phone onboarding / manager OTP and Ready notifications are not functional for real phone numbers.
+- **No independent Supabase project has been provisioned** due free project quota. Migrations 0001–0023 have passed disposable PostgreSQL tests, **not applied** to a production carwash environment.
+- **No live Auth backend yet**: manager/worker everyday login was updated to phone + four-digit PIN, with rate-limited server-only HMAC-derived password. The encrypted initial manager identity is not yet provisioned. SMS is required only for a verified manager phone change; WhatsApp Business Cloud API and approved template are required for client Ready notifications.
 - Demo CSV exports function; monthly browser Print is not identical to original styled PDF export yet.
 - Real inventory quantities/consumption, actual crew payroll reconciled once into profit/cash accounts, retention/testing of real offline PWA data, and historical source importer require live separate database and end-to-end verification before go-live.
 - A public, fake-data-only preview is suitable for UI review; **do not enter customer data, real payments, or sensitive employee data** in it.
 - Original project and other business systems remain unchanged; code is on draft PR, not merged into production.
 
 ## Quality gates
-GitHub Actions runs TypeScript, 18+ unit test files / 93+ tests, Next.js build, all SQL migrations on disposable PostgreSQL, and separate synthetic financial, calendar and manager-role E2E checks. Link to live run in GitHub Actions for latest commit rather than reusing a stale pass count. Do not claim real Auth/SMS/backup/mobile device E2E success.
+GitHub Actions currently covers 19 unit-test files / 94 tests, Next.js build, all 23 SQL migrations on disposable PostgreSQL, and synthetic financial, calendar, role, PIN-lockout, private-import and WhatsApp consent checks. Check the latest actual CI run before quoting a pass count. Do not claim real backend auth, WhatsApp, backups or mobile-device E2E success.
