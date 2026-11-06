@@ -166,7 +166,7 @@ export function WorkerRegisterTab(){
   const payload={
    car_type:selected.car_type,service_type:selected.service_type,
    cash_paid:cashNumber,card_paid:cardNumber,discount_amount:discountNumber,
-   addon_ids:chosenAddons,customer_phone:customerPhone,sms_consent:!!customerPhone&&consent,
+   addon_ids:chosenAddons,customer_phone:customerPhone,sms_consent:false,whatsapp_consent:!!customerPhone&&consent,
    notes:notes||null,occurred_at:new Date().toISOString(),device_id:device,
    client_mutation_id:crypto.randomUUID()
   };
@@ -191,7 +191,7 @@ export function WorkerRegisterTab(){
   const {error}=await supabase.rpc("request_ready_notice",payload);
   if(error){if(isNetworkError(error))enqueue("ready_notice",payload);
    else showToast(error.message,"error");return;}
-  showToast("سُجلت الجاهزية؛ إرسال SMS ينتظر تفعيل مزود الرسائل.");
+  showToast("سُجلت الجاهزية؛ إرسال واتساب ينتظر تفعيل وربط حساب WhatsApp Business.");
   void reload();
  }
 
@@ -253,7 +253,7 @@ export function WorkerRegisterTab(){
     <p className="font-bold">السعر بعد الإضافات والخصم: {formatCurrency(actualPaid)}</p>
     <label className="form-label">جوال العميل — اختياري<input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="05XXXXXXXX" /></label>
     {phone.trim()&&<label className="text-sm flex gap-2 items-center">
-     <input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} /> وافق العميل على رسالة الجاهزية
+     <input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} /> وافق العميل على استلام رسالة واتساب عند جاهزية السيارة
     </label>}
     <label className="form-label">ملاحظات (اختياري)
      <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} />
