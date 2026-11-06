@@ -2,7 +2,7 @@ import {NextResponse} from "next/server";
 import {createClient} from "@supabase/supabase-js";
 import {createAdminClient} from "@/lib/supabaseAdmin";
 import {pinChangeIsValid} from "@/lib/carwashPinRules";
-import {assertDedicatedCarwashDatabase,carwashRateKey,deriveCarwashAuthPassword} from "@/lib/carwashPinPassword";
+import {assertDedicatedCarwashDatabase,carwashRateKey,deriveCarwashAuthPassword,deriveManagerPinVerifier,matchesManagerPinVerifier} from "@/lib/carwashPinPassword";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -36,6 +36,22 @@ export async function POST(request:Request){
   if(attempt.error)return fail(503,"خدمة حماية الدخول غير جاهزة");
   if(attempt.data!==true)return fail(429,"تم إيقاف المحاولات مؤقتًا لحماية الحساب");
 
+  if(member.role==="manager"){
+   if(!user.phone_confirmed_at)return fail(403,"يجب توثيق الجوال أولًا");
+   const lookup=await admin.from("carwash_manager_pin_verifiers")
+    .select("pin_verifier").eq("user_id",user.id).maybeSingle();
+   if(lookup.error)return fail(503,"تعذر التحقق من إعداد PIN");
+   if(lookup.data){
+    if(!matchesManagerPinVerifier(lookup.data.pin_verifier,user.id,body.oldPin))
+     return fail(401,"الرمز الحالي غير صحيح");
+    const {error:updateError}=await admin.from("carwash_manager_pin_verifiers")
+     .update({pin_verifier:deriveManagerPinVerifier(user.id,body.newPin),
+      updated_at:new Date().toISOString()}).eq("user_id",user.id);
+    if(updateError)return fail(503,"تعذر تغيير رمز المدير");
+    await admin.rpc("carwash_pin_clear_attempts",{p_key_hash:key});
+    return NextResponse.json({ok:true,relogin:true},{headers});
+   }
+  }
   const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
    {auth:{persistSession:false,autoRefreshToken:false}});
