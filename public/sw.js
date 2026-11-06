@@ -32,6 +32,14 @@ self.addEventListener("fetch",event=>{
     }));
     return;
   }
+  // The public fallback's JavaScript is cached separately; never cache a
+  // bearer-specific route or any request carrying credentials.
+  if(url.pathname==="/worker-offline.js" && request.destination==="script" &&
+     !request.headers.has("authorization") && !request.headers.has("cookie")){
+    event.respondWith(caches.open(OFFLINE_CACHE).then(async cache=>
+      (await cache.match("/worker-offline.js"))||fetch(request)));
+    return;
+  }
   // Important: NEVER persist the server's home-page response. We only serve
   // a separately reviewed static offline form when the network truly fails.
   if(request.mode==="navigate" && url.pathname==="/"){
