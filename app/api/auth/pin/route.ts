@@ -42,13 +42,22 @@ export async function POST(request:Request){
   ]);
   if(p.error||i.error)return fail(503);
   if(p.data!==true||i.data!==true)return fail(429);
+  let accountId:string|null=null;
+  for(let page=1;page<=20;page++){
+   const found=await admin.auth.admin.listUsers({page,perPage:100});
+   if(found.error)return fail(503);
+   const match=found.data.users.find(u=>u.phone===phone);
+   if(match){accountId=match.id;break;}
+   if(found.data.users.length<100)break;
+  }
+  if(!accountId)return fail();
   const login=createClient(
    process.env.NEXT_PUBLIC_SUPABASE_URL!,
    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
    {auth:{persistSession:false,autoRefreshToken:false}}
   );
   const {data,error}=await login.auth.signInWithPassword({
-   phone,password:deriveCarwashAuthPassword(phone,pin),
+   phone,password:deriveCarwashAuthPassword(accountId,pin),
   });
   if(error||!data.session||!data.user)return fail();
   const check=await admin.from("app_members").select("role,active")
