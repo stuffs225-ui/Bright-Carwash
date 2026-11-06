@@ -1,34 +1,30 @@
 "use client";
 import {useEffect,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
-import {normalizeSaudiMobile} from "@/lib/phone";
 import {pinChangeIsValid} from "@/lib/carwashPinRules";
 import {queueLength} from "@/lib/offlineQueue";
 import type {AppIdentity} from "./AuthGate";
 
 export function AccountSettings({identity}:{identity:AppIdentity}){
- const [account,setAccount]=useState<{email:string;phone:string;phoneVerified:boolean;pinEnrolled:boolean;active:boolean}|null>(null);
- const [enrollPin,setEnrollPin]=useState("");
- const [enrollConfirm,setEnrollConfirm]=useState("");
- const [confirmReplace,setConfirmReplace]=useState(false);
+ const [status,setStatus]=useState<{email:string;configured:boolean;active:boolean}|null>(null);
  const [oldPin,setOldPin]=useState("");
  const [newPin,setNewPin]=useState("");
  const [confirmPin,setConfirmPin]=useState("");
- const [newPhone,setNewPhone]=useState("");
- const [code,setCode]=useState("");
- const [stage,setStage]=useState<"new"|"verify">("new");
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState("");
  const [error,setError]=useState("");
- const isManager=identity.role==="manager";
+
  useEffect(()=>{
   let mounted=true;
   async function load(){
-   const {data:{user}}=await supabase.auth.getUser();
-   if(!user||!mounted)return;
-   const {data:membership}=await supabase.from("app_members").select("active").eq("user_id",user.id).maybeSingle();
-   if(mounted)setAccount({email:user.email||"",phone:user.phone||"",phoneVerified:!!user.phone_confirmed_at,
-    pinEnrolled:!!user.app_metadata?.carwash_pin_enrolled_at,active:membership?.active===true});
+   const {data:{session}}=await supabase.auth.getSession();
+   if(!session)return;
+   const res=await fetch("/api/auth/pin/status",{
+    headers:{authorization:"Bearer "+session.access_token},cache:"no-store"
+   });
+   const data=await res.json().catch(()=>null);
+   if(mounted&&res.ok)setStatus(data);
+   else if(mounted)setError("تعذر التحقق من إعدادات الحساب.");
   }
   void load();return()=>{mounted=false;};
  },[identity.userId]);
@@ -36,133 +32,79 @@ export function AccountSettings({identity}:{identity:AppIdentity}){
  async function changePin(e:React.FormEvent){
   e.preventDefault();setError("");setMessage("");
   if(!pinChangeIsValid(oldPin,newPin)||newPin!==confirmPin){
-   setError("أدخل الرمز القديم ورمزًا جديدًا مختلفًا من أربعة أرقام ومتطابقًا مع التأكيد.");return;
+   setError("أدخل PIN الحالي ورمزًا جديدًا مختلفًا من 4 أرقام، وأكد الرمز الجديد.");return;
   }
-  if(queueLength()>0){
-   setError("زامن عمليات السيارات المحلية قبل تغيير الرمز وتسجيل الخروج.");return;
-  }
+  if(queueLength()>0){setError("زامن العمليات المعلقة قبل تغيير رمز الدخول.");return;}
   const {data:{session}}=await supabase.auth.getSession();
-  if(!session){setError("يجب الدخول أولًا.");return;}
+  if(!session){setError("انتهت جلسة تسجيل الدخول.");return;}
   setBusy(true);
   try{
-   const response=await fetch("/api/auth/pin/change",{
+   const res=await fetch("/api/auth/pin/change",{
     method:"POST",headers:{"content-type":"application/json",
      authorization:"Bearer "+session.access_token},
-    body:JSON.stringify({oldPin,newPin}),cache:"no-store",
+    body:JSON.stringify({oldPin,newPin}),cache:"no-store"
    });
-   const data=await response.json().catch(()=>({}));
-   if(!response.ok)throw Error(data.error||"لم يتم تغيير الرمز");
+   const data=await res.json().catch(()=>({}));
+   if(!res.ok)throw Error(data.error||"لم يتم تغيير PIN");
    setOldPin("");setNewPin("");setConfirmPin("");
-   setMessage("تغيّر الرمز. سيتم تسجيل الخروج من هذا الجهاز، ثم ادخل بالرمز الجديد.");
-   await supabase.auth.signOut({scope:"global"});
-  }catch(e){setError(e instanceof Error?e.message:"تعذّر تغيير الرمز");}
+   await supabase.auth.signOut({scope:"local"});
+  }catch(e){setError(e instanceof Error?e.message:"تعذر تغيير رمز PIN");}
   finally{setBusy(false);}
  }
- async function enrollFirstPin(e:React.FormEvent){
-  e.preventDefault();setError("");setMessage("");
-  if(!isManager||!account?.phoneVerified||account.pinEnrolled){
-   setError("يجب توثيق الجوال أولًا.");return;
-  }
-  if(!/^\\d{4}$/.test(enrollPin)||enrollPin!==enrollConfirm||!confirmReplace){
-   setError("أدخل PIN من أربعة أرقام وأكده ثم وافق على التنبيه.");return;
-  }
-  const {data:{session}}=await supabase.auth.getSession();
-  if(!session){setError("انتهت الجلسة. أعد الدخول بالإيميل.");return;}
-  setBusy(true);
+ async function recoverPin(){
+  setError("");setMessage("");setBusy(true);
   try{
-   const response=await fetch("/api/auth/pin/enroll",{method:"POST",
-    headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},
-    body:JSON.stringify({newPin:enrollPin,confirmPin:enrollConfirm,confirmEnrollment:true}),cache:"no-store"});
-   const data=await response.json().catch(()=>({}));
-   if(!response.ok)throw new Error(data.error||"تعذّر إعداد رمز PIN");
-   setEnrollPin("");setEnrollConfirm("");
-   await supabase.auth.signOut({scope:"global"});
-   setMessage("تم إعداد الرمز. سجّل الدخول بالجوال وPIN أو عبر رابط البريد الآمن.");
-  }catch(e){setError(e instanceof Error?e.message:"تعذّر إعداد PIN");}
+   const email=status?.email||identity.email;
+   const {error}=await supabase.auth.signInWithOtp({
+    email,options:{shouldCreateUser:false,
+     emailRedirectTo:window.location.origin+"/?reset=1"}
+   });
+   if(error)throw error;
+   setMessage("تم طلب رسالة استعادة PIN. افتح رابط التحقق في بريدك، ثم اختر أربعة أرقام جديدة.");
+  }catch(e){setError(e instanceof Error?e.message:"تعذر إرسال رسالة الاستعادة");}
   finally{setBusy(false);}
  }
- async function requestPhoneChange(e:React.FormEvent){
-  e.preventDefault();setError("");setMessage("");
-  if(!isManager){
-   setError("حساب العامل مشترك؛ المدير فقط يغيّر رقم هاتفه حتى لا يفقد باقي العمال الوصول.");return;
-  }
-  if(queueLength()>0){setError("زامن العمليات المعلقة أولًا.");return;}
-  const normalized=normalizeSaudiMobile(newPhone);
-  if(!normalized){setError("أدخل رقم جوال سعوديًا صحيحًا.");return;}
-  if(normalized===account?.phone){setError("هذا هو الرقم الحالي بالفعل.");return;}
-  setBusy(true);
-  const {error}=await supabase.auth.updateUser({phone:normalized});
-  setBusy(false);
-  if(error){setError("لم يكتمل إرسال رمز تأكيد الجوال الجديد. يلزم تفعيل مزود SMS: "+error.message);return;}
-  setNewPhone(normalized);setStage("verify");
-  setMessage("تحقق من الجوال الجديد، ثم أدخل رمز التحقق الذي أُرسل إليه.");
- }
- async function verifyPhone(e:React.FormEvent){
-  e.preventDefault();setError("");setMessage("");
-  const normalized=normalizeSaudiMobile(newPhone);
-  if(!normalized||!/^\d{6}$/.test(code)){setError("أدخل رمز التأكيد من 6 أرقام.");return;}
-  setBusy(true);
-  const {error}=await supabase.auth.verifyOtp({phone:normalized,token:code,type:"phone_change"});
-  setBusy(false);
-  if(error){setError("تعذر تأكيد الجوال الجديد؛ راجع الرمز أو رقم الهاتف.");return;}
-  setCode("");setStage("new");setNewPhone("");
-  setAccount(old=>old?{...old,phone:normalized,phoneVerified:true}:old);
-  setMessage("تم توثيق رقم الجوال الجديد. يمكنك إعداد رمز الدخول إذا لم يكن مُعدًا.");
- }
+
  return <div className="space-y-4" dir="rtl">
-  <section className="card">
+  <section className="card space-y-2">
    <h2 className="section-title">معلومات الحساب</h2>
-   <p><strong>نوع الحساب:</strong> {isManager?"مدير المغسلة":"حساب العمال المشترك"}</p>
-   <p><strong>البريد الإلكتروني:</strong> {account?.email||identity.email}</p>
-   <p><strong>حالة الحساب:</strong> {account===null?"جارٍ التحقق...":account.active?"نشط":"غير نشط"}</p>
-   <p><strong>الجوال:</strong> {account?.phone||"لم يضف بعد"}</p>
-   <p><strong>توثيق الجوال:</strong> {account?.phoneVerified?"موثّق":"غير موثّق"}</p>
-   <p className="txt-muted text-sm">يبقى الحساب مسجّلًا على الجهاز أثناء صلاحية الجلسة. لا يظهر رقم PIN المحفوظ لأحد.</p>
+   <p><strong>نوع الحساب:</strong> {identity.role==="manager"?"مدير":"عامل"}</p>
+   <p><strong>الإيميل:</strong> {status?.email||identity.email}</p>
+   <p><strong>حالة الحساب:</strong> {status===null?"جارٍ التحقق...":status.active?"نشط":"متوقف"}</p>
+   <p><strong>رمز PIN:</strong> {status===null?"جارٍ التحقق...":status.configured?"مفعل":"غير مفعل"}</p>
+   <p className="txt-muted text-sm">تسجيل الدخول للإدارة والعامل بالإيميل وPIN فقط؛ لا يلزم رقم جوال.</p>
   </section>
-  {isManager&&account?.phoneVerified&&!account.pinEnrolled&&<section className="card space-y-3">
-   <h3 className="subsection-title">إعداد رمز PIN لأول مرة</h3>
-   <p className="txt-warning text-sm">سيُنشئ هذا الإعداد PIN مستقلاً للجوال، دون تغيير كلمة مرور البريد الإلكتروني.</p>
-   <form onSubmit={enrollFirstPin} className="space-y-3">
-    <label className="form-label">PIN جديد (4 أرقام)<input type="password" inputMode="numeric" autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" required value={enrollPin} onChange={e=>setEnrollPin(e.target.value.replace(/\\D/g,"").slice(0,4))}/></label>
-    <label className="form-label">تأكيد PIN<input type="password" inputMode="numeric" maxLength={4} pattern="[0-9]{4}" required value={enrollConfirm} onChange={e=>setEnrollConfirm(e.target.value.replace(/\\D/g,"").slice(0,4))}/></label>
-    <label className="flex gap-2 text-sm"><input type="checkbox" checked={confirmReplace} onChange={e=>setConfirmReplace(e.target.checked)}/> أوافق على إعداد PIN مستقل</label>
-    <button className="btn-primary w-full" type="submit" disabled={busy||!confirmReplace}>تفعيل PIN وتسجيل الخروج</button>
-   </form>
-  </section>}
-  {(!isManager||account?.pinEnrolled)&&<section className="card space-y-3">
-   <h3 className="subsection-title">تغيير رمز الدخول (4 أرقام)</h3>
-   <form onSubmit={changePin} className="space-y-3">
-    <label className="form-label">الرمز الحالي<input type="password" inputMode="numeric"
-     autoComplete="current-password" maxLength={4} pattern="[0-9]{4}" required
-     value={oldPin} onChange={e=>setOldPin(e.target.value.replace(/\D/g,"").slice(0,4))}/></label>
-    <label className="form-label">الرمز الجديد<input type="password" inputMode="numeric"
-     autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" required
-     value={newPin} onChange={e=>setNewPin(e.target.value.replace(/\D/g,"").slice(0,4))}/></label>
-    <label className="form-label">تأكيد الرمز الجديد<input type="password" inputMode="numeric"
-     autoComplete="new-password" maxLength={4} pattern="[0-9]{4}" required
-     value={confirmPin} onChange={e=>setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,4))}/></label>
-    <button className="btn-primary w-full" type="submit" disabled={busy}>حفظ رمز الدخول الجديد</button>
-   </form>
-  </section>}
   <section className="card space-y-3">
-   <h3 className="subsection-title">تغيير رقم جوال الحساب</h3>
-   {isManager?<form className="space-y-3" onSubmit={stage==="new"?requestPhoneChange:verifyPhone}>
-    <p className="txt-muted text-sm">تغيير الرقم يتطلب تأكيد ملكية الجوال الجديد برمز SMS، وليس مجرد إدخال رقم آخر.</p>
-    <label className="form-label">الجوال الجديد<input type="tel" required value={newPhone}
-     disabled={stage==="verify"} onChange={e=>setNewPhone(e.target.value)} placeholder="05XXXXXXXX"/></label>
-    {stage==="verify"&&<label className="form-label">رمز التحقق (6 أرقام)
-     <input type="text" inputMode="numeric" autoComplete="one-time-code"
-       pattern="[0-9]{6}" maxLength={6} required value={code}
-       onChange={e=>setCode(e.target.value.replace(/\D/g,"").slice(0,6))}/>
-    </label>}
-    <button type="submit" className="btn-secondary w-full" disabled={busy}>
-     {stage==="verify"?"تأكيد الجوال الجديد":"إرسال رمز تحقق إلى الجوال الجديد"}
+   <h3 className="subsection-title">تغيير رمز PIN (4 أرقام)</h3>
+   <form onSubmit={changePin} className="space-y-3">
+    <label className="form-label">رمز PIN الحالي
+     <input type="password" inputMode="numeric" autoComplete="current-password"
+      maxLength={4} pattern="[0-9]{4}" required value={oldPin}
+      onChange={e=>setOldPin(e.target.value.replace(/\D/g,"").slice(0,4))}/>
+    </label>
+    <label className="form-label">رمز PIN الجديد
+     <input type="password" inputMode="numeric" autoComplete="new-password"
+      maxLength={4} pattern="[0-9]{4}" required value={newPin}
+      onChange={e=>setNewPin(e.target.value.replace(/\D/g,"").slice(0,4))}/>
+    </label>
+    <label className="form-label">تأكيد PIN الجديد
+     <input type="password" inputMode="numeric" autoComplete="new-password"
+      maxLength={4} pattern="[0-9]{4}" required value={confirmPin}
+      onChange={e=>setConfirmPin(e.target.value.replace(/\D/g,"").slice(0,4))}/>
+    </label>
+    <button type="submit" className="btn-primary w-full" disabled={busy}>
+     {busy?"جارٍ الحفظ...":"حفظ PIN الجديد"}
     </button>
-   </form>:<p className="txt-warning text-sm">
-     رقم العامل مشترك بين كل العمال؛ تغييره يحتاج إجراءً من المدير حتى لا تنقطع أجهزة الفريق.
-    </p>}
+   </form>
   </section>
-  {error&&<p role="alert" className="txt-danger card">{error}</p>}
-  {message&&<p role="status" className="card">{message}</p>}
+  <section className="card space-y-3">
+   <h3 className="subsection-title">نسيت PIN؟</h3>
+   <p className="txt-muted text-sm">يمكنك استعادة الرمز بعد إثبات ملكية الإيميل. لن تحتاج إلى كلمة المرور القديمة أو رقم جوال.</p>
+   <button type="button" className="btn-secondary w-full" onClick={()=>void recoverPin()} disabled={busy}>
+    إرسال رابط إعادة تعيين PIN إلى الإيميل
+   </button>
+  </section>
+  {error&&<p className="txt-danger card" role="alert">{error}</p>}
+  {message&&<p className="card" role="status">{message}</p>}
  </div>;
 }
