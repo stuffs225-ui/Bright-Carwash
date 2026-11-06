@@ -2,82 +2,126 @@
 import {useCallback,useEffect,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 
-type Member={user_id:string;email:string|null;role:"worker";active:boolean;created_at:string};
+type WorkerLink={id:string;label:string;created_at:string;expires_at:string;revoked_at:string|null;last_used_at:string|null;daily_limit:number};
+const date=(s:string)=>new Date(s).toLocaleDateString("ar-SA",{year:"numeric",month:"short",day:"numeric"});
 export function UsersTab(){
- const [members,setMembers]=useState<Member[]>([]);
- const [email,setEmail]=useState("");
- const [saving,setSaving]=useState(false);
+ const [label,setLabel]=useState("رابط عامل المغسلة");
+ const [links,setLinks]=useState<WorkerLink[]>([]);
+ const [newUrl,setNewUrl]=useState("");
+ const [backupUrl,setBackupUrl]=useState("");
+ const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
- const [success,setSuccess]=useState("");
-
- const request=useCallback(async(method:"GET"|"POST"|"PATCH",body?:object)=>{
+ const [status,setStatus]=useState("");
+ const request=useCallback(async(endpoint:string,method:"GET"|"POST"|"PATCH",payload?:object)=>{
   const {data:{session}}=await supabase.auth.getSession();
-  if(!session)throw Error("انتهت الجلسة، سجّل الدخول مجددًا");
-  const res=await fetch("/api/users",{
+  if(!session)throw Error("جلسة الإدارة غير متاحة. افتح رابط الإدارة الخاص بجهازك.");
+  const response=await fetch(endpoint,{
    method,headers:{"authorization":"Bearer "+session.access_token,"content-type":"application/json"},
-   body:body?JSON.stringify(body):undefined,cache:"no-store"
+   body:payload?JSON.stringify(payload):undefined,cache:"no-store"
   });
-  const payload=await res.json().catch(()=>({}));
-  if(!res.ok)throw Error(payload.error||"فشل الطلب");
-  return payload;
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw Error(data.error||"تعذر تنفيذ الطلب");
+  return data;
  },[]);
-
  const refresh=useCallback(async()=>{
-  try{const result=await request("GET");setMembers(result.members||[]);}
-  catch(e){setError(e instanceof Error?e.message:"تعذرت قراءة الحسابات");}
+  try{
+   const response=await request("/api/worker-links","GET");
+   setLinks(response.links||[]);
+  }catch(e){setError(e instanceof Error?e.message:"تعذر جلب الروابط");}
  },[request]);
  useEffect(()=>{void refresh();},[refresh]);
 
- async function addWorker(e:React.FormEvent){
-  e.preventDefault();setSaving(true);setError("");setSuccess("");
+ async function makeLink(e:React.FormEvent){
+  e.preventDefault();setBusy(true);setStatus("");setError("");
   try{
-   const address=email.trim().toLowerCase();
-   if(!/^\S+@\S+\.\S+$/.test(address))throw Error("أدخل إيميل العامل الصحيح");
-   await request("POST",{email:address,role:"worker"});
-   setEmail("");
-   setSuccess("تم إنشاء حساب العامل. يفتح العامل صفحة الدخول، يختار «أول مرة أو نسيت PIN»، ويتحقق من الإيميل ليختار رمزه بنفسه.");
+   const response=await request("/api/worker-links","POST",{label:label.trim()});
+   setNewUrl(response.url);
+   setStatus("تم إصدار رابط العامل. انسخه وأرسله للعامل عبر واتساب، بدون أي تسجيل دخول.");
    await refresh();
-  }catch(e){setError(e instanceof Error?e.message:"تعذرت إضافة العامل");}
-  finally{setSaving(false);}
+  }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء الرابط");}
+  finally{setBusy(false);}
  }
- async function update(member:Member,active:boolean){
-  setSaving(true);setError("");setSuccess("");
+ async function revoke(id:string){
+  if(!window.confirm("إلغاء هذا الرابط؟ لن يتمكن العامل من تسجيل سيارات جديدة باستخدامه."))return;
+  setBusy(true);setError("");setStatus("");
   try{
-   await request("PATCH",{user_id:member.user_id,role:"worker",active});
-   setSuccess(active?"تم تفعيل حساب العامل.":"تم إيقاف حساب العامل.");
-   await refresh();
-  }catch(e){setError(e instanceof Error?e.message:"تعذر تحديث الحالة");}
-  finally{setSaving(false);}
+   await request("/api/worker-links","PATCH",{id,action:"revoke"});
+   setNewUrl("");setStatus("تم إلغاء الرابط فورًا.");await refresh();
+  }catch(e){setError(e instanceof Error?e.message:"تعذر الإلغاء");}
+  finally{setBusy(false);}
  }
-
+ async function copy(text:string){
+  try{await navigator.clipboard.writeText(text);setStatus("تم نسخ الرابط. يمكنك إرساله في واتساب.");}
+  catch{setError("تعذر النسخ تلقائيًا؛ اضغط مطولًا على حقل الرابط وانسخه.");}
+ }
+ async function share(text:string){
+  try{
+   if(typeof navigator.share==="function")await navigator.share({
+    title:"مغسلة سيارتك اللامعة — تسجيل السيارات",url:text
+   });
+   else await copy(text);
+  }catch{}
+ }
+ async function createOwnerBackup(){
+  setBusy(true);setError("");setStatus("");
+  try{
+   const data=await request("/api/owner/invites","POST");
+   setBackupUrl(data.url);
+   setStatus("تم إنشاء رابط احتياطي لربط جهاز مدير جديد. صالح مرة واحدة خلال 7 أيام.");
+  }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء الرابط الاحتياطي");}
+  finally{setBusy(false);}
+ }
  return <div className="space-y-5" dir="rtl">
-  <section className="card space-y-3">
-   <h2 className="section-title">إدارة حساب العامل</h2>
-   <p className="txt-muted text-sm">الدخول للإدارة والعامل بالإيميل وPIN من 4 أرقام. حساب العامل محدود الصلاحيات، ويمكنه إعداد الرمز أو استعادته عبر بريده بنفسه، دون جوال.</p>
-   <form onSubmit={addWorker} className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-    <label className="form-label">الإيميل المخصص للعامل
-     <input type="email" inputMode="email" autoComplete="off" required
-      value={email} onChange={e=>setEmail(e.target.value)} placeholder="worker@example.com"/>
+  <section className="card space-y-4">
+   <h2 className="section-title">🔗 روابط تسجيل السيارات للعمال</h2>
+   <p className="txt-muted text-sm">أنشئ رابطًا خاصًا وأرسله للعامل. يفتح نموذج إضافة السيارات فقط، بدون حساب، إيميل أو PIN. لا يستطيع رؤية الإدارة أو بيانات الحسابات.</p>
+   <form onSubmit={makeLink} className="space-y-3">
+    <label className="form-label">اسم الرابط (لتمييز العامل أو الوردية)
+     <input value={label} maxLength={80} required onChange={e=>setLabel(e.target.value)}
+      placeholder="مثلًا: العامل الصباحي"/>
     </label>
-    <div className="flex items-end"><button className="btn-primary w-full" type="submit" disabled={saving}>
-     {saving?"جارٍ الحفظ...":"إضافة حساب العامل"}
-    </button></div>
+    <button type="submit" className="btn-primary w-full" disabled={busy}>
+     {busy?"جارٍ إنشاء الرابط...":"إنشاء رابط العامل"}
+    </button>
    </form>
-   <p className="txt-muted text-xs">يبقى نظام الحساب المشترك للعاملين كما كان: حساب عامل نشط واحد في الوقت نفسه.</p>
+   {newUrl&&<div className="space-y-3 p-3 border rounded-xl">
+    <strong>رابط العامل الجديد — انسخه الآن</strong>
+    <input aria-label="رابط العامل" type="text" readOnly value={newUrl} onFocus={e=>e.currentTarget.select()} dir="ltr"/>
+    <div className="grid grid-cols-2 gap-2">
+     <button type="button" className="btn-primary" onClick={()=>void copy(newUrl)}>نسخ الرابط</button>
+     <button type="button" className="btn-secondary" onClick={()=>void share(newUrl)}>مشاركة الرابط</button>
+    </div>
+    <p className="txt-muted text-xs">الرابط سري، ومن يمتلكه يستطيع تسجيل السيارات فقط. صالح لمدة 90 يومًا ويمكن إلغاؤه فورًا.</p>
+   </div>}
   </section>
-  {error&&<p role="alert" className="txt-danger">{error}</p>}
-  {success&&<p role="status" className="text-green-700">{success}</p>}
-  <section className="card">
-   <h2 className="section-title mb-3">الحسابات ({members.length})</h2>
-   <div className="overflow-x-auto"><table className="app-table">
-    <thead><tr><th>الإيميل</th><th>الدور</th><th>الحالة</th><th>الإجراء</th></tr></thead>
-    <tbody>{members.map(m=><tr key={m.user_id}>
-     <td>{m.email||"البريد غير متوفر"}</td><td>عامل</td>
-     <td>{m.active?"نشط":"متوقف"}</td>
-     <td><button type="button" className="btn-secondary" disabled={saving}
-      onClick={()=>void update(m,!m.active)}>{m.active?"تعطيل":"تفعيل"}</button></td>
-    </tr>)}</tbody>
-   </table></div>
+  {error&&<p className="txt-danger" role="alert">{error}</p>}
+  {status&&<p role="status" className="text-green-700">{status}</p>}
+  <section className="card space-y-3">
+   <h2 className="section-title">روابط العامل ({links.length})</h2>
+   {links.length===0?<p className="txt-muted text-sm">لم تُنشأ روابط حتى الآن.</p>:
+    links.map(link=>{
+     const active=!link.revoked_at&&new Date(link.expires_at).getTime()>Date.now();
+     return <div key={link.id} className="flex items-center justify-between gap-2 border rounded-xl p-3">
+      <div><strong>{link.label}</strong>
+       <p className="txt-muted text-xs">{active?"نشط":"ملغى أو منتهي"} · حتى {date(link.expires_at)}</p>
+       {link.last_used_at&&<p className="txt-muted text-xs">آخر تسجيل: {date(link.last_used_at)}</p>}
+      </div>
+      {active&&<button type="button" className="btn-secondary" disabled={busy}
+        onClick={()=>void revoke(link.id)}>إلغاء الرابط</button>}
+     </div>;
+    })}
+  </section>
+  <section className="card space-y-3">
+   <h2 className="subsection-title">رابط احتياطي للمدير</h2>
+   <p className="txt-muted text-sm">حساب الإدارة محفوظ في جهازك دون كلمة مرور. يمكنك إنشاء رابط احتياطي خاص لنقل وصول المدير إلى جهازك الآخر. لا ترسله لأي عامل.</p>
+   <button className="btn-secondary w-full" type="button" disabled={busy}
+    onClick={()=>void createOwnerBackup()}>إنشاء رابط احتياطي للإدارة</button>
+   {backupUrl&&<div className="space-y-2">
+    <input aria-label="رابط الإدارة الاحتياطي" type="text" dir="ltr" readOnly value={backupUrl}
+      onFocus={e=>e.currentTarget.select()}/>
+    <button type="button" className="btn-secondary w-full" onClick={()=>void copy(backupUrl)}>نسخ الرابط الاحتياطي</button>
+    <p className="txt-warning text-xs">رابط سري يمنح صلاحيات مدير كاملة، صالح مرة واحدة فقط.</p>
+   </div>}
   </section>
  </div>;
 }
