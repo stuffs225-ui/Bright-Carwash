@@ -3,7 +3,7 @@
 (async()=>{
  const DB="bright-carwash-worker-encrypted-outbox-v1";
  const $=id=>document.getElementById(id);
- const token=location.pathname.match(/^\\/w\\/([a-f0-9]{64})$/)?.[1]||"";
+ const token=location.pathname.match(/^\/w\/([a-f0-9]{64})$/)?.[1]||"";
  const notify=(msg,err=false)=>{(err?$("error"):$("status")).textContent=msg;};
  const reqResult=req=>new Promise((resolve,reject)=>{
   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
@@ -95,9 +95,9 @@
    Math.round((cash+card)*100)!==Math.round(price()*100)||price()<=0){
    notify("تحقق من السعر ومبالغ الكاش والشبكة والخصم.",true);return;
   }
-  let phone=$("phone").value.trim().replace(/[\\s-]/g,"");
+  let phone=$("phone").value.trim().replace(/[\s-]/g,"");
   if(/^05[0-9]{8}$/.test(phone))phone="+966"+phone.slice(1);
-  if(phone&&!/^\\+9665[0-9]{8}$/.test(phone)){notify("رقم الجوال غير صحيح.",true);return;}
+  if(phone&&!/^\+9665[0-9]{8}$/.test(phone)){notify("رقم الجوال غير صحيح.",true);return;}
   if(phone&&!$("consent").checked){notify("يلزم موافقة العميل لاستخدام الجوال، أو اتركه فارغًا.",true);return;}
   const payload={presetId:$("preset").value,addons:Array.from($("addons").querySelectorAll("input:checked"))
     .map(x=>x.dataset.addon),cash,card,discount,notes:$("notes").value.trim(),
