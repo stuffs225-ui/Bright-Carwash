@@ -3,7 +3,7 @@ import {Resend} from "resend";
 import {createHash} from "node:crypto";
 import {createAdminClient} from "@/lib/supabaseAdmin";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
-import {encryptBackup,parseBackupKey} from "@/lib/backupCrypto";
+import {encryptBackup,decryptBackup,parseBackupKey} from "@/lib/backupCrypto";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -79,6 +79,12 @@ export async function GET(request:Request){
   if(!email||!/^\S+@\S+\.\S+$/.test(email)||!from||!resendKey)
    return fail(503,"Encrypted offsite backup configuration is incomplete");
   const admin=createAdminClient();
+  const backupDay=new Date().toISOString().slice(0,10);
+  const previous=await admin.from("settings").select("value").eq("key","backup_last_sent_at").maybeSingle();
+  if(previous.error)return fail(503,"Unable to verify latest backup delivery");
+  if(typeof previous.data?.value==="string"&&previous.data.value.startsWith(backupDay))
+   return NextResponse.json({ok:true,skipped:true,reason:"Daily encrypted archive already delivered"},
+    {headers:NO_STORE});
   const tables:Record<string,unknown[]>={};
   for(const table of TABLES)tables[table]=await readAll(admin,table);
   const objects=await evidenceArchive(admin);
@@ -90,23 +96,35 @@ export async function GET(request:Request){
   const encrypted=encryptBackup(payload,key);
   if(encrypted.byteLength>MAX_ARCHIVE_BYTES)return fail(413,"Encrypted backup exceeds storage size limit");
   const filename="daily/"+archivedAt.slice(0,10)+".bcw2";
-  const upload=await admin.storage.from("backups").upload(filename,encrypted,{
+  let archive=encrypted;
+  const upload=await admin.storage.from("backups").upload(filename,archive,{
    contentType:"application/octet-stream",upsert:false
   });
   if(upload.error){
-   if(upload.error.message.toLowerCase().includes("already exists")||
-      upload.error.message.toLowerCase().includes("duplicate"))
-    return NextResponse.json({ok:true,skipped:true,reason:"Daily archive already exists"},
-      {headers:NO_STORE});
-   return fail(503,"Encrypted backup storage failed");
+   if(!/already exists|duplicate|409/i.test(upload.error.message))
+    return fail(503,"Encrypted backup storage failed");
+   // A retry must deliver the SAME immutable encrypted archive, not a
+   // differently encrypted snapshot bearing the same daily filename.
+   const previousArchive=await admin.storage.from("backups").download(filename);
+   if(previousArchive.error||!previousArchive.data)
+    return fail(503,"Previously encrypted archive could not be verified");
+   archive=Buffer.from(await previousArchive.data.arrayBuffer());
+   const decoded=decryptBackup(archive,key) as {format?:string;projectRef?:string};
+   if(decoded.format!=="bright-carwash-v2"||
+      decoded.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF)
+    return fail(503,"Stored archive does not match this database");
   }
-  const hash=createHash("sha256").update(encrypted).digest("hex");
+  const hash=createHash("sha256").update(archive).digest("hex");
   const emailResult=await new Resend(resendKey).emails.send({
    from,to:email,subject:"Bright Carwash encrypted daily backup — "+archivedAt.slice(0,10),
    html:"<p>Encrypted carwash backup attached. The AES-256-GCM key is never included. Preserve the key separately.</p>",
-   attachments:[{filename:archivedAt.slice(0,10)+".bcw2",content:encrypted.toString("base64")}]
+   attachments:[{filename:archivedAt.slice(0,10)+".bcw2",content:archive.toString("base64")}]
   });
   if(emailResult.error)return fail(503,"Encrypted archive saved but offsite delivery failed");
+  const recorded=await admin.from("settings").upsert({
+   key:"backup_last_sent_at",value:archivedAt
+  },{onConflict:"key"});
+  if(recorded.error)return fail(503,"Backup delivered but confirmation state was not stored");
   return NextResponse.json({ok:true,archivedAt,rowCounts,evidenceFiles:objects.length,sha256:hash,
    storagePath:filename,offsiteDelivered:true},{headers:NO_STORE});
  }catch{
