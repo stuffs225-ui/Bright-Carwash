@@ -82,4 +82,5 @@ jobs:
                 fi
               done
               psql -v ON_ERROR_STOP=1 -f qa/carwash_calendar_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_single_manager_e2e.sql
             '
