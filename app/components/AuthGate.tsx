@@ -19,6 +19,8 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  const [email,setEmail]=useState("");
  const [pin,setPin]=useState("");
  const [code,setCode]=useState("");
+ const [emailedLink,setEmailedLink]=useState("");
+ const [cooldownUntil,setCooldownUntil]=useState(0);
  const [newPin,setNewPin]=useState("");
  const [confirmPin,setConfirmPin]=useState("");
  const [error,setError]=useState("");
@@ -81,6 +83,10 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  },[]);
 
  useEffect(()=>{
+  if(typeof window!=="undefined"){
+   const until=Number(window.localStorage.getItem("carwash_email_retry_after_v1")||0);
+   if(until>Date.now())setCooldownUntil(until);
+  }
   if(!supabaseConfigured){setLoading(false);return;}
   void refresh();
   const {data:subscription}=supabase.auth.onAuthStateChange(()=>{
@@ -117,6 +123,9 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
   e.preventDefault();setError("");setNotice("");
   const address=email.trim().toLowerCase();
   if(!/^\S+@\S+\.\S+$/.test(address)){setError("أدخل بريدًا إلكترونيًا صحيحًا.");return;}
+  if(cooldownUntil>Date.now()){
+   setError("طلب البريد موقوف مؤقتًا لتجنب تجاوز حد الإرسال. استخدم الرسالة السابقة أو جرّب بعد انتهاء الحد.");return;
+  }
   setSubmitting(true);
   try{
    const {error:linkError}=await supabase.auth.signInWithOtp({
@@ -127,10 +136,53 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    });
    if(linkError)throw linkError;
    setRecoverySent(true);
-   setNotice("إذا كان البريد مسجلًا فستصلك رسالة تحقق. افتح الرابط، ثم أنشئ PIN جديدًا. يمكنك أيضًا إدخال رمز البريد إذا احتوت الرسالة على رمز.");
+   const until=Date.now()+60_000;
+   setCooldownUntil(until);
+   window.localStorage.setItem("carwash_email_retry_after_v1",String(until));
+   setNotice("تم طلب رسالة تحقق. على iPhone يفضّل نسخ الرابط من الإيميل ولصقه أدناه داخل النظام، حتى لا يفتح في متصفح مختلف.");
   }catch(e){
-   setError(e instanceof Error?"تعذر إرسال رسالة التحقق: "+e.message:"تعذر إرسال رسالة التحقق");
+   const raw=e instanceof Error?e.message:"";
+   if(/email rate limit exceeded|over_email_send_rate_limit|too many requests|rate limit/i.test(raw)){
+    const until=Date.now()+60*60*1000;
+    setCooldownUntil(until);
+    window.localStorage.setItem("carwash_email_retry_after_v1",String(until));
+    setRecoverySent(true);
+    setError("تجاوزت خدمة Supabase الحد المسموح لإرسال الإيميلات (429). لا تكرر الإرسال الآن؛ الرسالة السابقة قد تكون وصلت بالفعل. يمكنك لصق رابط لم يُستخدم أدناه أو المحاولة لاحقًا. تفعيل SMTP مخصص يمنع هذا الحد الصغير.");
+   }else setError("تعذر إرسال رسالة التحقق: "+(raw||"حاول لاحقًا"));
   }finally{setSubmitting(false);}
+ }
+
+
+ async function consumeEmailLink(e:React.FormEvent){
+  e.preventDefault();setError("");setNotice("");setSubmitting(true);
+  try{
+   const url=new URL(emailedLink.trim());
+   const supabaseUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;
+   if(!supabaseUrl)throw Error("إعدادات Supabase غير متوفرة.");
+   let tokenHash="",type:"magiclink"|"recovery"|"email"="magiclink";
+   if(url.origin===new URL(supabaseUrl).origin&&url.pathname==="/auth/v1/verify"){
+    tokenHash=url.searchParams.get("token")||url.searchParams.get("token_hash")||"";
+    const candidate=url.searchParams.get("type");
+    if(candidate==="recovery"||candidate==="email")type=candidate;
+   }
+   if(tokenHash){
+    const {data,error:verifyError}=await supabase.auth.verifyOtp({token_hash:tokenHash,type});
+    if(verifyError||!data.session)throw Error("رابط البريد غير صالح أو استُخدم من قبل. استخدم رابطًا جديدًا لم يُفتح.");
+   }else{
+    // A clicked Supabase link sometimes redirects to the project's old
+    // localhost Site URL with the session in the URL fragment. Import it
+    // locally without transmitting tokens to any third-party service.
+    const fragment=new URLSearchParams(url.hash.replace(/^#/,""));
+    const access_token=fragment.get("access_token");
+    const refresh_token=fragment.get("refresh_token");
+    if(url.hostname!=="localhost"||!access_token||!refresh_token)
+     throw Error("الصق رابط التحقق الكامل من رسالة Supabase، أو رابط التحويل الناتج منه.");
+    const {error:sessionError}=await supabase.auth.setSession({access_token,refresh_token});
+    if(sessionError)throw Error("انتهت جلسة التحقق السابقة. اطلب رسالة جديدة لاحقًا.");
+   }
+   setEmailedLink("");setResetFlow(true);setRecovery(false);await refresh();
+  }catch(e){setError(e instanceof Error?e.message:"تعذر تأكيد رابط البريد");}
+  finally{setSubmitting(false);}
  }
 
  async function verifyCode(e:React.FormEvent){
@@ -224,10 +276,23 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
        value={email} onChange={e=>setEmail(e.target.value)}
        placeholder="name@example.com"/>
      </label>
-     <button type="submit" className="btn-primary w-full" disabled={submitting}>
-      {submitting?"جارٍ الإرسال...":"إرسال رابط استعادة PIN إلى الإيميل"}
+     <button type="submit" className="btn-primary w-full" disabled={submitting||cooldownUntil>Date.now()}>
+      {submitting?"جارٍ الإرسال...":cooldownUntil>Date.now()?"الإرسال موقوف مؤقتًا":"إرسال رابط استعادة PIN إلى الإيميل"}
      </button>
     </form>
+
+    <form onSubmit={consumeEmailLink} className="space-y-2">
+     <label className="form-label">لصق رابط التحقق من رسالة الإيميل
+      <input type="url" inputMode="url" autoComplete="off"
+       value={emailedLink} onChange={e=>setEmailedLink(e.target.value)}
+       placeholder="https://.../auth/v1/verify?token=..." required/>
+     </label>
+     <p className="txt-muted text-xs">اضغط مطولًا على رابط التحقق داخل البريد ثم «نسخ الرابط» والصقه هنا. لا ترسل الرابط لأي شخص. الرابط يستخدم مرة واحدة فقط.</p>
+     <button type="submit" className="btn-secondary w-full" disabled={submitting||!emailedLink.trim()}>
+      {submitting?"جارٍ التحقق...":"تأكيد الرابط وتعيين PIN"}
+     </button>
+    </form>
+
     {recoverySent&&<form onSubmit={verifyCode} className="space-y-2">
      <label className="form-label">رمز تحقق البريد (إذا وصلك كود من 6 أرقام)
       <input type="text" inputMode="numeric" autoComplete="one-time-code"
