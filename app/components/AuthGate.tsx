@@ -15,6 +15,8 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  const [needsAccess,setNeedsAccess]=useState(false);
  const [phone,setPhone]=useState("");
  const [pin,setPin]=useState("");
+ const [emailPassword,setEmailPassword]=useState("");
+ const [emailMode,setEmailMode]=useState(false);
  const [error,setError]=useState("");
  const [submitting,setSubmitting]=useState(false);
 
@@ -93,6 +95,20 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
   }finally{setSubmitting(false);}
  }
 
+ async function signInEmail(e:React.FormEvent){
+  e.preventDefault();setSubmitting(true);setError("");
+  try{
+   const {data,error:loginError}=await supabase.auth.signInWithPassword({email:"abrika1999@gmail.com",password:emailPassword});
+   if(loginError||!data.user)throw new Error("تعذر الدخول بالإيميل؛ تحقق من كلمة المرور.");
+   const {data:member,error:memberError}=await supabase.from("app_members").select("role,active").eq("user_id",data.user.id).maybeSingle();
+   if(memberError||member?.role!=="manager"||member?.active!==true){
+    await supabase.auth.signOut({scope:"local"});
+    throw new Error("حساب الإيميل ليس مديرًا نشطًا.");
+   }
+   setEmailPassword("");await refresh();
+  }catch(e){setError(e instanceof Error?e.message:"تعذر تسجيل الدخول");}
+  finally{setSubmitting(false);}
+ }
  async function signOut(){
   if(queueLength()>0){
    setError("يوجد سيارات غير متزامنة. أعد الاتصال بالإنترنت قبل تسجيل الخروج.");return;
@@ -111,7 +127,13 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    {needsAccess?<div>
     <p className="txt-warning">رقم الجوال موجود ولكنه غير مفعل في المغسلة. المدير يستطيع إضافة حساب العامل المشترك.</p>
     <button type="button" className="btn-secondary w-full mt-3" onClick={()=>void signOut()}>خروج</button>
-   </div>:<form onSubmit={signIn} className="space-y-4">
+   </div>:emailMode?<form onSubmit={signInEmail} className="space-y-4">
+    <p className="txt-muted text-sm">دخول المدير مؤقتًا بالإيميل وكلمة المرور المسجلة في Supabase.</p>
+    <label className="form-label">الإيميل<input type="email" value="abrika1999@gmail.com" readOnly /></label>
+    <label className="form-label">كلمة المرور<input type="password" autoComplete="current-password" required value={emailPassword} onChange={e=>setEmailPassword(e.target.value)}/></label>
+    <button className="btn-primary w-full" type="submit" disabled={submitting}>دخول المدير بالإيميل</button>
+    <button className="btn-secondary w-full" type="button" onClick={()=>{setEmailMode(false);setError("");}}>العودة لدخول الجوال</button>
+   </form>:<form onSubmit={signIn} className="space-y-4">
     <p className="txt-muted text-sm">ادخل برقم جوالك ورمزك الشخصي المكون من 4 أرقام. يبقى الجهاز متصلًا أثناء صلاحية الجلسة.</p>
     <label className="form-label">رقم الجوال
      <input type="tel" autoComplete="username" inputMode="tel" required
@@ -125,6 +147,7 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
     <button className="btn-primary w-full" type="submit" disabled={submitting}>
      {submitting?"جارٍ التحقق...":"دخول"}
     </button>
+    <button type="button" className="btn-secondary w-full" onClick={()=>{setEmailMode(true);setError("");}}>دخول المدير بالإيميل مؤقتًا</button>
     <p className="txt-muted text-xs">بعد 5 محاولات غير صحيحة يُوقف الدخول مؤقتًا. يمكن تغيير رمز الدخول من معلومات الحساب بعد تسجيل الدخول.</p>
    </form>}
    {error&&<p className="txt-danger" role="alert">{error}</p>}
