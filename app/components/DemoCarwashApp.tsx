@@ -105,16 +105,16 @@ export function DemoCarwashApp(){
  function approve(){
   if(!dayIsFinished(activeDay,now)){alert("لا يمكن إقفال يوم الرياض الحالي قبل الساعة 12 منتصف الليل.");return;}
   if(safeData.statuses[activeDay]!=="open"){alert("هذا اليوم ليس مفتوحًا للاعتماد.");return;}
-  if(cashActual.trim()===""||cardActual.trim()===""||!Number.isFinite(Number(cashActual))||!Number.isFinite(Number(cardActual))){alert("أدخل المبالغ الفعلية.");return;}
-  const diff=(Number(cashActual)-agg.cash)+(Number(cardActual)-agg.card);
-  if(Math.abs(diff)>0.001&&reason.trim().length<5){alert("اكتب سبب الفرق أولًا.");return;}
-  setState(d=>({...d,statuses:{...d.statuses,[activeDay]:Math.abs(diff)>.001?"awaiting_owner":"approved"}}));
-  setCashActual("");setCardActual("");setReason("");
-  alert(Math.abs(diff)>.001?"الفرق الآن بانتظار موافقة المالك في المعاينة.":"اعتمد اليوم السابق؛ لن يظهر هذا اليوم للعامل.");
- }
- function approveOwner(){
+  if(cashActual.trim()===""||cardActual.trim()===""||
+    !Number.isFinite(Number(cashActual))||!Number.isFinite(Number(cardActual))||
+    Number(cashActual)<0||Number(cardActual)<0){alert("أدخل مبالغ الكاش والشبكة الصحيحة.");return;}
+  const cashDifference=Number(cashActual)-agg.cash;
+  const cardDifference=Number(cardActual)-agg.card;
+  const hasDifference=Math.abs(cashDifference)>0.001||Math.abs(cardDifference)>0.001;
+  if(hasDifference&&reason.trim().length<5){alert("اشرح سبب الفرق للمراجعة قبل اعتماده.");return;}
   setState(d=>({...d,statuses:{...d.statuses,[activeDay]:"approved"}}));
-  alert("اعتمد المالك الفرق لهذا اليوم في المعاينة؛ السجلات محفوظة للمدير فقط.");
+  setCashActual("");setCardActual("");setReason("");
+  alert(hasDifference?"اعتمد المدير فرق اليوم مع السبب في التجربة.":"تم اعتماد هذا اليوم؛ اختفت سجلاته من شاشة العامل فقط.");
  }
  if(!started)return <div dir="rtl" className="min-h-screen flex items-center justify-center px-4 py-10">
   <div className="card max-w-xl w-full space-y-5">
@@ -147,6 +147,11 @@ export function DemoCarwashApp(){
     }}>إعادة ضبط بيانات التجربة</button>
    </div>
   </header>
+  {role==="manager"&&<nav className="card flex overflow-x-auto gap-2" aria-label="أقسام الإدارة">
+   {managerPages.map(p=><button type="button" key={p.key}
+    className={(managerPage===p.key?"btn-primary":"btn-secondary")+" shrink-0"}
+    onClick={()=>setManagerPage(p.key)}>{p.label}</button>)}
+  </nav>}
   <div className="card">
    <p className="txt-warning font-bold">البيانات في هذا العرض وهمية ولا تُرسل إلى GitHub أو Supabase. لا تستخدمه لمعاملات العملاء.</p>
    <p className="txt-muted text-sm">التوقيت المحاسبي: الرياض، 12:00 صباحًا إلى 11:59 مساءً. اليوم: {today}</p>
@@ -174,7 +179,7 @@ export function DemoCarwashApp(){
        <button type="button" className="section-title w-full text-start" onClick={()=>setSelectedDay(selectedDay===day?null:day)}>
         {day===today?"اليوم":"يوم سابق"} · {day} · {t.count} سيارة · {formatCurrency(t.crew)} عشرات
        </button>
-       <p className="txt-muted text-sm">الحالة: {safeData.statuses[day]==="awaiting_owner"?"بانتظار اعتماد المالك":"لم يعتمد المدير بعد"}</p>
+       <p className="txt-muted text-sm">الحالة: {safeData.statuses[day]==="awaiting_owner"?"فرق يحتاج اعتماد المدير":"لم يعتمد المدير بعد"}</p>
        {(selectedDay===day || selectedDay===null)&&rows.map(r=><div key={r.id} className="border-b py-3 flex items-center justify-between gap-3">
         <div>{r.car} · {r.service}<p className="txt-muted text-sm">كاش {formatCurrency(r.cash)} · شبكة {formatCurrency(r.card)}</p></div>
         <button type="button" className="btn-secondary" onClick={()=>{
@@ -184,6 +189,12 @@ export function DemoCarwashApp(){
      </section>
     })}</div>
   </>:<>
+   {(managerPage==="dashboard"||managerPage==="cars")&&
+    <DemoManagerDashboard page={managerPage} rows={safeData.rows} statuses={safeData.statuses}/>}
+   {(managerPage==="expenses"||managerPage==="workers"||managerPage==="reports"||
+      managerPage==="settings"||managerPage==="alerts")&&
+    <DemoManagerOperations key={managerPage} page={managerPage} rows={safeData.rows}/>}
+   {managerPage==="settlement"&&<>
    <section className="card space-y-3">
     <h2 className="section-title">مراجعة الموازنة بحسب اليوم</h2>
     <div className="flex flex-wrap gap-2">{dateKeys.map(day=><button type="button" key={day} className={day===activeDay?"btn-primary":"btn-secondary"} onClick={()=>{setSelectedDay(day);setCashActual("");setCardActual("");}}>
@@ -198,9 +209,6 @@ export function DemoCarwashApp(){
     {activeRows.map(r=><details key={r.id} className="border-b py-3"><summary className="cursor-pointer">{r.car} · المقبوض {formatCurrency(r.cash+r.card)}</summary>
      <p>خدمة: {r.service} · كاش {formatCurrency(r.cash)} · شبكة {formatCurrency(r.card)} · عشرات الفريق 10.00 ر.س · {r.ready?"جاهزة":"قيد الغسيل"}</p></details>)}
     {safeData.statuses[activeDay]==="approved"?<p className="txt-muted">اليوم معتمد ومحفوظ في أرشيف الإدارة.</p>:
-     safeData.statuses[activeDay]==="awaiting_owner"?role==="owner"?
-      <button type="button" className="btn-primary w-full" onClick={approveOwner}>اعتماد فرق اليوم كمالك (تجربة)</button>:
-      <p className="txt-warning">فرق الموازنة ينتظر موافقة المالك.</p>:
      dayIsFinished(activeDay,now)?<>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
        <label className="form-label">الكاش الفعلي<input type="number" min="0" value={cashActual} onChange={e=>setCashActual(e.target.value)} /></label>
@@ -210,13 +218,14 @@ export function DemoCarwashApp(){
       <button type="button" className="btn-primary w-full" onClick={approve}>اعتماد موازنة {activeDay} (محاكاة)</button>
      </>:<p className="txt-muted">لا يمكن اعتماد يوم {today} قبل 12 منتصف الليل؛ يمكنك اعتماد اليوم السابق.</p>}
    </section>
-   <section className="card space-y-3">
+   </>}
+   {managerPage==="users"&&<section className="card space-y-3">
     <h2 className="section-title">إضافة رقم العامل من حساب المدير</h2>
     <p className="txt-warning text-sm">هذه تجربة واجهة فقط؛ الرقم لا يُحفظ في قاعدة بيانات ولا تنطلق إليه رسالة SMS.</p>
     <label className="form-label">رقم العامل<input type="tel" value={workerPhone} onChange={e=>setWorkerPhone(e.target.value)} placeholder="05XXXXXXXX" /></label>
     <button type="button" className="btn-secondary" onClick={()=>{if(!/^05\d{8}$/.test(workerPhone)){alert("رقم سعودي غير صحيح");return;}setDemoWorkerAdded(true);setWorkerPhone("");}}>تجربة إضافة حساب عامل</button>
     {demoWorkerAdded&&<p className="text-sm txt-cash">نجحت محاكاة الإضافة فقط. التفعيل الفعلي يحتاج قاعدة البيانات ومزود SMS.</p>}
-   </section>
+   </section>}
   </>}
  </div>;
 }
