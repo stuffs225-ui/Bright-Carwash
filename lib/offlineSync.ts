@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
 import { getQueue, removeFromQueue } from "./offlineQueue";
 import { readyNoticeRpcParams } from "./readyNoticeParams";
+import {dispatchCarwashWhatsAppNotices} from "./whatsappDispatchClient";
 
 // Network failures must never cause silent deletion of locally captured jobs.
 export function isNetworkError(error: { code?: string } | null | undefined): boolean {
@@ -14,6 +15,7 @@ export function getOfflineSyncError(): string | null { return latestError; }
 export async function flushOfflineQueue() {
   if (flushing || typeof navigator === "undefined" || !navigator.onLine) return;
   flushing = true;
+  let readyWasSynced=false;
   try {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -28,6 +30,7 @@ export async function flushOfflineQueue() {
         ? await supabase.rpc("request_ready_notice", readyNoticeRpcParams(item.payload))
         : await supabase.from(item.table).insert(item.payload);
       if (!error) {
+        if(item.table==="ready_notice")readyWasSynced=true;
         removeFromQueue(item.id);
         continue;
       }
@@ -42,5 +45,6 @@ export async function flushOfflineQueue() {
     }
   } finally {
     flushing = false;
+    if(readyWasSynced)void dispatchCarwashWhatsAppNotices();
   }
 }
