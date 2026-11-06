@@ -23,7 +23,7 @@ const managerPages:{key:DemoManagerPage;label:string}[]=[
  {key:"settlement",label:"🧾 موازنة الأيام"},
  {key:"settings",label:"⚙️ الإعدادات"},
  {key:"alerts",label:"🔔 التنبيهات"},
- {key:"users",label:"📱 حساب العامل"},
+ {key:"users",label:"📧 حساب العامل"},
 ];
 function yesterday(today:string){
  const date=new Date(today+"T12:00:00+03:00");
