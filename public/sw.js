@@ -3,13 +3,13 @@
  * The authenticated app HTML, API responses, financial rows and OTP traffic
  * are NEVER cached. Main / navigation is network-first, offline fallback ONLY.
  */
-const ASSETS_CACHE="carwash-static-v3";
-const OFFLINE_CACHE="carwash-offline-shell-v3";
+const ASSETS_CACHE="carwash-static-v4";
+const OFFLINE_CACHE="carwash-offline-shell-v4";
 const FALLBACK="/offline.html";
 
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(OFFLINE_CACHE)
-    .then(cache=>cache.add(FALLBACK))
+    .then(cache=>cache.addAll([FALLBACK,"/offline-worker.html","/worker-offline.js"]))
     .then(()=>self.skipWaiting()));
 });
 self.addEventListener("activate",event=>{
@@ -23,6 +23,15 @@ self.addEventListener("fetch",event=>{
   const url=new URL(request.url);
   if(url.origin!==self.location.origin || request.method!=="GET")return;
 
+  // Shared worker capability URL is NEVER written to a Cache. On an offline
+  // cold launch only a generic public worker form is served at the original URL.
+  if(request.mode==="navigate" && /^\\/w\\/[a-f0-9]{64}$/.test(url.pathname)){
+    event.respondWith(fetch(request).catch(async()=>{
+      const cache=await caches.open(OFFLINE_CACHE);
+      return (await cache.match("/offline-worker.html"))||Response.error();
+    }));
+    return;
+  }
   // Important: NEVER persist the server's home-page response. We only serve
   // a separately reviewed static offline form when the network truly fails.
   if(request.mode==="navigate" && url.pathname==="/"){

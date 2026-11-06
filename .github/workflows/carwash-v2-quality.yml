@@ -29,6 +29,8 @@ jobs:
           node --check scripts/import-private-carwash-snapshot.mjs
           node scripts/import-private-carwash-snapshot.mjs qa/synthetic_carwash_import.json > /tmp/carwash-import-check.txt
           grep 'DRY RUN ONLY' /tmp/carwash-import-check.txt
+      - name: Check static offline worker script
+        run: node --check public/worker-offline.js
       - name: Type checking
         run: npx tsc --noEmit
       - name: Next.js build

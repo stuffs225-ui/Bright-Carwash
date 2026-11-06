@@ -76,7 +76,7 @@ export async function GET(request:Request){
   const email=(process.env.CARWASH_BACKUP_EMAIL||"").trim();
   const from=(process.env.CARWASH_BACKUP_FROM_EMAIL||"").trim();
   const resendKey=process.env.RESEND_API_KEY;
-  if(!email||!/^\\S+@\\S+\\.\\S+$/.test(email)||!from||!resendKey)
+  if(!email||!/^\S+@\S+\.\S+$/.test(email)||!from||!resendKey)
    return fail(503,"Encrypted offsite backup configuration is incomplete");
   const admin=createAdminClient();
   const tables:Record<string,unknown[]>={};
