@@ -77,7 +77,7 @@ export function AlertsTab({isOwner}: {isOwner:boolean}) {
   async function save(){
     setBusy(true);setMessage("");
     try {
-      if(!isOwner) throw new Error("مالك المغسلة فقط يستطيع تعديل الأهداف");
+      if(!isOwner) throw new Error("مدير المغسلة فقط يستطيع تعديل الأهداف");
       for(const item of ALERT_DEFS){
         const {error}=await supabase.from("settings").update({value:thresholds[item.key]}).eq("key",item.key);
         if(error) throw error;
