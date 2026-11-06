@@ -12,6 +12,7 @@ import {isApprovedStaffPrice,selectedAddonsTotal,type CatalogAddon} from "@/lib/
 import {showToast} from "@/lib/toast";
 import {Modal} from "./Modal";
 import {InstallAppButton} from "./InstallAppButton";
+import {dispatchCarwashWhatsAppNotices} from "@/lib/whatsappDispatchClient";
 import type {Entry,EntryPreset} from "@/lib/types";
 
 type Day={business_date:string;status:"open"|"awaiting_owner"|"approved"};
@@ -191,7 +192,9 @@ export function WorkerRegisterTab(){
   const {error}=await supabase.rpc("request_ready_notice",payload);
   if(error){if(isNetworkError(error))enqueue("ready_notice",payload);
    else showToast(error.message,"error");return;}
-  showToast("سُجلت الجاهزية؛ إرسال واتساب ينتظر تفعيل وربط حساب WhatsApp Business.");
+  const result=await dispatchCarwashWhatsAppNotices();
+  showToast(result.accepted>0?"تم قبول إشعار واتساب لدى مزود الخدمة.":"تم تسجيل الجاهزية؛ يبقى إشعار واتساب معلّقًا حتى تفعيل المزود وربطه.",
+   result.accepted>0?"success":"warning");
   void reload();
  }
 
