@@ -4,6 +4,7 @@ import {useCallback,useEffect,useState} from "react";
 import {supabase,supabaseConfigured} from "@/lib/supabaseClient";
 import {queueLength,setOfflineActor} from "@/lib/offlineQueue";
 import {validFourDigitPin} from "@/lib/carwashPinRules";
+import {parseCarwashRecoveryLink} from "@/lib/carwashRecoveryLink";
 import {DemoCarwashApp} from "./DemoCarwashApp";
 
 export type AppRole="manager"|"worker";
@@ -156,32 +157,26 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  async function consumeEmailLink(e:React.FormEvent){
   e.preventDefault();setError("");setNotice("");setSubmitting(true);
   try{
-   const url=new URL(emailedLink.trim());
    const supabaseUrl=process.env.NEXT_PUBLIC_SUPABASE_URL;
    if(!supabaseUrl)throw Error("إعدادات Supabase غير متوفرة.");
-   let tokenHash="",type:"magiclink"|"recovery"|"email"="magiclink";
-   if(url.origin===new URL(supabaseUrl).origin&&url.pathname==="/auth/v1/verify"){
-    tokenHash=url.searchParams.get("token")||url.searchParams.get("token_hash")||"";
-    const candidate=url.searchParams.get("type");
-    if(candidate==="recovery"||candidate==="email")type=candidate;
-   }
-   if(tokenHash){
-    const {data,error:verifyError}=await supabase.auth.verifyOtp({token_hash:tokenHash,type});
-    if(verifyError||!data.session)throw Error("رابط البريد غير صالح أو استُخدم من قبل. استخدم رابطًا جديدًا لم يُفتح.");
+   const parsed=parseCarwashRecoveryLink(emailedLink,supabaseUrl);
+   if(parsed.kind==="otp"){
+    const {data,error:verifyError}=await supabase.auth.verifyOtp({
+     token_hash:parsed.token_hash,type:parsed.type
+    });
+    if(verifyError||!data.session)
+     throw Error("تم فتح الرابط مسبقًا أو انتهت صلاحيته. انسخ رابطًا جديدًا قبل الضغط عليه من Gmail.");
    }else{
-    // A clicked Supabase link sometimes redirects to the project's old
-    // localhost Site URL with the session in the URL fragment. Import it
-    // locally without transmitting tokens to any third-party service.
-    const fragment=new URLSearchParams(url.hash.replace(/^#/,""));
-    const access_token=fragment.get("access_token");
-    const refresh_token=fragment.get("refresh_token");
-    if(url.hostname!=="localhost"||!access_token||!refresh_token)
-     throw Error("الصق رابط التحقق الكامل من رسالة Supabase، أو رابط التحويل الناتج منه.");
-    const {error:sessionError}=await supabase.auth.setSession({access_token,refresh_token});
-    if(sessionError)throw Error("انتهت جلسة التحقق السابقة. اطلب رسالة جديدة لاحقًا.");
+    const {error:sessionError}=await supabase.auth.setSession({
+     access_token:parsed.access_token,refresh_token:parsed.refresh_token
+    });
+    if(sessionError)throw Error("انتهت جلسة التحقق السابقة؛ استخدم رابط بريد جديدًا.");
    }
    setEmailedLink("");setResetFlow(true);setRecovery(false);await refresh();
-  }catch(e){setError(e instanceof Error?e.message:"تعذر تأكيد رابط البريد");}
+  }catch(e){
+   setEmailedLink("");
+   setError(e instanceof Error?e.message:"تعذر تأكيد رابط البريد");
+  }
   finally{setSubmitting(false);}
  }
 
@@ -270,6 +265,7 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    </div>:recovery?<div className="space-y-4">
     <h2 className="subsection-title">أول مرة أو نسيت PIN؟</h2>
     <p className="txt-muted text-sm">سنرسل رابط تحقق إلى الإيميل المسجل لتختار رمزًا جديدًا؛ لا يلزم رقم جوال.</p>
+    <p className="txt-warning text-sm"><strong>مهم:</strong> إذا وصلك الرابط، لا تضغط عليه داخل Gmail أولًا. اضغط مطولًا ثم اختر «نسخ الرابط» والصقه في الخانة أدناه. أي رابط فُتح سابقًا لا يمكن استخدامه مرة ثانية.</p>
     <form onSubmit={sendRecovery} className="space-y-3">
      <label className="form-label">الإيميل
       <input type="email" inputMode="email" autoComplete="username" required
@@ -282,12 +278,12 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
     </form>
 
     <form onSubmit={consumeEmailLink} className="space-y-2">
-     <label className="form-label">لصق رابط التحقق من رسالة الإيميل
+     <label className="form-label">لصق الرابط الكامل من رسالة الإيميل (قبل فتحه)
       <input type="url" inputMode="url" autoComplete="off"
        value={emailedLink} onChange={e=>setEmailedLink(e.target.value)}
        placeholder="https://.../auth/v1/verify?token=..." required/>
      </label>
-     <p className="txt-muted text-xs">اضغط مطولًا على رابط التحقق داخل البريد ثم «نسخ الرابط» والصقه هنا. لا ترسل الرابط لأي شخص. الرابط يستخدم مرة واحدة فقط.</p>
+     <p className="txt-muted text-xs">يجب أن يبدأ الرابط بـ https:// وينتهي بمعلومات التحقق. عنوان localhost:3000 وحده لا يعمل. لا تشارك رابط التحقق مع أحد، ولا تلصقه في المحادثة.</p>
      <button type="submit" className="btn-secondary w-full" disabled={submitting||!emailedLink.trim()}>
       {submitting?"جارٍ التحقق...":"تأكيد الرابط وتعيين PIN"}
      </button>
