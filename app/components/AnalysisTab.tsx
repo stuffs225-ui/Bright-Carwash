@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { fetchAllRows } from "@/lib/fetchAll";
 import { describeError } from "@/lib/errors";
 import { formatCurrency, toDateKey } from "@/lib/business";
+import {riyadhDayKey} from "@/lib/carwashCalendarDay";
 import { showToast } from "@/lib/toast";
 import { buildReportMarkdown, downloadMarkdown, exportReportToExcel, type ReportInput } from "@/lib/exportReport";
 import { computeDiagnostics } from "@/lib/diagnostics";
@@ -43,10 +44,10 @@ function bucketByGranularity(daily: DailyRow[], granularity: Granularity): Daily
   daily.forEach((d) => {
     let key: string;
     if (granularity === "weekly") {
-      const dt = new Date(`${d.date}T00:00:00`);
+      const dt = new Date(`${d.date}T12:00:00Z`);
       const weekStart = new Date(dt);
-      weekStart.setDate(dt.getDate() - dt.getDay());
-      key = toDateKey(weekStart);
+      weekStart.setUTCDate(dt.getUTCDate()-dt.getUTCDay());
+      key = weekStart.toISOString().slice(0,10);
     } else {
       key = d.date.slice(0, 7);
     }
@@ -96,8 +97,8 @@ export function AnalysisTab() {
 
   const load = useCallback(async (start: string, end: string, carFilter: string, serviceFilter: string) => {
     setLoading(true);
-    const startDt = new Date(`${start}T00:00:00`);
-    const endDt = new Date(`${end}T23:59:59.999`);
+    const startDt = new Date(`${start}T00:00:00+03:00`);
+    const endDt = new Date(`${end}T23:59:59.999+03:00`);
 
     try {
       const [entryRows, expenseRows] = await Promise.all([
@@ -138,10 +139,10 @@ export function AnalysisTab() {
     try {
       const [e, x] = await Promise.all([
         fetchAllRows<Entry>((from, to) =>
-          supabase.from("entries").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+          supabase.from("entries").select("id,occurred_at,gross,cash_paid,card_paid,discount_amount,car_type,service_type,notes,payment_method").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
         ),
         fetchAllRows<Expense>((from, to) =>
-          supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
+          supabase.from("expenses").select("id,occurred_at,amount,expense_type").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
         ),
       ]);
       setAllEntries(e);
@@ -232,11 +233,13 @@ export function AnalysisTab() {
 
   // ---------------- نظرة سريعة (اليوم / الأسبوع / الشهر / السنة) — مستقلة عن الفلتر ----------------
   const quickGlance = useMemo(() => {
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const weekStart = new Date(todayStart);
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const yearStart = new Date(now.getFullYear(), 0, 1);
+    const todayKey=riyadhDayKey(now);
+    const todayStart = new Date(todayKey+"T00:00:00+03:00");
+    const localNoon=new Date(todayKey+"T12:00:00Z");
+    localNoon.setUTCDate(localNoon.getUTCDate()-localNoon.getUTCDay());
+    const weekStart=new Date(localNoon.toISOString().slice(0,10)+"T00:00:00+03:00");
+    const monthStart = new Date(todayKey.slice(0,7)+"-01T00:00:00+03:00");
+    const yearStart = new Date(todayKey.slice(0,4)+"-01-01T00:00:00+03:00");
 
     function sumSince(since: Date) {
       let revenue = 0, cars = 0, expensesTotal = 0;
@@ -272,7 +275,7 @@ export function AnalysisTab() {
     const map = new Map<string, { month: string; cars: number; revenue: number; expenses: number }>();
     allEntries.forEach((e) => {
       const d = new Date(e.occurred_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const key = riyadhDayKey(d).slice(0,7);
       const row = map.get(key) || { month: key, cars: 0, revenue: 0, expenses: 0 };
       row.cars += 1;
       row.revenue += Number(e.gross);
@@ -280,7 +283,7 @@ export function AnalysisTab() {
     });
     allExpenses.forEach((x) => {
       const d = new Date(x.occurred_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const key = riyadhDayKey(d).slice(0,7);
       const row = map.get(key) || { month: key, cars: 0, revenue: 0, expenses: 0 };
       row.expenses += Number(x.amount);
       map.set(key, row);
@@ -301,7 +304,7 @@ export function AnalysisTab() {
     let cars = 0, revenue = 0, cash = 0, card = 0, expenseTotal = 0;
 
     entries.forEach((entry) => {
-      const key = toDateKey(new Date(entry.occurred_at));
+      const key = riyadhDayKey(entry.occurred_at);
       if (!daily.has(key)) daily.set(key, emptyDay(key));
       const row = daily.get(key)!;
       row.cars += 1;
@@ -317,7 +320,7 @@ export function AnalysisTab() {
     });
 
     expenses.forEach((exp) => {
-      const key = toDateKey(new Date(exp.occurred_at));
+      const key = riyadhDayKey(exp.occurred_at);
       if (!daily.has(key)) daily.set(key, emptyDay(key));
       const row = daily.get(key)!;
       row.expenses += Number(exp.amount);
@@ -410,18 +413,18 @@ export function AnalysisTab() {
       {/* نظرة سريعة — دوس على أي بطاقة لتفاصيل السيارات بهذي الفترة */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <QuickCard label="دخل اليوم" net={quickGlance.today.net} sub={`${quickGlance.today.cars} سيارة`} tone="blue" onClick={() => setActivePeriod("today")} />
-        <QuickCard label="ربح الأسبوع" net={quickGlance.week.net} sub={formatCurrency(quickGlance.week.revenue)} tone="emerald" onClick={() => setActivePeriod("week")} />
-        <QuickCard label="ربح الشهر" net={quickGlance.month.net} sub={formatCurrency(quickGlance.month.revenue)} tone="purple" onClick={() => setActivePeriod("month")} />
-        <QuickCard label="ربح السنة" net={quickGlance.year.net} sub={formatCurrency(quickGlance.year.revenue)} tone="indigo" onClick={() => setActivePeriod("year")} />
+        <QuickCard label="فائض الأسبوع" net={quickGlance.week.net} sub={formatCurrency(quickGlance.week.revenue)} tone="emerald" onClick={() => setActivePeriod("week")} />
+        <QuickCard label="فائض الشهر" net={quickGlance.month.net} sub={formatCurrency(quickGlance.month.revenue)} tone="purple" onClick={() => setActivePeriod("month")} />
+        <QuickCard label="فائض السنة" net={quickGlance.year.net} sub={formatCurrency(quickGlance.year.revenue)} tone="indigo" onClick={() => setActivePeriod("year")} />
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="metric-card tone-cyan">
-          <span className="metric-label">العائد على الاستثمار (سنوي) — مقارنة الربح بإجمالي المصروفات</span>
+          <span className="metric-label">نسبة الفائض إلى المصروفات (سنوي) — مقارنة الربح بإجمالي المصروفات</span>
           <strong className={`metric-value ${roi.yearly < 0 ? "txt-expense" : ""}`}>{roi.yearly.toFixed(1)}%</strong>
         </div>
         <div className="metric-card tone-amber">
-          <span className="metric-label">العائد على الاستثمار (شهري) — مقارنة الربح بإجمالي المصروفات</span>
+          <span className="metric-label">نسبة الفائض إلى المصروفات (شهري) — مقارنة الربح بإجمالي المصروفات</span>
           <strong className={`metric-value ${roi.monthly < 0 ? "txt-expense" : ""}`}>{roi.monthly.toFixed(1)}%</strong>
         </div>
       </section>
@@ -431,7 +434,7 @@ export function AnalysisTab() {
         <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
           <div>
             <h2 className="section-title mb-1">تحليل البيانات</h2>
-            <p className="txt-muted">تحليل الإيرادات، السيارات، المصروفات وصافي الدخل للفترة المحددة.</p>
+            <p className="txt-muted">تحليل الإيرادات، السيارات، المصروفات وفائض الإيرادات والمصروفات للفترة المحددة.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full xl:w-auto">
             <div>
@@ -489,7 +492,7 @@ export function AnalysisTab() {
           <MetricCard label="عدد السيارات" value={m.cars} tone="blue" onClick={()=>setKpiDetails("cars")} hint="انقر لتفاصيل السيارات" />
           <MetricCard label="الإيرادات" value={formatCurrency(m.revenue)} tone="emerald" onClick={()=>setKpiDetails("revenue")} hint="تفاصيل الإيرادات" />
           <MetricCard label="المصروفات" value={formatCurrency(m.expenses)} tone="red" onClick={()=>setKpiDetails("expenses")} hint="تفاصيل المصروفات" />
-          <MetricCard label="صافي الدخل" value={formatCurrency(m.net)} tone="indigo" onClick={()=>setKpiDetails("net")} hint="تفسير صافي الدخل وحركاته" />
+          <MetricCard label="فائض الإيرادات والمصروفات" value={formatCurrency(m.net)} tone="indigo" onClick={()=>setKpiDetails("net")} hint="تفسير فائض الإيرادات والمصروفات وحركاته" />
           <MetricCard label="الكاش" value={formatCurrency(m.cash)} tone="cyan" onClick={()=>setKpiDetails("cash")} hint="تفاصيل النقد المقبوض" />
           <MetricCard label="البطاقة" value={formatCurrency(m.card)} tone="purple" onClick={()=>setKpiDetails("card")} hint="تفاصيل الشبكة" />
           <MetricCard label="متوسط الفاتورة" value={formatCurrency(m.avgTicket)} tone="amber" onClick={()=>setKpiDetails("avgTicket")} hint="حساب المتوسط ومصدره" />
@@ -519,7 +522,7 @@ export function AnalysisTab() {
                 datasets: [
                   { label: "الإيرادات", data: bucketedTrend.map((d) => d.revenue), borderColor: "#059669", backgroundColor: "rgba(5,150,105,.12)", tension: 0.25 },
                   { label: "المصروفات", data: bucketedTrend.map((d) => d.expenses), borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,.10)", tension: 0.25 },
-                  { label: "صافي الدخل", data: bucketedTrend.map((d) => d.net), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.10)", tension: 0.25 },
+                  { label: "فائض الإيرادات والمصروفات", data: bucketedTrend.map((d) => d.net), borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.10)", tension: 0.25 },
                 ],
               }}
               options={{ responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false }, plugins: { legend: { position: "bottom" } } }}
@@ -595,7 +598,7 @@ export function AnalysisTab() {
                   datasets: [
                     { label: "الإيرادات", data: last12Months.map((r) => r.revenue), backgroundColor: "#059669" },
                     { label: "المصروفات", data: last12Months.map((r) => r.expenses), backgroundColor: "#dc2626" },
-                    { label: "صافي الربح", data: last12Months.map((r) => r.net), backgroundColor: "#2563eb" },
+                    { label: "الفائض المسجل", data: last12Months.map((r) => r.net), backgroundColor: "#2563eb" },
                   ],
                 }}
                 options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }}
@@ -604,7 +607,7 @@ export function AnalysisTab() {
             <div className="overflow-x-auto">
               <table className="app-table">
                 <thead>
-                  <tr><th>الشهر</th><th>السيارات</th><th>الإيراد</th><th>المصروفات</th><th>صافي الربح</th></tr>
+                  <tr><th>الشهر</th><th>السيارات</th><th>الإيراد</th><th>المصروفات</th><th>الفائض المسجل</th></tr>
                 </thead>
                 <tbody>
                   {monthlyHistory.map((r) => (
@@ -613,7 +616,7 @@ export function AnalysisTab() {
                       <td data-label="السيارات">{r.cars}</td>
                       <td data-label="الإيراد" className="txt-cash">{formatCurrency(r.revenue)}</td>
                       <td data-label="المصروفات" className="txt-expense">{formatCurrency(r.expenses)}</td>
-                      <td data-label="صافي الربح" className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{formatCurrency(r.net)}</td>
+                      <td data-label="الفائض المسجل" className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{formatCurrency(r.net)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -626,7 +629,7 @@ export function AnalysisTab() {
       {kpiDetails && (
         <Modal title={({
           cars:"تفاصيل عدد السيارات",revenue:"تفاصيل الإيرادات",expenses:"تفاصيل المصروفات",
-          net:"تفاصيل صافي الدخل",cash:"تفاصيل الكاش",card:"تفاصيل الشبكة",
+          net:"تفاصيل فائض الإيرادات والمصروفات",cash:"تفاصيل الكاش",card:"تفاصيل الشبكة",
           avgTicket:"متوسط الفاتورة",avgCars:"متوسط السيارات لكل يوم عمل"
         } as const)[kpiDetails]} onClose={()=>setKpiDetails(null)}>
           <p className="font-bold mb-3">
@@ -680,7 +683,7 @@ export function AnalysisTab() {
                     const d = new Date(entry.occurred_at);
                     return (
                       <tr key={entry.id}>
-                        <td data-label="التاريخ">{toDateKey(d)}</td>
+                        <td data-label="التاريخ">{riyadhDayKey(d)}</td>
                         <td data-label="الوقت">{d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}</td>
                         <td data-label="السيارة">{entry.car_type}</td>
                         <td data-label="الخدمة">{entry.service_type}</td>

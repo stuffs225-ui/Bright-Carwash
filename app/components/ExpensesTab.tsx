@@ -11,6 +11,7 @@ import type { Expense } from "@/lib/types";
 import { enqueue } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { riyadhDate, expenseEffectiveTimestamp, lateExpenseMonth } from "@/lib/expenseDates";
+import {riyadhDayKey} from "@/lib/carwashCalendarDay";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 import { PAYMENT_SOURCES, loadWorkers } from "@/lib/workers";
@@ -19,7 +20,7 @@ import type { Worker } from "@/lib/types";
 const DEFAULT_COLORS = ["#3b82f6", "#8b5cf6", "#ef4444", "#f59e0b", "#10b981", "#6366f1", "#ec4899", "#6d28d9", "#06b6d4", "#eab308"];
 
 function monthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return riyadhDayKey(date).slice(0,7);
 }
 
 export function ExpensesTab() {
@@ -82,7 +83,7 @@ export function ExpensesTab() {
       const d = new Date(exp.occurred_at);
       const key = monthKey(d);
       if (!map.has(key)) {
-        map.set(key, { monthName: d.toLocaleDateString(AR_GREGORIAN_LOCALE, { month: "long", year: "numeric" }), total: 0, entries: [], types: {} });
+        map.set(key, { monthName: d.toLocaleDateString(AR_GREGORIAN_LOCALE, { month: "long", year: "numeric",timeZone:"Asia/Riyadh" }), total: 0, entries: [], types: {} });
       }
       const bucket = map.get(key)!;
       bucket.total += Number(exp.amount);
