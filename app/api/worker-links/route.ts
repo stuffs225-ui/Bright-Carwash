@@ -31,7 +31,7 @@ export async function POST(request:Request){
    .select("id",{count:"exact",head:true}).eq("created_by",access.user.id)
    .is("revoked_at",null).gt("expires_at",new Date().toISOString());
   if(countError)return reject(503,"تعذر التحقق من الروابط");
-  if((count||0)>=10)return reject(409,"الحد الأقصى 10 روابط نشطة؛ ألغِ رابطًا قديمًا أولًا");
+  if((count||0)>=1)return reject(409,"يوجد رابط مشترك نشط بالفعل؛ ألغِه أولًا فقط إذا كنت تريد استبداله");
   const token=createCapability();
   const expires_at=new Date(Date.now()+90*86400000).toISOString();
   const {data,error}=await access.admin.from("carwash_worker_links").insert({

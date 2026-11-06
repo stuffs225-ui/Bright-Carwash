@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - chatgpt/carwash-v2-secure-preview-20261101
+      - chatgpt/bright-carwash-approved-phases-20261107
   workflow_dispatch:
 permissions:
   contents: read

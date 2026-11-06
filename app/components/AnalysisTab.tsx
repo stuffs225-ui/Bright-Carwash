@@ -85,11 +85,12 @@ export function AnalysisTab() {
 
   useEffect(() => {
     let disposed = false;
-    supabase.from("legacy_import_issues").select("id", {count:"exact",head:true})
-      .eq("status","pending")
-      .then(({count,error}) => {
-        if (!disposed) setPendingReviewCount(error ? null : (count ?? 0));
-      });
+    Promise.all([
+      supabase.from("legacy_import_issues").select("id",{count:"exact",head:true}).eq("status","pending"),
+      supabase.from("entries").select("id",{count:"exact",head:true}).eq("legacy_amount_mismatch",true).is("deleted_at",null)
+    ]).then(([issues,mismatches])=>{
+      if(!disposed)setPendingReviewCount(issues.error||mismatches.error?null:(issues.count??0)+(mismatches.count??0));
+    });
     return () => {disposed=true;};
   }, []);
 
@@ -403,7 +404,7 @@ export function AnalysisTab() {
       ) : pendingReviewCount > 0 ? (
         <section className="card" role="status">
           <h2 className="section-title">⚠️ الأرقام المالية قيد المطابقة</h2>
-          <p className="txt-warning">يوجد {pendingReviewCount} اختلاف أو نقص في بيانات المصدر القديمة. التقارير تعرض العمليات القابلة للاحتساب فقط؛ ولا تمثل إقفالًا ماليًا معتمدًا حتى الانتهاء من المراجعة.</p>
+          <p className="txt-warning">يوجد {pendingReviewCount} اختلاف أو قضية مراجعة مرتبطة بالبيانات التاريخية. التقارير تعرض العمليات القابلة للاحتساب فقط؛ ولا تمثل إقفالًا ماليًا معتمدًا حتى الانتهاء من المراجعة.</p>
         </section>
       ) : null}
       {/* نظرة سريعة — دوس على أي بطاقة لتفاصيل السيارات بهذي الفترة */}

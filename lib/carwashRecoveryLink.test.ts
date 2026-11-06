@@ -9,7 +9,7 @@ describe("carwash recovery links",()=>{
   )).toEqual({kind:"otp",token_hash:token,type:"magiclink"});
  });
  it("supports a token_hash link from a recovery email",()=>{
-  expect(parseCarwashRecoveryLink(base+"/auth/v1/verify?token_hash="+token+"&type=recovery",base).type).toBe("recovery");
+  expect(parseCarwashRecoveryLink(base+"/auth/v1/verify?token_hash="+token+"&type=recovery",base)).toEqual({kind:"otp",token_hash:token,type:"recovery"});
  });
  it("rejects localhost without the verified session fragment",()=>{
   expect(()=>parseCarwashRecoveryLink("http://localhost:3000",base)).toThrow(/localhost/);

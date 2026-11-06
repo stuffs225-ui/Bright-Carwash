@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+type HistoricalMismatch={id:string;legacy_ref:string|null;occurred_at:string;legacy_reported_total:number|null;cash_paid:number;card_paid:number};
 type Issue = {
   id: number;
   source_sheet:string;
@@ -20,17 +21,26 @@ const NAMES:Record<string,string> = {
 
 export function ReconciliationTab() {
   const [issues,setIssues]=useState<Issue[]>([]);
+  const [mismatches,setMismatches]=useState<HistoricalMismatch[]>([]);
   const [notes,setNotes]=useState<Record<number,string>>({});
   const [pending,setPending]=useState(false);
   const [error,setError]=useState("");
   const [success,setSuccess]=useState("");
 
   const refresh=useCallback(async()=>{
-    const {data,error:loadError}=await supabase.from("legacy_import_issues")
-      .select("id,source_sheet,source_row,issue_code,details,status,resolution_note,created_at")
-      .order("source_sheet").order("source_row");
-    if(loadError){setError(loadError.message);return;}
-    setIssues((data||[]) as Issue[]);
+    const [oldIssues,oldMismatches]=await Promise.all([
+      supabase.from("legacy_import_issues")
+       .select("id,source_sheet,source_row,issue_code,details,status,resolution_note,created_at")
+       .order("source_sheet").order("source_row"),
+      supabase.from("entries")
+       .select("id,legacy_ref,occurred_at,legacy_reported_total,cash_paid,card_paid")
+       .eq("legacy_amount_mismatch",true).is("deleted_at",null)
+       .order("occurred_at",{ascending:false}).limit(1000)
+    ]);
+    if(oldIssues.error||oldMismatches.error){setError("تعذر تحميل فروقات الأرشيف؛ حاول مجددًا.");return;}
+    setIssues((oldIssues.data||[]) as Issue[]);
+    setMismatches((oldMismatches.data||[]) as HistoricalMismatch[]);
+    setError("");
   },[]);
   useEffect(()=>{void refresh();},[refresh]);
 
@@ -57,6 +67,13 @@ export function ReconciliationTab() {
         <div className="card"><strong>قضايا بانتظار المراجعة</strong><p className="text-2xl font-bold">{open.length}</p></div>
         <div className="card"><strong>إجمالي القضايا</strong><p className="text-2xl font-bold">{issues.length}</p></div>
       </div>
+    </section>
+    <section className="card space-y-3">
+      <h3 className="section-title">اختلافات المبالغ في الأرشيف ({mismatches.length})</h3>
+      <p className="txt-muted text-sm">للعرض والتدقيق فقط: البيانات الأصلية لا تتغير، ولا يُعتمد أي تعديل تلقائي. تحقق من مستند المصدر قبل اتخاذ قرار محاسبي.</p>
+      {mismatches.length===0?<p className="txt-muted">لم تظهر عمليات موسومة باختلافات ضمن البيانات المقروءة.</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th>المرجع</th><th>التاريخ</th><th>المبلغ الأصلي</th><th>الكاش + الشبكة</th><th>الفرق</th></tr></thead><tbody>
+       {mismatches.map(r=>{const paid=Number(r.cash_paid)+Number(r.card_paid);const origin=r.legacy_reported_total===null?null:Number(r.legacy_reported_total);return <tr key={r.id}><td>{r.legacy_ref||"—"}</td><td>{new Date(r.occurred_at).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}</td><td>{origin===null?"غير مسجل":origin.toFixed(2)}</td><td>{paid.toFixed(2)}</td><td>{origin===null?"غير معروف":(origin-paid).toFixed(2)}</td></tr>})}
+      </tbody></table></div>}
     </section>
     {error&&<p role="alert" className="txt-danger">{error}</p>}
     {success&&<p role="status">{success}</p>}
