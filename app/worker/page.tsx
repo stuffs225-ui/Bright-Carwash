@@ -1,32 +1,9 @@
-"use client";
-export const dynamic = "force-dynamic";
-import { AuthGate } from "../components/AuthGate";
-import { CarEntryTab } from "../components/CarEntryTab";
-import { OfflineStatusBadge } from "../components/OfflineStatusBadge";
-import { ServiceWorkerRegister } from "../components/ServiceWorkerRegister";
-import { ErrorBoundary } from "../components/ErrorBoundary";
-import { ErrorMonitor } from "../components/ErrorMonitor";
-import { supabase } from "@/lib/supabaseClient";
-import { queueLength } from "@/lib/offlineQueue";
-
-export default function WorkerPage() {
-  return <AuthGate>{(identity) => (
-    <ErrorBoundary>
-      <ErrorMonitor />
-      <div className="app-shell" dir="rtl">
-        <header className="app-header">
-          <h1 className="text-2xl font-extrabold">🚗 تسجيل السيارات</h1>
-          <p className="text-sm mt-1">المستخدم: {identity.email}</p>
-          <button type="button" className="btn-secondary mt-3" onClick={async () => {
-            if (queueLength()) { alert("زامن التسجيلات المحفوظة محليًا قبل الخروج."); return; }
-            await supabase.auth.signOut({ scope: "local" });
-          }}>تسجيل الخروج</button>
-        </header>
-        <div className="content-section-wrapper is-standalone"><CarEntryTab ownerView={false} /></div>
-        <div id="toast-container" />
-        <OfflineStatusBadge />
-        <ServiceWorkerRegister />
-      </div>
-    </ErrorBoundary>
-  )}</AuthGate>;
+export default function WorkerLanding(){
+ return <main className="min-h-screen flex items-center justify-center p-5" dir="rtl">
+  <section className="card max-w-md space-y-4 text-center">
+   <h1 className="section-title">🚗 تسجيل السيارات</h1>
+   <p>العامل لا يحتاج إنشاء حساب، أو تسجيل الدخول، أو إدخال رقم هاتف.</p>
+   <p className="txt-muted text-sm">اطلب من مدير المغسلة رابط تسجيل السيارات الخاص بك عبر واتساب، وافتحه مباشرة.</p>
+  </section>
+ </main>;
 }
