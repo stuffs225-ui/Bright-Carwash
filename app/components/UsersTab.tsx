@@ -10,6 +10,7 @@ const roles:Role[] = ["worker"];
 export function UsersTab() {
   const [members,setMembers] = useState<Member[]>([]);
   const [phone,setPhone] = useState("");
+  const [initialPin,setInitialPin]=useState("");
   const [role,setRole] = useState<Role>("worker");
   const [saving,setSaving] = useState(false);
   const [error,setError] = useState("");
@@ -41,9 +42,10 @@ export function UsersTab() {
   async function invite(e:React.FormEvent) {
     e.preventDefault(); setSaving(true);setError("");setSuccess("");
     try {
-      await request("POST",{phone,role:"worker"});
+      if(!/^\d{4}$/.test(initialPin))throw Error("أدخل رمز العامل الأولي من أربعة أرقام");
+      await request("POST",{phone,role:"worker",pin:initialPin});
       setSuccess("تم تفعيل رقم الجوال وصلاحية الحساب؛ يستطيع المستخدم طلب رمز SMS عند الدخول.");
-      setPhone("");await refresh();
+      setPhone("");setInitialPin("");await refresh();
     } catch(e) {setError(e instanceof Error?e.message:String(e));}
     finally {setSaving(false);}
   }
@@ -60,12 +62,17 @@ export function UsersTab() {
   return <div className="space-y-5" dir="rtl">
     <section className="card">
       <h2 className="section-title">إدارة المستخدمين والصلاحيات</h2>
-      <p className="txt-muted text-sm">أضف رقم الجوال المسموح به للمغسلة فقط. العامل يدخل برمز تحقق SMS بعد تفعيل مزود الرسائل وقاعدة البيانات. المدير يستطيع إضافة حساب عامل أو تعطيله، ولا يستطيع إضافة مدير آخر.</p>
+      <p className="txt-muted text-sm">أضف رقم الجوال المشترك للعاملين، وحدد رمزًا أوليًا من 4 أرقام. لا يظهر الرمز بعد حفظه؛ يستطيع العامل تغييره من معلومات الحساب. يمكن تفعيل حساب عامل واحد فقط في الوقت نفسه.</p>
       <form onSubmit={invite} className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
         <label className="form-label">رقم الجوال
           <input type="tel" required value={phone} onChange={e=>setPhone(e.target.value)} placeholder="05XXXXXXXX" />
         </label>
-        <label className="form-label">الصلاحية<p className="font-semibold py-3">حساب عامل مشترك واحد</p></label>
+        <label className="form-label">رمز العامل الأولي (4 أرقام)
+          <input type="password" inputMode="numeric" autoComplete="new-password"
+            required maxLength={4} pattern="[0-9]{4}"
+            value={initialPin} onChange={e=>setInitialPin(e.target.value.replace(/\D/g,"").slice(0,4))}
+            placeholder="••••" />
+        </label>
         <div className="flex items-end"><button type="submit" disabled={saving} className="btn-primary w-full">إضافة حساب الجوال</button></div>
       </form>
     </section>
