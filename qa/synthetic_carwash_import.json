@@ -1,0 +1,76 @@
+{
+  "manifest": {
+    "kind": "PRIVATE_BRIGHT_CARWASH_SHEETS_SNAPSHOT",
+    "source_spreadsheet_id": "synthetic-carwash-test",
+    "source_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "source_last_modified_at": "2026-11-06T00:00:00Z",
+    "entry_count": 2,
+    "expense_count": 1,
+    "cash_total": 25,
+    "card_total": 30,
+    "recorded_total": 55,
+    "expense_total": 10,
+    "source_row_counts": {
+      "Main_Data": 2,
+      "Expenses": 1
+    },
+    "issue_codes": {}
+  },
+  "entries": [
+    {
+      "legacy_ref": "Main_Data:2",
+      "car_type": "سيارة صغيرة",
+      "service_type": "غسيل كامل",
+      "cash_paid": 25,
+      "card_paid": 0,
+      "legacy_recorded_total": 25,
+      "legacy_import_flag": "ok",
+      "occurred_at": "2026-11-05T12:00:00Z"
+    },
+    {
+      "legacy_ref": "Main_Data:3",
+      "car_type": "سيارة كبيرة",
+      "service_type": "غسيل كامل",
+      "cash_paid": 0,
+      "card_paid": 30,
+      "legacy_recorded_total": 30,
+      "legacy_import_flag": "ok",
+      "occurred_at": "2026-11-05T12:02:00Z"
+    }
+  ],
+  "expenses": [
+    {
+      "legacy_ref": "Expenses:2",
+      "expense_type": "مواد",
+      "amount": 10,
+      "occurred_at": "2026-11-05T12:05:00Z"
+    }
+  ],
+  "legacy_source_rows": [
+    {
+      "source_sheet": "Main_Data",
+      "source_row": 2,
+      "raw_values": {
+        "A": 1,
+        "B": "سيارة صغيرة"
+      }
+    },
+    {
+      "source_sheet": "Main_Data",
+      "source_row": 3,
+      "raw_values": {
+        "A": 2,
+        "B": "سيارة كبيرة"
+      }
+    },
+    {
+      "source_sheet": "Expenses",
+      "source_row": 2,
+      "raw_values": {
+        "A": 1,
+        "B": "مواد"
+      }
+    }
+  ],
+  "legacy_import_issues": []
+}
