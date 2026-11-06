@@ -2,10 +2,14 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabaseAdmin";
 import { normalizeSaudiMobile } from "@/lib/phone";
 import { canInviteCarwashAccount, canModifyCarwashAccount } from "@/lib/carwashMemberPermissions";
+import {validFourDigitPin} from "@/lib/carwashPinRules";
+import {deriveCarwashAuthPassword,assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
+import {randomBytes} from "node:crypto";
 
 type AppRole = "manager" | "worker";
 const ROLES: AppRole[] = ["worker"];
 async function managerAccess(request: Request) {
+  try { assertDedicatedCarwashDatabase(); } catch { return null; }
   const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   if (!token) return null;
@@ -44,7 +48,8 @@ export async function POST(request: Request) {
   const body = await request.json().catch(()=>null);
   const phone = normalizeSaudiMobile(typeof body?.phone === "string" ? body.phone : "");
   const role: AppRole = body?.role;
-  if (!phone || !ROLES.includes(role) || !canInviteCarwashAccount(access.viewerRole,role)) {
+  const pin:unknown=body?.pin;
+  if (!phone || !ROLES.includes(role) || !canInviteCarwashAccount(access.viewerRole,role)||!validFourDigitPin(pin)) {
     return NextResponse.json({error:"Invalid Saudi phone number or role"},{status:400});
   }
   // Exactly one active shared worker login, never one login per carwash worker.
@@ -58,9 +63,25 @@ export async function POST(request: Request) {
   }
   // Only an authorized manager can pre-provision a phone after checking
   // the allowed role. Public OTP sign-up stays disabled.
-  const creation = await access.admin.auth.admin.createUser({phone, phone_confirm:true});
+  const creation = await access.admin.auth.admin.createUser({phone, phone_confirm:true,
+    password:randomBytes(48).toString("hex"),});
   if (creation.error || !creation.data.user) {
     return NextResponse.json({error:"Unable to provision phone account. It may already exist."},{status:409});
+  }
+  // The server derives the Auth password using an HMAC pepper + stable
+  // Supabase user ID. The four-digit code never goes to GitHub or the DB.
+  let securePassword:string;
+  try {securePassword=deriveCarwashAuthPassword(creation.data.user.id,pin);}
+  catch {
+    await access.admin.auth.admin.deleteUser(creation.data.user.id);
+    return NextResponse.json({error:"Carwash PIN configuration is incomplete"},{status:503});
+  }
+  const credential=await access.admin.auth.admin.updateUserById(creation.data.user.id,{
+    password:securePassword
+  });
+  if(credential.error){
+    await access.admin.auth.admin.deleteUser(creation.data.user.id);
+    return NextResponse.json({error:"Worker PIN setup failed"},{status:503});
   }
   const {error} = await access.admin.from("app_members").insert({
     user_id:creation.data.user.id, role, active:true,
