@@ -1,0 +1,50 @@
+name: Activate Bright Carwash Manager
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  activate-manager:
+    name: Activate manager securely
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: carwash-manager-bootstrap
+    steps:
+      - name: Check out approved branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate required secrets
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DATABASE_REF: ${{ secrets.CARWASH_DATABASE_PROJECT_REF }}
+          MANAGER_PHONE: ${{ secrets.CARWASH_BOOTSTRAP_MANAGER_PHONE }}
+          MANAGER_PIN: ${{ secrets.CARWASH_BOOTSTRAP_MANAGER_PIN }}
+          PIN_PEPPER: ${{ secrets.CARWASH_PIN_PEPPER }}
+        run: |
+          for var in SUPABASE_URL SERVICE_KEY DATABASE_REF MANAGER_PHONE MANAGER_PIN PIN_PEPPER; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Missing GitHub Actions secret: $var"
+              exit 1
+            fi
+          done
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Provision manager using Supabase Admin Auth API
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CARWASH_DATABASE_PROJECT_REF: ${{ secrets.CARWASH_DATABASE_PROJECT_REF }}
+          CARWASH_BOOTSTRAP_MANAGER_PHONE: ${{ secrets.CARWASH_BOOTSTRAP_MANAGER_PHONE }}
+          CARWASH_BOOTSTRAP_MANAGER_PIN: ${{ secrets.CARWASH_BOOTSTRAP_MANAGER_PIN }}
+          CARWASH_PIN_PEPPER: ${{ secrets.CARWASH_PIN_PEPPER }}
+        run: node scripts/bootstrap-carwash-manager.mjs
