@@ -28,14 +28,14 @@ export function deriveCarwashAuthPassword(userId:string,pin:string):string{
  return "CarwashV2#"+createHmac("sha256",pinPepper())
   .update("pin-v2|"+userId+"|"+pin).digest("hex");
 }
-export function carwashRateKey(type:"phone"|"ip",value:string):string{
+export function carwashRateKey(type:"phone"|"email"|"ip",value:string):string{
  return createHmac("sha256",pinPepper()).update("ratelimit-v1|"+type+"|"+value)
   .digest("hex");
 }
 
 /**
- * Independent HMAC verifier for manager phone/PIN.
- * Never replace the manager's Supabase Auth email/password when enrolling a PIN.
+ * Independent HMAC verifier for email/PIN for manager and worker.
+ * Never replace an account's Supabase Auth email/password when enrolling a PIN.
  * Only the service-role can read the verifier table.
  */
 export function deriveManagerPinVerifier(userId:string,pin:string):string{
