@@ -1,0 +1,32 @@
+import "server-only";
+import {createHmac} from "node:crypto";
+import {validFourDigitPin} from "./carwashPinRules";
+
+/**
+ * Never store 4 digit PINs on GitHub, in a database row, or in the browser
+ * beyond the password form. A secret server-only HMAC turns the short code
+ * into a non-guessable Supabase Auth password.
+ * Rate limiting is mandatory because 10,000 possible PINs is a weak factor.
+ */
+function pinPepper():string{
+ const v=process.env.CARWASH_PIN_PEPPER;
+ if(!v || v.length<32)throw new Error("Carwash PIN secret not configured");
+ return v;
+}
+export function assertDedicatedCarwashDatabase(){
+ const url=process.env.NEXT_PUBLIC_SUPABASE_URL||"";
+ const expected=process.env.CARWASH_DATABASE_PROJECT_REF||"";
+ const hostname=url?new URL(url).hostname:"";
+ if(!expected||!/^\w{20}$/.test(expected)||hostname!==expected+".supabase.co")
+  throw new Error("Isolated Bright-Carwash database reference is not verified");
+}
+export function deriveCarwashAuthPassword(phone:string,pin:string):string{
+ if(!/^\+9665\d{8}$/.test(phone)||!validFourDigitPin(pin))
+  throw new Error("Invalid carwash phone or PIN");
+ return "CarwashV2#"+createHmac("sha256",pinPepper())
+  .update("pin-v1|"+phone+"|"+pin).digest("hex");
+}
+export function carwashRateKey(type:"phone"|"ip",value:string):string{
+ return createHmac("sha256",pinPepper()).update("ratelimit-v1|"+type+"|"+value)
+  .digest("hex");
+}
