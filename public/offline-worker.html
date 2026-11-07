@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="referrer" content="no-referrer"/>
+<title>تسجيل السيارات دون إنترنت — مغسلة سيارتك اللامعة</title>
+<style>
+*{box-sizing:border-box}body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#eef4fb;color:#0f172a;margin:0;padding:16px;min-height:100vh}
+main{max-width:530px;margin:0 auto}.card{background:#fff;padding:18px;margin-bottom:14px;border-radius:17px;box-shadow:0 3px 18px #11224412}
+h1{font-size:23px;margin:0 0 6px}p{line-height:1.7}.muted{color:#475569;font-size:13px}
+label{font-weight:600;display:block;margin:12px 0 5px}input,select{width:100%;min-height:48px;border:1px solid #94a3b8;border-radius:10px;padding:10px;font:inherit;background:#fff}
+input[type=checkbox]{width:22px;min-height:22px;vertical-align:middle}.choice{display:flex;gap:8px}.choice button{flex:1;background:#e2e8f0;color:#0f172a}
+button{border:0;border-radius:12px;background:#1d4ed8;color:white;min-height:50px;font-size:16px;font-weight:700;padding:12px;width:100%;margin-top:10px}
+button[aria-pressed=true]{background:#1d4ed8;color:white}button[aria-pressed=false]{background:#e2e8f0;color:#0f172a}
+#status{color:#0f766e;font-weight:600;white-space:pre-line}#error{color:#b91c1c;white-space:pre-line}
+#addons label{padding:7px 0;margin:0}.total{background:#e2e8f0;padding:12px;border-radius:12px;font-size:20px;font-weight:700;margin-top:12px}
+</style></head><body><main>
+<section class="card"><h1>🚗 تسجيل السيارات</h1><p class="muted">مغسلة سيارتك اللامعة — وضع عدم الاتصال</p>
+<p>يتم حفظ التسجيلات مشفرة على هذا الجهاز فقط. لا تُحتسب في لوحة المدير حتى تعود الشبكة وتنجح المزامنة.</p>
+<div id="status" role="status"></div><div id="error" role="alert"></div>
+<p id="count" class="muted"></p><button type="button" id="reconnect">المزامنة عند رجوع الإنترنت</button></section>
+<form class="card" id="form" hidden>
+<label for="preset">نوع السيارة والخدمة</label><select id="preset" required></select>
+<div id="addons"></div>
+<button type="button" id="discount-toggle" aria-pressed="false">إضافة خصم (اختياري)</button>
+<div id="discount-area" hidden><label for="discount">قيمة الخصم (بحد أقصى 10 ريالات)</label><input id="discount" type="number" inputmode="decimal" min="0" max="10" step=".01" value="0"/></div>
+<label>طريقة الدفع</label><div class="choice" id="payment-method">
+<button type="button" data-method="cash" aria-pressed="true">كاش</button>
+<button type="button" data-method="card" aria-pressed="false">شبكة</button>
+<button type="button" data-method="mixed" aria-pressed="false">مختلط</button></div>
+<div id="mixed" hidden><label for="cash">كاش</label><input id="cash" type="number" inputmode="decimal" min="0" step=".01"/>
+<label for="card">شبكة</label><input id="card" type="number" inputmode="decimal" min="0" step=".01"/></div>
+<div class="total">الإجمالي: <span id="total"></span></div>
+<details><summary>معلومات إضافية (اختيارية)</summary>
+<label for="notes">ملاحظات</label><input id="notes" maxlength="500"/>
+<label for="phone">رقم جوال العميل</label><input id="phone" type="tel" inputmode="tel" placeholder="05XXXXXXXX"/>
+<label><input type="checkbox" id="consent"/> موافقة العميل على إشعار واتساب</label></details>
+<button id="save" type="submit">حفظ السيارة على هذا الجهاز</button>
+<p class="muted">الأسعار المخزنة مؤقتة وتخضع للتحقق من السيرفر. لا تحذف بيانات Safari قبل المزامنة.</p>
+</form>
+</main><script src="/worker-offline.js" defer></script></body></html>

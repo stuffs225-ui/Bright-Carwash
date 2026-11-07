@@ -1,6 +1,7 @@
 "use client";
 
-import {useEffect,useMemo,useRef,useState} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState} from "react";
+import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,type WorkerSubmission} from "@/lib/workerOfflineQueue";
 import {normalizeSaudiMobile} from "@/lib/phone";
 
 type Preset={id:string;car_type:string;service_type:string;amount:number};
@@ -19,6 +20,9 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
  const [method,setMethod]=useState<"cash"|"card"|"mixed">("cash");
  const [discount,setDiscount]=useState("0");
+ const [showDiscount,setShowDiscount]=useState(false);
+ const [queued,setQueued]=useState(0);
+ const [syncing,setSyncing]=useState(false);
  const [cash,setCash]=useState("");
  const [card,setCard]=useState("");
  const [customerPhone,setCustomerPhone]=useState("");
@@ -26,7 +30,8 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
  const [notes,setNotes]=useState("");
  const [status,setStatus]=useState("");
  const [error,setError]=useState("");
- const mutationId=useRef<string|null>(null);
+ const syncActive=useRef(false);
+ const safeToken=/^[a-f0-9]{64}$/.test(token);
 
  useEffect(()=>{
   let cancelled=false;
@@ -42,12 +47,59 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
     if(!cancelled){
      setCatalog(info);
      if(info.presets?.length)setPresetId(info.presets[0].id);
+     void storeWorkerCatalog(token,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
     }
-   }catch(e){if(!cancelled)setInvalid(e instanceof Error?e.message:"تعذر فتح الرابط");}
+   }catch(e){
+    const fallback=await loadWorkerCatalog(token).catch(()=>null);
+    if(!cancelled){
+     if(fallback){setCatalog(fallback);if(fallback.presets?.length)setPresetId(fallback.presets[0].id);
+      setStatus("أنت دون اتصال: الأسعار المحفوظة مؤقتة، وسيُراجعها السيرفر عند المزامنة.");}
+     else setInvalid(e instanceof Error?e.message:"تعذر فتح الرابط");
+    }
+   }
    finally{if(!cancelled)setLoading(false);}
   }
   void load();return()=>{cancelled=true;};
  },[token]);
+
+ useEffect(()=>{
+  if(!safeToken||!("serviceWorker" in navigator))return;
+  void navigator.serviceWorker.register("/sw.js",{scope:"/"}).catch(()=>{});
+ },[safeToken]);
+
+ const replay=useCallback(async()=>{
+  if(syncActive.current||!navigator.onLine)return {sent:0,remaining:queued,blocked:0};
+  syncActive.current=true;setSyncing(true);
+  let sent=0,blocked=0;
+  try{
+   const rows=await listWorkerRecords(token);
+   for(const row of rows){
+    try{
+     const response=await fetch("/api/worker-links/record",{
+      method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({...row.payload,token}),cache:"no-store"
+     });
+     if(response.ok){await deleteWorkerRecord(row.id);sent++;continue;}
+     if(response.status===429||response.status>=500)break;
+     blocked++;
+     // Rejected items are never discarded automatically: owner can review.
+    }catch{break;}
+   }
+   const remaining=(await listWorkerRecords(token)).length;
+   setQueued(remaining);
+   if(blocked)setError("هناك تسجيلات معلقة رُفضت من السيرفر. اطلب من المدير مراجعة الرابط أو السعر؛ لم تُحذف البيانات.");
+   if(sent&&remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");
+   return {sent,remaining,blocked};
+  }finally{syncActive.current=false;setSyncing(false);}
+ },[token,queued]);
+ useEffect(()=>{
+  let active=true;
+  void listWorkerRecords(token).then(rows=>{if(active)setQueued(rows.length);if(navigator.onLine)void replay();})
+   .catch(()=>{if(active)setError("تعذر قراءة السجل المحلي المشفر.");});
+  const onOnline=()=>{void replay();};
+  window.addEventListener("online",onOnline);
+  return()=>{active=false;window.removeEventListener("online",onOnline);};
+ },[token,replay]);
 
  const preset=catalog?.presets.find(p=>p.id===presetId);
  const totalAddons=useMemo(()=>(catalog?.addons||[])
@@ -67,7 +119,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
 
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
-  if(!catalog||!preset)return;
+  if(!catalog||!preset||busy)return;
   const c=Number(cash),d=Number(card),discountValue=Number(discount);
   if(!Number.isFinite(c)||!Number.isFinite(d)||c<0||d<0||
      !Number.isFinite(discountValue)||discountValue<0||discountValue>10||
@@ -77,24 +129,27 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
   const phone=customerPhone.trim()?normalizeSaudiMobile(customerPhone):null;
   if(customerPhone.trim()&&!phone){setError("رقم جوال العميل غير صحيح. يمكنك تركه فارغًا.");return;}
   if(phone&&!consent){setError("يجب تأكيد موافقة العميل قبل استخدام جواله لواتساب، أو اترك الرقم فارغًا.");return;}
-  if(!mutationId.current)mutationId.current=crypto.randomUUID();
+  const payload:WorkerSubmission={
+   presetId,addons:[...selectedAddons],cash:c,card:d,discount:discountValue,
+   notes,customerPhone:phone,whatsappConsent:!!phone&&consent,mutationId:crypto.randomUUID()
+  };
   setBusy(true);
   try{
-   const response=await fetch("/api/worker-links/record",{
-    method:"POST",headers:{"content-type":"application/json"},
-    body:JSON.stringify({token,presetId,addons:selectedAddons,cash:c,card:d,
-      discount:discountValue,notes,customerPhone:phone,
-      whatsappConsent:!!phone&&consent,mutationId:mutationId.current}),cache:"no-store"
-   });
-   const data=await response.json().catch(()=>({}));
-   if(!response.ok)throw Error(data.error||"تعذر حفظ السيارة");
-   mutationId.current=null;
-   setStatus("تم تسجيل السيارة بنجاح. يمكنك إضافة سيارة أخرى.");
-   setNotes("");setSelectedAddons([]);setDiscount("0");
+   // Write ahead: every submission is an immutable encrypted outbox item BEFORE network IO.
+   // Retrying after an uncertain response reuses the same UUID and cannot double-book.
+   await queueWorkerRecord(token,payload);
+   setQueued((await listWorkerRecords(token)).length);
+   setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
+   setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
    setCustomerPhone("");setConsent(false);setMethod("cash");
+   if(navigator.onLine){
+    const result=await replay();
+    if(result.remaining===0&&result.blocked===0)setStatus("تم تسجيل السيارة بنجاح.");
+    else setStatus("التسجيل محفوظ على الجهاز ولم يتأكد وصوله بعد. لا تحذفه.");
+   }
    window.scrollTo({top:0,behavior:"smooth"});
-  }catch(e){
-   setError(e instanceof Error?e.message:"تعذر تسجيل السيارة. حاول مرة أخرى بنفس البيانات.");
+  }catch{
+   setError("تعذر الحفظ الآمن على هذا الجهاز. لم تُسجل السيارة؛ لا تغلق الصفحة قبل مراجعة اتصال الجهاز.");
   }finally{setBusy(false);}
  }
  return <main className="min-h-screen px-4 py-6 max-w-xl mx-auto space-y-4" dir="rtl">
@@ -103,6 +158,11 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    <p className="txt-muted text-sm">مغسلة سيارتك اللامعة</p>
    {catalog&&<p className="text-sm font-bold">{catalog.label}</p>}
   </header>
+  {queued>0&&<section className="card space-y-2" role="status">
+    <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
+    <p className="txt-muted text-sm">محفوظة مشفرة على نفس هذا الجهاز. لا تحذف بيانات Safari قبل إتمام المزامنة. قد تُرفض أسعار قديمة عند العودة للإنترنت.</p>
+    <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?"جارٍ المزامنة":"إعادة المزامنة الآن"}</button>
+   </section>}
   {loading?<section className="card text-center">جارٍ فتح نموذج تسجيل السيارات...</section>:
    invalid?<section className="card"><p className="txt-danger">{invalid}</p>
     <p className="txt-muted text-sm mt-2">اطلب رابطًا جديدًا من مدير المغسلة.</p></section>:
@@ -110,7 +170,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    {status&&<p className="rounded-lg bg-green-100 text-green-900 p-3 text-sm" role="status">{status}</p>}
    {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
    <label className="form-label">نوع السيارة والخدمة
-    <select value={presetId} onChange={e=>{setPresetId(e.target.value);mutationId.current=null;}} required>
+    <select value={presetId} onChange={e=>setPresetId(e.target.value)} required>
      {(catalog?.presets||[]).map(p=><option key={p.id} value={p.id}>{p.car_type} — {p.service_type} ({sar(Number(p.amount))})</option>)}
     </select>
    </label>
@@ -122,10 +182,13 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
      <span>{sar(Number(a.price))}</span>
     </label>)}
    </div>}
-   <label className="form-label">الخصم (من 0 إلى 10 ريالات)
-    <input type="number" inputMode="decimal" min="0" max="10" step=".01"
-     value={discount} onChange={e=>setDiscount(e.target.value)} required/>
-   </label>
+   <div className="space-y-2">
+    <button type="button" className="btn-secondary w-full" onClick={()=>{setShowDiscount(v=>!v);setDiscount("0");}}>{showDiscount?"إلغاء الخصم":"إضافة خصم (اختياري)"}</button>
+    {showDiscount&&<label className="form-label">الخصم (من 0 إلى 10 ريالات)
+     <input type="number" inputMode="decimal" min="0" max="10" step=".01"
+      value={discount} onChange={e=>setDiscount(e.target.value)} required/>
+    </label>}
+   </div>
    <div className="space-y-2">
     <p className="form-label">طريقة الدفع</p>
     <div className="grid grid-cols-3 gap-2">
@@ -165,9 +228,9 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
     </div>
    </details>
    <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||!preset}>
-    {busy?"جارٍ تسجيل السيارة...":"تسجيل السيارة"}
+    {busy?"جارٍ حفظ العملية...":"تسجيل السيارة"}
    </button>
-   <p className="txt-muted text-xs text-center">لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يجب توفر الإنترنت وقت الحفظ.</p>
+   <p className="txt-muted text-xs text-center">لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يمكنك الحفظ أثناء انقطاع الشبكة بعد فتح الصفحة مرة واحدة؛ يثبت التسجيل في النظام بعد نجاح المزامنة.</p>
   </form>}
  </main>;
 }

@@ -61,6 +61,30 @@ describe("Carwash worker service worker private data isolation",()=>{
     expect(caching).not.toHaveBeenCalled();
     expect(cache.match).toHaveBeenCalledWith("/offline.html");
   });
+  it("never stores shared worker bearer URLs and serves the public offline worker form only when disconnected",async()=>{
+    const {listeners,cache,fetching,caching}=boot();
+    const link="https://carwash.example/w/"+"a".repeat(64);
+    fetching.mockRejectedValueOnce(Error("offline"));
+    const offline={status:200,body:"public worker shell"};
+    cache.match.mockResolvedValueOnce(offline);
+    const respondWith=vi.fn();
+    listeners.get("fetch")?.({request:{...request(link),mode:"navigate"},respondWith});
+    expect(respondWith).toHaveBeenCalledTimes(1);
+    expect(await respondWith.mock.calls[0][0]).toBe(offline);
+    expect(cache.match).toHaveBeenCalledWith("/offline-worker.html");
+    expect(caching).not.toHaveBeenCalled();
+    expect(fetching).toHaveBeenCalledTimes(1);
+  });
+  it("serves only the generic cached offline JavaScript asset, not data APIs",async()=>{
+    const {listeners,cache,caching}=boot();
+    const cached={status:200,body:"public offline JS"};
+    cache.match.mockResolvedValueOnce(cached);
+    const respondWith=vi.fn();
+    listeners.get("fetch")?.({request:request("https://carwash.example/worker-offline.js","script"),respondWith});
+    expect(await respondWith.mock.calls[0][0]).toBe(cached);
+    expect(cache.match).toHaveBeenCalledWith("/worker-offline.js");
+    expect(caching).not.toHaveBeenCalled();
+  });
   it("does cache a public static hashed JS asset",async()=>{
     const {listeners,caching}=boot();
     const respondWith=vi.fn();

@@ -5,7 +5,7 @@ import {supabase} from "@/lib/supabaseClient";
 type WorkerLink={id:string;label:string;created_at:string;expires_at:string;revoked_at:string|null;last_used_at:string|null;daily_limit:number};
 const date=(s:string)=>new Date(s).toLocaleDateString("ar-SA",{year:"numeric",month:"short",day:"numeric"});
 export function UsersTab(){
- const [label,setLabel]=useState("رابط عامل المغسلة");
+ const [label,setLabel]=useState("الرابط المشترك لجميع العمال");
  const [links,setLinks]=useState<WorkerLink[]>([]);
  const [newUrl,setNewUrl]=useState("");
  const [backupUrl,setBackupUrl]=useState("");
@@ -73,9 +73,10 @@ export function UsersTab(){
  }
  return <div className="space-y-5" dir="rtl">
   <section className="card space-y-4">
-   <h2 className="section-title">🔗 روابط تسجيل السيارات للعمال</h2>
-   <p className="txt-muted text-sm">أنشئ رابطًا خاصًا وأرسله للعامل. يفتح نموذج إضافة السيارات فقط، بدون حساب، إيميل أو PIN. لا يستطيع رؤية الإدارة أو بيانات الحسابات.</p>
-   <form onSubmit={makeLink} className="space-y-3">
+   <h2 className="section-title">🔗 رابط تسجيل السيارات المشترك</h2>
+   <p className="txt-muted text-sm">رابط واحد مشترك لجميع العمال. لا يفتح إلا نموذج إضافة السيارات، دون حساب أو إيميل أو PIN. شاركه مع العمال على واتساب؛ لا ترسل لهم رابط الإدارة.</p>
+   {links.some(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now())&&<p className="txt-warning text-sm">يوجد رابط نشط بالفعل. لا يمكن استرجاع نصه من قاعدة البيانات؛ استخدم الرابط الذي سبق أن نسخته، أو ألغِ الرابط القديم أولًا إذا ضاع منك وأصدر واحدًا بديلًا.</p>}
+   {!links.some(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now())&&<form onSubmit={makeLink} className="space-y-3">
     <label className="form-label">اسم الرابط (لتمييز العامل أو الوردية)
      <input value={label} maxLength={80} required onChange={e=>setLabel(e.target.value)}
       placeholder="مثلًا: العامل الصباحي"/>
@@ -83,9 +84,9 @@ export function UsersTab(){
     <button type="submit" className="btn-primary w-full" disabled={busy}>
      {busy?"جارٍ إنشاء الرابط...":"إنشاء رابط العامل"}
     </button>
-   </form>
+   </form>}
    {newUrl&&<div className="space-y-3 p-3 border rounded-xl">
-    <strong>رابط العامل الجديد — انسخه الآن</strong>
+    <strong>الرابط المشترك الجديد — احتفظ به وأرسله لجميع العمال</strong>
     <input aria-label="رابط العامل" type="text" readOnly value={newUrl} onFocus={e=>e.currentTarget.select()} dir="ltr"/>
     <div className="grid grid-cols-2 gap-2">
      <button type="button" className="btn-primary" onClick={()=>void copy(newUrl)}>نسخ الرابط</button>
@@ -97,7 +98,7 @@ export function UsersTab(){
   {error&&<p className="txt-danger" role="alert">{error}</p>}
   {status&&<p role="status" className="text-green-700">{status}</p>}
   <section className="card space-y-3">
-   <h2 className="section-title">روابط العامل ({links.length})</h2>
+   <h2 className="section-title">حالة الرابط المشترك ({links.filter(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now()).length} نشط)</h2>
    {links.length===0?<p className="txt-muted text-sm">لم تُنشأ روابط حتى الآن.</p>:
     links.map(link=>{
      const active=!link.revoked_at&&new Date(link.expires_at).getTime()>Date.now();

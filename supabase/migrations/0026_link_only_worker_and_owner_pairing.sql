@@ -100,7 +100,7 @@ begin
     p_cash<>round(p_cash,2) or p_card<>round(p_card,2) or p_discount<>round(p_discount,2)
  then raise exception 'Invalid payment or discount';end if;
  if p_notes is not null and length(p_notes)>500 then raise exception 'Notes too long';end if;
- if p_customer_phone is not null and p_customer_phone !~ '^\\+9665[0-9]{8}$'
+ if p_customer_phone is not null and p_customer_phone !~ '^\+9665[0-9]{8}$'
  then raise exception 'Invalid Saudi customer phone';end if;
  if p_whatsapp_consent and p_customer_phone is null then
  raise exception 'Customer phone and consent required';end if;
@@ -140,7 +140,7 @@ begin
  update public.carwash_worker_links set last_used_at=now() where id=v_link.id;
  return jsonb_build_object('ok',true,'id',v_entry,'duplicate',false);
 end
-$function$
+$function$;
 
 revoke all on function public.carwash_worker_link_record(
  text,uuid,numeric,numeric,numeric,text,uuid,jsonb,text,boolean
