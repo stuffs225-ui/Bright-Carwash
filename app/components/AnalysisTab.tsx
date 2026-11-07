@@ -403,17 +403,29 @@ export function AnalysisTab() {
       .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
   }, [activePeriod, quickGlance, allEntries]);
 
+  const periodExpenses=useMemo(()=>{
+   if(!activePeriod)return [];
+   const since=quickGlance[activePeriod].since;
+   return allExpenses.filter(e=>new Date(e.occurred_at)>=since);
+  },[activePeriod,quickGlance,allExpenses]);
   const periodDays=useMemo(()=>{
-   const map=new Map<string,{date:string;cars:Entry[];cash:number;card:number;total:number}>();
+   const map=new Map<string,{date:string;cars:Entry[];expenses:Expense[];cash:number;card:number;revenue:number;spent:number}>();
+   function day(date:string){
+    let row=map.get(date);
+    if(!row){row={date,cars:[],expenses:[],cash:0,card:0,revenue:0,spent:0};map.set(date,row);}
+    return row;
+   }
    for(const entry of periodEntries){
-    const date=riyadhDayKey(new Date(entry.occurred_at));
-    const row=map.get(date)||{date,cars:[],cash:0,card:0,total:0};
+    const row=day(riyadhDayKey(new Date(entry.occurred_at)));
     row.cars.push(entry);row.cash+=Number(entry.cash_paid);
-    row.card+=Number(entry.card_paid);row.total+=Number(entry.gross);
-    map.set(date,row);
+    row.card+=Number(entry.card_paid);row.revenue+=Number(entry.gross);
+   }
+   for(const expense of periodExpenses){
+    const row=day(riyadhDayKey(new Date(expense.occurred_at)));
+    row.expenses.push(expense);row.spent+=Number(expense.amount);
    }
    return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date));
-  },[periodEntries]);
+  },[periodEntries,periodExpenses]);
   return (
     <div className="space-y-6">
       {pendingReviewCount !== null && pendingReviewCount > 0 ? (
@@ -682,17 +694,17 @@ export function AnalysisTab() {
       )}
 
       {activePeriod && (
-       <Modal title={`عمليات ${periodLabels[activePeriod]} (${periodEntries.length})`}
+       <Modal title={`تفاصيل ${periodLabels[activePeriod]} — الإيرادات والمصروفات`}
         onClose={()=>{setActivePeriod(null);setActivePeriodDay(null);setExpandedEntry(null);}}>
         {!activePeriodDay?<div className="space-y-2">
-         <p className="txt-muted text-sm">إجمالي الأيام: {periodDays.length}. تعرض كل بطاقة يومًا واحدًا مع الكاش والشبكة والإيراد المسجل.</p>
+         <p className="txt-muted text-sm">إجمالي الأيام: {periodDays.length}. تعرض كل بطاقة الإيرادات والمصروفات والنتيجة مع إمكانية فتح العمليات الأصلية.</p>
          {periodDays.length===0?<p className="txt-muted">لا توجد عمليات في هذه الفترة.</p>:
           periodDays.map(day=><button key={day.date} type="button"
            className="w-full text-start rounded-xl border p-3"
            style={{borderColor:"var(--border)",background:"var(--surface-2)"}}
            onClick={()=>{setActivePeriodDay(day.date);setExpandedEntry(null);}}>
            <strong>{arabicDate(day.date)} — {day.cars.length} سيارة</strong>
-           <p className="txt-muted text-sm mt-1">كاش {formatCurrency(day.cash)} · شبكة {formatCurrency(day.card)} · الإيراد {formatCurrency(day.total)}</p>
+           <p className="txt-muted text-sm mt-1">كاش {formatCurrency(day.cash)} · شبكة {formatCurrency(day.card)} · إيراد {formatCurrency(day.revenue)} · مصروفات {formatCurrency(day.spent)} · {operatingResult(day.revenue,day.spent).label} {displaySar(day.revenue-day.spent)}</p>
           </button>)}
         </div>:
         <div className="space-y-3">
@@ -709,6 +721,17 @@ export function AnalysisTab() {
            <p className="txt-muted text-sm">كاش {formatCurrency(entry.cash_paid)} · شبكة {formatCurrency(entry.card_paid)} · خصم {formatCurrency(Number(entry.discount_amount||0))}</p>
            <p className="txt-muted text-xs mt-2">المرجع: {entry.id} {entry.notes?" — "+entry.notes:""}</p>
           </details>)}
+          <p className="font-semibold mt-3">المصروفات الأصلية</p>
+          {(periodDays.find(d=>d.date===activePeriodDay)?.expenses||[]).map(expense=>
+           <details key={expense.id} className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+            <summary className="cursor-pointer flex justify-between gap-2 font-bold">
+             <span>{canonicalExpenseType(expense.expense_type,expense.notes)}</span>
+             <span>{formatCurrency(expense.amount)}</span>
+            </summary>
+            <p className="txt-muted text-sm mt-2">{new Date(expense.occurred_at).toLocaleString("ar-SA-u-nu-latn",{timeZone:"Asia/Riyadh"})}</p>
+            <p className="txt-muted text-sm">الفئة الأصلية: {expense.expense_type} · الملاحظة: {expense.notes||"—"}</p>
+            <p className="txt-muted text-xs">المرجع: {expense.id}</p>
+           </details>)}
         </div>}
        </Modal>
       )}
