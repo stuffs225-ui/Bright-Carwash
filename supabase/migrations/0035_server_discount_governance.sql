@@ -89,7 +89,7 @@ begin
  update public.carwash_worker_links set last_used_at=now() where id=v_link.id;
  return jsonb_build_object('ok',true,'id',v_entry,'duplicate',false);
 end
-$function$
+$function$;
 
 CREATE OR REPLACE FUNCTION private.validate_worker_carwash_price()
  RETURNS trigger
@@ -143,5 +143,5 @@ begin
  ) then raise exception 'Price is not an active carwash service price plus selected add-ons';end if;
  return new;
 end
-$function$
+$function$;
 
