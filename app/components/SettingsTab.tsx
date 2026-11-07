@@ -21,8 +21,8 @@ const CATEGORIES: { value: Category; label: string; icon: string }[] = [
   { value: "backup", label: "النسخ الاحتياطي", icon: "🔒" },
 ];
 
-export function SettingsTab() {
-  const [category, setCategory] = useState<Category>("operations");
+export function SettingsTab({section="general"}:{section?:"general"|"services"|"backup"}) {
+  const category:Category=section==="services"?"data":section==="backup"?"backup":"operations";
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
 
@@ -89,23 +89,7 @@ export function SettingsTab() {
 
   return (
     <div className="space-y-6">
-      <nav className="settings-tabs" role="tablist" aria-label="أقسام الإعدادات">
-        {CATEGORIES.map((c) => (
-          <button
-            key={c.value}
-            type="button"
-            role="tab"
-            aria-selected={category === c.value}
-            className={`settings-tab-button ${category === c.value ? "active" : ""}`}
-            onClick={() => setCategory(c.value)}
-          >
-            <span className="settings-tab-icon">{c.icon}</span>
-            {c.label}
-          </button>
-        ))}
-      </nav>
-
-      {category === "operations" && (
+      {section === "general" && (
         <div className="space-y-6">
           <Section title="مخصص العمال الجماعي" hint="10 ريالات إجمالًا لفريق العمال عن كل سيارة صغيرة أو كبيرة مسجلة، وليس لكل عامل على حدة.">
             <p className="txt-muted text-sm">مكافأة ريالين عن السيارات التي تتجاوز 15 سيارة مجمّدة مؤقتًا، ولن تُحتسب أو تُدفع آليًا. يمكن للمدير إضافة مكافأة منفصلة للوردية من سجل المكافآت.</p>
@@ -120,16 +104,7 @@ export function SettingsTab() {
         </div>
       )}
 
-      {category === "access" && (
-        <div className="space-y-6">
-          <Section title="رابط تسجيل العمال">
-            <p className="txt-muted text-sm">العامل لا يحتاج أي حساب أو تسجيل دخول أو رقم PIN. يوجد رابط واحد مشترك لجميع العمال يُنشأ ويُلغى من قسم «الإدارة ← رابط العامل». لا ترسل رابط المدير للعمال.</p>
-            <p className="text-sm mt-2">عند فقدان الرابط المشترك القديم، ألغِه من صفحة «رابط العامل» وأنشئ رابطًا جديدًا. لا تستخدم صفحة /worker لأنها صفحة إرشادية وليست رابطًا نشطًا.</p>
-          </Section>
-        </div>
-      )}
-
-      {category === "appearance" && (
+      {section === "general" && (
         <div className="space-y-6">
           <Section title="المظهر">
             <div className="flex flex-wrap gap-2">
@@ -148,7 +123,7 @@ export function SettingsTab() {
         </div>
       )}
 
-      {category === "data" && (
+      {section === "services" && (
         <div className="space-y-6">
           <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
           <CarwashAddonsSettings />
@@ -159,7 +134,7 @@ export function SettingsTab() {
         </div>
       )}
 
-      {category === "backup" && (
+      {section === "backup" && (
         <div className="space-y-4">
           <Section title="حالة النسخ المشفر — تلقائي يوميًا">
             <p className="txt-muted text-sm">النسخ اليومي يعمل بجدولة Vercel الساعة 06:00 صباحًا بتوقيت الرياض، ويحفظ ملفًا مشفرًا داخل مساحة خاصة في Supabase. لا تعتمد هذه الصفحة على إعدادات البريد القديمة.</p>
