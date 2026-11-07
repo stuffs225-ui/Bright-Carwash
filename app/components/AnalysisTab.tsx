@@ -555,7 +555,7 @@ export function AnalysisTab() {
             <div className="p-4 overflow-x-auto">
               <table className="app-table">
                 <thead>
-                  <tr><th>التاريخ</th><th>السيارات</th><th>كاش</th><th>بطاقة</th><th>الإيراد</th><th>المصروفات</th><th>الصافي</th></tr>
+                  <tr><th>التاريخ</th><th>السيارات</th><th>كاش</th><th>بطاقة</th><th>الإيراد</th><th>المصروفات</th><th>النتيجة المسجلة</th></tr>
                 </thead>
                 <tbody>
                   {analysis.daily.length === 0 ? (
@@ -569,7 +569,7 @@ export function AnalysisTab() {
                         <td data-label="بطاقة">{formatCurrency(d.card)}</td>
                         <td data-label="الإيراد" className="txt-cash">{formatCurrency(d.revenue)}</td>
                         <td data-label="المصروفات" className="txt-expense">{formatCurrency(d.expenses)}</td>
-                        <td data-label="الصافي" className={`txt-net ${d.net < 0 ? "is-negative" : ""}`}>{formatCurrency(d.net)}</td>
+                        <td data-label="النتيجة المسجلة" className={`txt-net ${d.net < 0 ? "is-negative" : ""}`}>{operatingResult(d.revenue,d.expenses).label+" "+displaySar(d.net)}</td>
                       </tr>
                     ))
                   )}
@@ -595,7 +595,7 @@ export function AnalysisTab() {
                   datasets: [
                     { label: "الإيرادات", data: last12Months.map((r) => r.revenue), backgroundColor: "#059669" },
                     { label: "المصروفات", data: last12Months.map((r) => r.expenses), backgroundColor: "#dc2626" },
-                    { label: "الفائض المسجل", data: last12Months.map((r) => r.net), backgroundColor: "#2563eb" },
+                    { label: "النتيجة المسجلة", data: last12Months.map((r) => r.net), backgroundColor: "#2563eb" },
                   ],
                 }}
                 options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } }, scales: { y: { beginAtZero: true } } }}
@@ -604,7 +604,7 @@ export function AnalysisTab() {
             <div className="overflow-x-auto">
               <table className="app-table">
                 <thead>
-                  <tr><th>الشهر</th><th>السيارات</th><th>الإيراد</th><th>المصروفات</th><th>الفائض المسجل</th></tr>
+                  <tr><th>الشهر</th><th>السيارات</th><th>الإيراد</th><th>المصروفات</th><th>النتيجة المسجلة</th></tr>
                 </thead>
                 <tbody>
                   {monthlyHistory.map((r) => (
@@ -613,7 +613,7 @@ export function AnalysisTab() {
                       <td data-label="السيارات">{r.cars}</td>
                       <td data-label="الإيراد" className="txt-cash">{formatCurrency(r.revenue)}</td>
                       <td data-label="المصروفات" className="txt-expense">{formatCurrency(r.expenses)}</td>
-                      <td data-label="الفائض المسجل" className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{formatCurrency(r.net)}</td>
+                      <td data-label="النتيجة المسجلة" className={`txt-net ${r.net < 0 ? "is-negative" : ""}`}>{operatingResult(r.revenue,r.expenses).label+" "+displaySar(r.net)}</td>
                     </tr>
                   ))}
                 </tbody>
