@@ -8,7 +8,7 @@ export async function GET(request:Request){
   if(!access)return NextResponse.json({error:"صلاحية المدير مطلوبة"},{status:403,headers:NO_STORE});
   const [values,list]=await Promise.all([
    access.admin.from("settings").select("key,value")
-    .in("key",["backup_last_saved_at","backup_last_sha256","backup_last_sent_at"]),
+    .in("key",["backup_last_saved_at","backup_last_sha256","backup_last_sent_at","backup_last_verified_at","backup_last_verified_sha256"]),
    access.admin.storage.from("backups").list("daily",{limit:10,sortBy:{column:"name",order:"desc"}})
   ]);
   if(values.error||list.error)return NextResponse.json({error:"تعذر قراءة حالة النسخ"},{status:503,headers:NO_STORE});
@@ -17,6 +17,8 @@ export async function GET(request:Request){
   return NextResponse.json({ok:true,
    lastSavedAt:typeof map.backup_last_saved_at==="string"?map.backup_last_saved_at:null,
    lastSentAt:typeof map.backup_last_sent_at==="string"?map.backup_last_sent_at:null,
+   lastVerifiedAt:typeof map.backup_last_verified_at==="string"?map.backup_last_verified_at:null,
+   lastVerifiedMatchesChecksum:!!(map.backup_last_verified_sha256&&map.backup_last_verified_sha256===map.backup_last_sha256),
    latestArchive:files[0]?.name||null,
    archivedFilesShown:files.length,
    checksumAvailable:typeof map.backup_last_sha256==="string",
