@@ -29,6 +29,16 @@ const TABLES=[
 const MAX_ARCHIVE_BYTES=42*1024*1024;
 const MAX_EVIDENCE_FILES=500;
 const fail=(code:number,error:string)=>NextResponse.json({ok:false,error},{status:code,headers:NO_STORE});
+async function backupErrorStatus(code:number,error:string){
+ try{
+  const admin=createAdminClient();
+  await admin.from("settings").upsert([
+   {key:"backup_last_failed_at",value:new Date().toISOString()},
+   {key:"backup_last_failure_reason",value:"تعذر إكمال النسخ المشفر أو التحقق منه"}
+  ],{onConflict:"key"});
+ }catch{/* Never block the error response if database logging is unavailable. */}
+ return fail(code,error);
+}
 
 async function readAll(admin:ReturnType<typeof createAdminClient>,table:string){
  const rows:unknown[]=[];
@@ -129,7 +139,7 @@ export async function GET(request:Request){
    projectRef:process.env.CARWASH_DATABASE_PROJECT_REF,
    rowCounts,tables,storage:{"carwash-pos-evidence":objects,"carwash-ready-photos":readyPhotos}};
   const encrypted=encryptBackup(payload,key);
-  if(encrypted.byteLength>MAX_ARCHIVE_BYTES)return fail(413,"Encrypted backup exceeds storage size limit");
+  if(encrypted.byteLength>MAX_ARCHIVE_BYTES)return await backupErrorStatus(413,"Encrypted backup exceeds storage size limit");
   const filename="daily/"+archivedAt.slice(0,10)+".bcw2";
   let archive=encrypted;
   const upload=await admin.storage.from("backups").upload(filename,archive,{
@@ -137,20 +147,20 @@ export async function GET(request:Request){
   });
   if(upload.error){
    if(!/already exists|duplicate|409/i.test(upload.error.message))
-    return fail(503,"Encrypted backup storage failed");
+    return await backupErrorStatus(503,"Encrypted backup storage failed");
    // A retry must deliver the SAME immutable encrypted archive, not a
    // differently encrypted snapshot bearing the same daily filename.
    const previousArchive=await admin.storage.from("backups").download(filename);
    if(previousArchive.error||!previousArchive.data)
-    return fail(503,"Previously encrypted archive could not be verified");
+    return await backupErrorStatus(503,"Previously encrypted archive could not be verified");
    archive=Buffer.from(await previousArchive.data.arrayBuffer());
    const decoded=decryptBackup(archive,key) as {format?:string;projectRef?:string};
    if(decoded.format!=="bright-carwash-v2"||
       decoded.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF)
-    return fail(503,"Stored archive does not match this database");
+    return await backupErrorStatus(503,"Stored archive does not match this database");
   }
   const verify=await admin.storage.from("backups").download(filename);
-  if(verify.error||!verify.data)return fail(503,"Stored encrypted archive could not be read back");
+  if(verify.error||!verify.data)return await backupErrorStatus(503,"Stored encrypted archive could not be read back");
   const stored=Buffer.from(await verify.data.arrayBuffer());
   const restored=decryptBackup(stored,key) as {
    format?:string;version?:number;projectRef?:string;
@@ -163,16 +173,16 @@ export async function GET(request:Request){
      !Object.keys(restored.rowCounts).every(table=>
        Array.isArray(restored.tables?.[table])&&
        restored.tables?.[table].length===restored.rowCounts?.[table]))
-   return fail(503,"Encrypted archive integrity verification failed");
+   return await backupErrorStatus(503,"Encrypted archive integrity verification failed");
   const hash=createHash("sha256").update(stored).digest("hex");
   const saved=await admin.from("settings").upsert({
    key:"backup_last_saved_at",value:archivedAt
   },{onConflict:"key"});
-  if(saved.error)return fail(503,"Archive saved but status update failed");
+  if(saved.error)return await backupErrorStatus(503,"Archive saved but status update failed");
   const checksum=await admin.from("settings").upsert({
    key:"backup_last_sha256",value:hash
   },{onConflict:"key"});
-  if(checksum.error)return fail(503,"Archive saved but checksum status update failed");
+  if(checksum.error)return await backupErrorStatus(503,"Archive saved but checksum status update failed");
   let offsiteDelivered=false;
   if(offsiteConfigured){
    const emailResult=await new Resend(resendKey!).emails.send({
@@ -202,6 +212,6 @@ export async function GET(request:Request){
     "Encrypted private storage backup complete; external email delivery not configured or not delivered"
   },{headers:NO_STORE});
  }catch{
-  return fail(503,"Unable to produce verified encrypted backup");
+  return await backupErrorStatus(503,"Unable to produce verified encrypted backup");
  }
 }
