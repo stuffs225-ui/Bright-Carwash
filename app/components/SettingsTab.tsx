@@ -18,7 +18,7 @@ const CATEGORIES: { value: Category; label: string; icon: string }[] = [
   { value: "access", label: "الوصول", icon: "🔐" },
   { value: "appearance", label: "المظهر", icon: "🎨" },
   { value: "data", label: "البيانات", icon: "🗂️" },
-  { value: "backup", label: "النسخ الاحتياطي", icon: "📧" },
+  { value: "backup", label: "النسخ الاحتياطي", icon: "🔒" },
 ];
 
 export function SettingsTab() {
@@ -29,27 +29,23 @@ export function SettingsTab() {
   const [threshold, setThreshold] = useState("");
   const [rate, setRate] = useState("");
   const [dailyTarget, setDailyTarget] = useState("");
-  const [backupEmail, setBackupEmail] = useState("");
-  const [backupDays, setBackupDays] = useState("");
+  const [backupStatus,setBackupStatus]=useState<{lastSavedAt:string|null;lastSentAt:string|null;latestArchive:string|null;archivedFilesShown:number;offsiteConfigured:boolean;checksumAvailable:boolean;encryptionConfigured:boolean}|null>(null);
+  const [backupError,setBackupError]=useState("");
 
   const [presets, setPresets] = useState<EntryPreset[]>([]);
   const [theme, setThemeState] = useState<ThemeChoice>("auto");
-  const [workerUrl, setWorkerUrl] = useState("");
 
   const hydrate = useCallback((s: AppSettings) => {
     setSettings(s);
     setThreshold(String(s.shift_car_threshold));
     setRate(String(s.worker_bonus_rate));
     setDailyTarget(String(s.daily_expense_target));
-    setBackupEmail(s.backup_email);
-    setBackupDays(String(s.backup_interval_days));
   }, []);
 
   useEffect(() => {
     loadSettings().then(hydrate);
     loadPresets().then(setPresets);
     setThemeState(getTheme());
-    setWorkerUrl(`${window.location.origin}/worker`);
   }, [hydrate]);
 
   async function save(patch: Partial<AppSettings>) {
@@ -70,14 +66,26 @@ export function SettingsTab() {
     applyTheme(choice);
   }
 
-  async function copyWorkerUrl() {
-    try {
-      await navigator.clipboard.writeText(workerUrl);
-      showToast("تم نسخ الرابط.");
-    } catch {
-      showToast("ما قدرت أنسخ تلقائياً — حدّد الرابط وانسخه يدوياً.", "warning");
+  useEffect(()=>{
+    if(category!=="backup")return;
+    let mounted=true;
+    async function loadBackup(){
+      try{
+        const {data:{session}}=await supabase.auth.getSession();
+        if(!session)throw Error("جلسة الإدارة غير متاحة");
+        const response=await fetch("/api/backup/status",{
+          headers:{authorization:"Bearer "+session.access_token},cache:"no-store"
+        });
+        const json=await response.json().catch(()=>({}));
+        if(!response.ok)throw Error(json.error||"تعذر قراءة حالة النسخ");
+        if(mounted){setBackupStatus(json);setBackupError("");}
+      }catch(e){
+        if(mounted)setBackupError(e instanceof Error?e.message:"تعذر تحميل حالة النسخ");
+      }
     }
-  }
+    void loadBackup();
+    return()=>{mounted=false;};
+  },[category]);
 
   return (
     <div className="space-y-6">
@@ -114,15 +122,9 @@ export function SettingsTab() {
 
       {category === "access" && (
         <div className="space-y-6">
-          <Section title="صلاحيات الموظفين" hint="الوصول محمي بحسابات Supabase Auth وصلاحيات قاعدة البيانات. لا يوجد PIN في المتصفح.">
-            <p className="txt-muted text-sm">المدير يدير رقم العامل المشترك والصلاحيات من صفحة المستخدمين. لا تشارك رمز دخول المدير.</p>
-          </Section>
-          <Section title="رابط تسجيل الموظف">
-            <div className="flex flex-wrap gap-2 items-center">
-              <input type="text" readOnly value={workerUrl} onFocus={(e) => e.currentTarget.select()} />
-              <button type="button" className="btn-primary" onClick={copyWorkerUrl}>نسخ الرابط</button>
-            </div>
-            <p className="txt-muted text-sm mt-2">الرابط لا يمنح صلاحيات إضافية؛ كل موظف يسجل دخوله بحسابه.</p>
+          <Section title="رابط تسجيل العمال">
+            <p className="txt-muted text-sm">العامل لا يحتاج أي حساب أو تسجيل دخول أو رقم PIN. يوجد رابط واحد مشترك لجميع العمال يُنشأ ويُلغى من قسم «الإدارة ← رابط العامل». لا ترسل رابط المدير للعمال.</p>
+            <p className="text-sm mt-2">عند فقدان الرابط المشترك القديم، ألغِه من صفحة «رابط العامل» وأنشئ رابطًا جديدًا. لا تستخدم صفحة /worker لأنها صفحة إرشادية وليست رابطًا نشطًا.</p>
           </Section>
         </div>
       )}
@@ -158,20 +160,30 @@ export function SettingsTab() {
       )}
 
       {category === "backup" && (
-        <div className="space-y-6">
-          <Section title="النسخة الاحتياطية بالإيميل">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Field label="الإيميل المستقبل">
-                <input type="email" value={backupEmail} onChange={(e) => setBackupEmail(e.target.value)} />
-              </Field>
-              <Field label="عدد الأيام بين كل نسخة">
-                <input type="number" min="1" value={backupDays} onChange={(e) => setBackupDays(e.target.value)} />
-              </Field>
-            </div>
-            <SaveButton
-              disabled={saving}
-              onClick={() => save({ backup_email: backupEmail, backup_interval_days: Number(backupDays) || 1 })}
-            />
+        <div className="space-y-4">
+          <Section title="حالة النسخ المشفر — تلقائي يوميًا">
+            <p className="txt-muted text-sm">النسخ اليومي يعمل بجدولة Vercel الساعة 06:00 صباحًا بتوقيت الرياض، ويحفظ ملفًا مشفرًا داخل مساحة خاصة في Supabase. لا تعتمد هذه الصفحة على إعدادات البريد القديمة.</p>
+            {backupError&&<p role="alert" className="txt-warning text-sm">{backupError}</p>}
+            {!backupStatus&&!backupError&&<p className="txt-muted">جارٍ جلب آخر حالة...</p>}
+            {backupStatus&&<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+              <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
+                <strong>آخر نسخة محفوظة</strong>
+                <p className="txt-muted mt-1 text-sm">{backupStatus.lastSavedAt?new Date(backupStatus.lastSavedAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"}):"لم تُسجَّل نسخة مكتملة بعد"}</p>
+              </div>
+              <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
+                <strong>ملفات النسخ الموجودة</strong>
+                <p className="txt-muted mt-1">{backupStatus.archivedFilesShown} ملف ضمن آخر 10 نتائج</p>
+              </div>
+              <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
+                <strong>مفتاح التشفير</strong>
+                <p className="txt-muted mt-1">{backupStatus.encryptionConfigured?"مهيّأ على الخادم":"غير مهيّأ"}</p>
+              </div>
+              <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
+                <strong>نسخة خارجية بالبريد</strong>
+                <p className="txt-muted mt-1">{backupStatus.lastSentAt?"آخر إرسال: "+new Date(backupStatus.lastSentAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn"):"غير مفعلة أو لم يتم إرسالها"}</p>
+              </div>
+            </div>}
+            <p className="txt-warning text-xs mt-3">النسخة داخل Supabase ليست بديلاً عن نسخة مستقلة خارج الخدمة، ولا يُعد التحقق من وجود الملف تجربة استعادة كاملة.</p>
           </Section>
         </div>
       )}
