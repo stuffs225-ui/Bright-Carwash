@@ -243,11 +243,54 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
   <form onSubmit={submit} className="card space-y-4">
    {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{status}</p>}
    {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
-   <label className="form-label">نوع السيارة والخدمة
-    <select value={presetId} onChange={e=>setPresetId(e.target.value)} required>
-     {(catalog?.presets||[]).map(p=><option key={p.id} value={p.id}>{p.car_type} — {p.service_type} ({sar(Number(p.amount))})</option>)}
-    </select>
-   </label>
+   <div className="space-y-2">
+    <p className="form-label">1. نوع السيارة</p>
+    <div className="carwash-quick-choices">
+     {allCarTypes.map(name=><button type="button" key={name}
+       className={name===carType?"active":""}
+       aria-pressed={name===carType} onClick={()=>{
+        setCarType(name);setShowMoreServices(false);
+        const first=catalog?.presets.find(p=>p.car_type===name);
+        if(first)setPresetId(first.id);
+        setManualMode(false);setManualAddons([]);
+        try{localStorage.setItem("carwash_last_car_type_v1",name);}catch{}
+       }}>{name}</button>)}
+    </div>
+   </div>
+   <div className="space-y-2">
+    <p className="form-label">2. الخدمة والسعر المعتمد</p>
+    {filteredPresets.length===0?<p className="txt-muted text-sm">لا توجد خدمات مفعلة لهذا النوع. استخدم خدمة استثنائية إذا كانت الصلاحية متاحة.</p>:
+     <div className="carwash-quick-choices">
+      {filteredPresets.slice(0,showMoreServices?100:4).map(p=>
+       <button type="button" key={p.id}
+        className={!manualMode&&presetId===p.id?"active":""}
+        aria-pressed={!manualMode&&presetId===p.id}
+        onClick={()=>{setPresetId(p.id);setManualMode(false);setPriceReason("");}}>
+        <span>{p.service_type}</span><strong>{sar(Number(p.amount))}</strong>
+       </button>)}
+     </div>}
+    {filteredPresets.length>4&&<button type="button" className="btn-secondary w-full"
+      onClick={()=>setShowMoreServices(v=>!v)}>
+      {showMoreServices?"إخفاء الخيارات الأقل استخدامًا":"المزيد من الخدمات"}
+    </button>}
+    {manualServiceAllowed&&<button type="button" className={manualMode?"btn-primary w-full":"btn-secondary w-full"}
+     aria-expanded={manualMode} onClick={()=>{
+      setManualMode(v=>!v);
+      setManualService(preset?.service_type||"");
+      setManualPrice(String(Number(preset?.amount||0)));
+     }}>خدمة أو سعر مختلف لهذه السيارة فقط</button>}
+    {manualMode&&<div className="rounded-xl border p-3 space-y-3" style={{borderColor:"var(--border)"}}>
+     <p className="txt-muted text-sm">لن يُضاف هذا السعر إلى القائمة الرسمية. يحفظ النظام المبلغ وسبب الاختلاف مع هذه السيارة فقط.</p>
+     <label className="form-label">اسم الخدمة
+      <input type="text" maxLength={80} value={manualService}
+       onChange={e=>setManualService(e.target.value)} placeholder="مثل غسيل ماكينة"/>
+     </label>
+     <label className="form-label">السعر الأساسي لهذه السيارة (ر.س)
+      <input type="number" inputMode="decimal" min=".01" max="5000" step=".01"
+       value={manualPrice} onChange={e=>setManualPrice(e.target.value)}/>
+     </label>
+    </div>}
+   </div>
    {(catalog?.addons.length||0)>0&&<div className="space-y-2">
     <p className="form-label">خدمات إضافية (اختياري)</p>
     {catalog?.addons.map(a=><label key={a.id} className="flex items-center justify-between gap-2 p-3 border rounded-lg">
@@ -256,10 +299,41 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
      <span>{sar(Number(a.price))}</span>
     </label>)}
    </div>}
+   {manualAddonAllowed&&<details className="border rounded-xl p-3" style={{borderColor:"var(--border)"}}>
+    <summary className="cursor-pointer font-bold">إضافة خاصة لمرة واحدة (اختياري)</summary>
+    <div className="space-y-3 pt-3">
+     {manualAddons.map((a,i)=><div key={i} className="flex justify-between items-center gap-2 border-b pb-2">
+      <span>{a.name} — {sar(a.price)}</span>
+      <button type="button" className="btn-secondary" onClick={()=>setManualAddons(items=>items.filter((_,j)=>i!==j))}>إزالة</button>
+     </div>)}
+     <label className="form-label">اسم الإضافة
+      <input value={manualAddonName} maxLength={80}
+       onChange={e=>setManualAddonName(e.target.value)} placeholder="مثل تنظيف داخلي خاص"/>
+     </label>
+     <label className="form-label">سعر الإضافة (ر.س)
+      <input type="number" min=".01" max="5000" inputMode="decimal" step=".01"
+       value={manualAddonPrice} onChange={e=>setManualAddonPrice(e.target.value)}/>
+     </label>
+     <button type="button" className="btn-secondary w-full" onClick={()=>{
+      const v=Number(manualAddonPrice);
+      if(manualAddonName.trim().length<2||!Number.isFinite(v)||v<=0||v>5000||
+       Math.abs(rounded(v)-v)>0.000001||manualAddons.length>=8){
+       setError("أدخل اسمًا وسعرًا صحيحًا للإضافة");return;
+      }
+      setManualAddons(all=>[...all,{name:manualAddonName.trim(),price:v}]);
+      setManualAddonName("");setManualAddonPrice("");setError("");
+     }}>إضافة لهذا التسجيل فقط</button>
+    </div>
+   </details>}
+   {useException&&<label className="form-label">سبب السعر أو الخدمة الاستثنائية
+    <input type="text" maxLength={300} required value={priceReason}
+     onChange={e=>setPriceReason(e.target.value)}
+     placeholder="مثل خدمة خاصة أو سعر استثنائي بطلب العميل"/>
+   </label>}
    <div className="space-y-2">
     <button type="button" className="btn-secondary w-full" onClick={()=>{setShowDiscount(v=>!v);setDiscount("0");}}>{showDiscount?"إلغاء الخصم":"إضافة خصم (اختياري)"}</button>
-    {showDiscount&&<label className="form-label">الخصم (من 0 إلى 10 ريالات)
-     <input type="number" inputMode="decimal" min="0" max="10" step=".01"
+    {showDiscount&&<label className="form-label">الخصم (حتى {sar(Number(catalog?.discountLimit??10))})
+     <input type="number" inputMode="decimal" min="0" max={Number(catalog?.discountLimit??10)} step=".01"
       value={discount} onChange={e=>setDiscount(e.target.value)} required/>
     </label>}
    </div>
@@ -281,8 +355,11 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
       onChange={e=>setCard(e.target.value)}/>
     </label>
    </div>}
-   <div className="rounded-xl p-3 flex items-center justify-between" style={{background:"var(--surface-3)",color:"var(--text)"}}>
-    <span>الإجمالي بعد الخصم</span><strong className="text-xl">{sar(Math.max(0,price))}</strong>
+   <div className="rounded-xl p-3 space-y-1" style={{background:"var(--surface-3)",color:"var(--text)"}}>
+    <div className="flex justify-between gap-2 text-sm"><span>الخدمة الأساسية</span><strong>{sar(basePrice)}</strong></div>
+    {(totalAddons+manualExtras)>0&&<div className="flex justify-between gap-2 text-sm"><span>الإضافات</span><strong>{sar(totalAddons+manualExtras)}</strong></div>}
+    {discountNumber>0&&<div className="flex justify-between gap-2 text-sm"><span>الخصم</span><strong>−{sar(discountNumber)}</strong></div>}
+    <div className="flex justify-between gap-2 border-t pt-2 mt-2"><span className="font-bold">المطلوب تحصيله</span><strong className="text-xl">{sar(Math.max(0,price))}</strong></div>
    </div>
    <details className="border rounded-lg p-3">
     <summary className="cursor-pointer font-semibold">معلومات إضافية (اختيارية)</summary>
@@ -301,7 +378,7 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
      </label>}
     </div>
    </details>
-   <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||!preset}>
+   <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||(!preset&&!manualMode)||price<=0}>
     {busy?"جارٍ حفظ العملية...":"تسجيل السيارة"}
    </button>
    <p className="txt-muted text-xs text-center">{manager?"يسجل المدير بنفس قائمة الخدمات والأسعار التي تظهر للعامل، مع عرض الأيام غير المعتمدة.":"لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يمكنك الحفظ أثناء انقطاع الشبكة بعد فتح الصفحة مرة واحدة؛ يثبت التسجيل في النظام بعد نجاح المزامنة."}</p>
