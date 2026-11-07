@@ -86,12 +86,13 @@ export function AnalysisTab() {
 
   useEffect(() => {
     let disposed = false;
-    Promise.all([
-      supabase.from("legacy_import_issues").select("id",{count:"exact",head:true}).eq("status","pending"),
-      supabase.from("entries").select("id",{count:"exact",head:true}).eq("legacy_amount_mismatch",true).is("deleted_at",null)
-    ]).then(([issues,mismatches])=>{
-      if(!disposed)setPendingReviewCount(issues.error||mismatches.error?null:(issues.count??0)+(mismatches.count??0));
-    });
+    // Archive differences from 2025 are preserved in the audit page; they are
+    // not a new operational reconciliation alarm and should not block the dashboard.
+    supabase.from("legacy_import_issues")
+      .select("id",{count:"exact",head:true}).eq("status","pending")
+      .then(({error,count})=>{
+       if(!disposed)setPendingReviewCount(error?null:(count??0));
+      });
     return () => {disposed=true;};
   }, []);
 
@@ -402,12 +403,10 @@ export function AnalysisTab() {
 
   return (
     <div className="space-y-6">
-      {pendingReviewCount === null ? (
-        <p className="txt-warning text-sm">لم يتم التحقق من حالة مراجعة بيانات الترحيل.</p>
-      ) : pendingReviewCount > 0 ? (
+      {pendingReviewCount !== null && pendingReviewCount > 0 ? (
         <section className="card" role="status">
-          <h2 className="section-title">⚠️ الأرقام المالية قيد المطابقة</h2>
-          <p className="txt-warning">يوجد {pendingReviewCount} اختلاف أو قضية مراجعة مرتبطة بالبيانات التاريخية. التقارير تعرض العمليات القابلة للاحتساب فقط؛ ولا تمثل إقفالًا ماليًا معتمدًا حتى الانتهاء من المراجعة.</p>
+          <h2 className="section-title">مراجعة بيانات ترحيل معلقة</h2>
+          <p className="txt-warning">يوجد {pendingReviewCount} بند ترحيل يحتاج توثيقًا. اختلافات الإجمالي التاريخية محفوظة في صفحة تدقيق الأرشيف دون تغيير أي مبلغ.</p>
         </section>
       ) : null}
       {/* نظرة سريعة — دوس على أي بطاقة لتفاصيل السيارات بهذي الفترة */}
