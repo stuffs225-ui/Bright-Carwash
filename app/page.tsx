@@ -11,7 +11,7 @@ import { AlertsTab } from "./components/AlertsTab";
 import { ReconciliationTab } from "./components/ReconciliationTab";
 import { CrewBonusesTab } from "./components/CrewBonusesTab";
 import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
-import { CarRegistrationScreen } from "./w/[token]/page";
+import { CarRegistrationScreen } from "./components/CarRegistrationScreen";
 import { DaySettlementTab } from "./components/DaySettlementTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
