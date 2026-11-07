@@ -725,7 +725,7 @@ button.metric-card:hover { filter: brightness(1.04); }
   white-space:nowrap;scroll-snap-align:start;
 }
 .app-header .flex.items-center.justify-center{flex-wrap:wrap}
-.app-table{width:100%;min-width:580px}
+.app-table{width:100%}
 @media(max-width:640px){
  .app-shell{width:calc(100% - 16px);margin:8px auto 18px}
  .app-header{padding:17px 10px}
@@ -750,3 +750,29 @@ input[type="file"]{font-size:.89rem}
 .form-label>input,.form-label>select,.form-label>textarea{
  display:block;margin-top:7px;max-width:100%;min-width:0
 }
+
+/* Mobile usability fixes: cards must never inherit desktop table minimum width. */
+@media (max-width:760px){
+ .app-table{min-width:0!important;max-width:100%;width:100%;table-layout:auto}
+ .app-table td{text-align:right;min-width:0;overflow-wrap:anywhere}
+ .app-table td::before{max-width:52%;text-align:right}
+ .app-table td[data-label]{gap:14px}
+ .app-table td[data-label]>button{max-width:100%}
+ .content-section-wrapper{min-width:0}
+ .card{min-width:0}
+}
+body{padding-bottom:env(safe-area-inset-bottom,0px)}
+.manager-groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:10px;background:var(--surface-3);border-inline:1px solid var(--border)}
+.manager-group-button{border:1px solid var(--border);border-radius:12px;background:var(--surface);color:var(--text-2);padding:13px 9px;font-weight:800;min-height:52px;cursor:pointer}
+.manager-group-button[aria-pressed="true"]{background:var(--primary);color:var(--on-primary);border-color:transparent}
+.manager-sections{display:flex;gap:9px;padding:10px;background:var(--surface-2);overflow-x:auto;scrollbar-width:thin;border-inline:1px solid var(--border);overscroll-behavior-x:contain}
+.manager-section-button{flex:none;min-width:125px;padding:11px 15px;border-radius:999px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text);font-weight:700;white-space:nowrap;min-height:46px}
+.manager-section-button[aria-current="page"]{background:var(--tone-blue-bg);color:var(--tone-blue-fg);border-color:var(--primary)}
+@media(max-width:640px){.manager-groups{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:8px}.manager-group-button{min-height:50px;padding:8px 5px;font-size:.92rem}.manager-sections{padding:9px 8px}.manager-section-button{min-width:120px}}
+/* Avoid low-contrast white-on-pale-red buttons in dark mode. */
+.btn-danger{background:#b91c1c;color:#fff}
+.btn-danger:hover{background:#991b1b}
+:root:not([data-theme="light"]) .btn-add-car{color:#032516}
+:root[data-theme="light"] .btn-add-car{color:#fff}
+:root:not([data-theme="light"]) .btn-primary{background:#2563eb;color:#fff}
+:root:not([data-theme="light"]) .btn-primary:hover{background:#1d4ed8}
