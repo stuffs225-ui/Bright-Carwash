@@ -13,7 +13,8 @@ type Day={business_date:string;status:"open"|"awaiting_owner"|"approved";approve
 type Device={device_id:string;sealed_at:string|null;last_seen_at:string};
 type Settlement={business_date:string;recorded_cash:number;recorded_card:number;
  actual_cash:number;terminal_card:number;cash_difference:number;card_difference:number;
- cars:number;collective_tens:number;report_object_path:string;difference_reason:string|null};
+ cars:number;collective_tens:number;report_object_path:string;difference_reason:string|null;
+ expected_cash?:number|null;cash_expenses?:number|null;cash_worker_payments?:number|null;cash_movements_net?:number|null};
 function toMoney(v:number){return Math.round(v*100)/100;}
 
 export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolean}){
