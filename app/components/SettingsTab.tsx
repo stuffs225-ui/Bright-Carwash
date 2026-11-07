@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
-import { createPreset, deletePreset, loadPresets } from "@/lib/presets";
+import { createPreset, deletePreset, loadPresets, updatePreset } from "@/lib/presets";
 import { supabase } from "@/lib/supabaseClient";
 import { addLookup, loadLookup, renameLookup, setLookupActive, type LookupRow, type LookupTable } from "@/lib/lookups";
 import type { EntryPreset } from "@/lib/types";
@@ -206,26 +206,53 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
       showToast("عبّي نوع السيارة والخدمة ومبلغاً أكبر من صفر.", "warning");
       return;
     }
-    await createPreset({
-      car_type: carType.trim(),
-      service_type: serviceType.trim(),
-      amount: Number(amount),
-      sort_order: presets.length + 1,
+    const n=Number(amount);
+    if(!Number.isFinite(n)||Math.abs(Math.round(n*100)-n*100)>0.000001||n>5000){
+      showToast("السعر يجب أن يحتوي منزلتين عشريتين بحد أقصى.","warning");return;
+    }
+    if(presets.some(p=>p.car_type===carType.trim()&&p.service_type===serviceType.trim()&&Number(p.amount)===n)){
+      showToast("هذا الخيار موجود مسبقًا؛ يمكنك تعديل ترتيبه.","warning");return;
+    }
+    const result=await createPreset({
+      car_type: carType.trim(),service_type: serviceType.trim(),
+      amount:n,sort_order: Math.max(0,...presets.map(p=>Number(p.sort_order)||0))+1,
     });
+    if(result.error){showToast("لم يحفظ السعر: "+result.error.message,"error");return;}
     setCarType(""); setServiceType(""); setAmount("");
-    showToast("تمت إضافة الزر.");
+    showToast("تمت إضافة الزر مع الاحتفاظ بكل الأسعار التاريخية.");
     onChanged();
   }
 
   async function remove(id: string) {
-    if (!confirm("حذف هذا الزر السريع؟")) return;
-    await deletePreset(id);
-    showToast("تم الحذف.");
+    if (!confirm("تعطيل هذا السعر للتسجيلات الجديدة فقط؟ لن تتغير أي عملية سابقة.")) return;
+    const result=await deletePreset(id);
+    if(result.error){showToast(result.error.message,"error");return;}
+    showToast("تم تعطيل السعر؛ السجلات القديمة محفوظة.");
+    onChanged();
+  }
+  async function move(id:string,direction:-1|1){
+    const current=presets.find(p=>p.id===id);
+    if(!current)return;
+    const group=presets.filter(p=>p.car_type===current.car_type)
+      .sort((a,b)=>a.sort_order-b.sort_order);
+    const pos=group.findIndex(p=>p.id===id);
+    const other=group[pos+direction];
+    if(!other)return;
+    const rank=Number(current.sort_order);
+    const otherRank=Number(other.sort_order);
+    const first=await updatePreset(current.id,{sort_order:otherRank});
+    if(first.error){showToast(first.error.message,"error");return;}
+    const second=await updatePreset(other.id,{sort_order:rank});
+    if(second.error){
+      await updatePreset(current.id,{sort_order:rank});
+      showToast("تعذر إعادة الترتيب؛ راجع الإعدادات.","error");return;
+    }
+    showToast("تم تعديل ترتيب الاختيارات لهذا النوع من السيارات.");
     onChanged();
   }
 
   return (
-    <Section title="أزرار التسجيل السريع" hint="الأزرار اللي تظهر فوق نموذج الإدخال — ضغطة واحدة تسجّل العملية.">
+    <Section title="أسعار التسجيل السريع وترتيبها" hint="الأسعار النشطة فقط تظهر للعامل. أول أربعة خيارات لكل نوع سيارة تظهر مباشرة، والباقي في المزيد.">
       <div className="overflow-x-auto mb-4">
         <table className="app-table">
           <thead>
@@ -241,7 +268,9 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
                   <td data-label="الخدمة">{p.service_type}</td>
                   <td data-label="السعر">{formatCurrency(p.amount)}</td>
                   <td className="flex gap-1.5">
-                    <button type="button" className="action-button delete-button" onClick={() => remove(p.id)}>حذف</button>
+                    <button type="button" className="action-button" aria-label="تقديم السعر" onClick={()=>void move(p.id,-1)}>↑</button>
+                     <button type="button" className="action-button" aria-label="تأخير السعر" onClick={()=>void move(p.id,1)}>↓</button>
+                     <button type="button" className="action-button delete-button" onClick={() => void remove(p.id)}>تعطيل</button>
                   </td>
                 </tr>
               ))
