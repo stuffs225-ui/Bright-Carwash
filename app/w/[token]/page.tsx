@@ -3,6 +3,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,type WorkerSubmission} from "@/lib/workerOfflineQueue";
 import {normalizeSaudiMobile} from "@/lib/phone";
+import {supabase} from "@/lib/supabaseClient";
 import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
 
 type Preset={id:string;car_type:string;service_type:string;amount:number};
@@ -12,7 +13,9 @@ const sar=(value:number)=>new Intl.NumberFormat("ar-SA",{maximumFractionDigits:2
 const rounded=(n:number)=>Math.round(n*100)/100;
 
 export default function WorkerLinkPage({params}:{params:{token:string}}){
- const token=params.token||"";
+ return <CarRegistrationScreen token={params.token||""}/>;
+}
+export function CarRegistrationScreen({token="",manager=false}:{token?:string;manager?:boolean}){
  const [catalog,setCatalog]=useState<Catalog|null>(null);
  const [invalid,setInvalid]=useState("");
  const [busy,setBusy]=useState(false);
@@ -33,26 +36,31 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
  const [summaryVersion,setSummaryVersion]=useState(0);
  const [error,setError]=useState("");
  const syncActive=useRef(false);
- const safeToken=/^[a-f0-9]{64}$/.test(token);
+ const safeToken=manager||/^[a-f0-9]{64}$/.test(token);
 
  useEffect(()=>{
   let cancelled=false;
   async function load(){
    setLoading(true);
    try{
+    const headers:Record<string,string>={"content-type":"application/json"};
+    if(manager){
+     const {data:{session}}=await supabase.auth.getSession();
+     if(!session)throw Error("جلسة المدير غير متاحة");
+     headers.authorization="Bearer "+session.access_token;
+    }
     const res=await fetch("/api/worker-links/catalog",{
-     method:"POST",headers:{"content-type":"application/json"},
-     body:JSON.stringify({token}),cache:"no-store"
+     method:"POST",headers,body:JSON.stringify(manager?{}:{token}),cache:"no-store"
     });
     const info=await res.json().catch(()=>({}));
     if(!res.ok)throw Error(info.error||"الرابط غير صالح");
     if(!cancelled){
      setCatalog(info);
      if(info.presets?.length)setPresetId(info.presets[0].id);
-     void storeWorkerCatalog(token,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
+     if(!manager)void storeWorkerCatalog(token,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
     }
    }catch(e){
-    const fallback=await loadWorkerCatalog(token).catch(()=>null);
+    const fallback=manager?null:await loadWorkerCatalog(token).catch(()=>null);
     if(!cancelled){
      if(fallback){setCatalog(fallback);if(fallback.presets?.length)setPresetId(fallback.presets[0].id);
       setStatus("أنت دون اتصال: الأسعار المحفوظة مؤقتة، وسيُراجعها السيرفر عند المزامنة.");}
@@ -62,19 +70,20 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    finally{if(!cancelled)setLoading(false);}
   }
   void load();return()=>{cancelled=true;};
- },[token]);
+ },[token,manager]);
 
  useEffect(()=>{
+  if(manager)return;
   document.documentElement.classList.add("touch-mode");
   return()=>document.documentElement.classList.remove("touch-mode");
  },[]);
  useEffect(()=>{
-  if(!safeToken||!("serviceWorker" in navigator))return;
+  if(manager||!safeToken||!("serviceWorker" in navigator))return;
   void navigator.serviceWorker.register("/sw.js",{scope:"/"}).catch(()=>{});
- },[safeToken]);
+ },[safeToken,manager]);
 
  const replay=useCallback(async()=>{
-  if(syncActive.current||!navigator.onLine)return {sent:0,remaining:queued,blocked:0};
+  if(manager||syncActive.current||!navigator.onLine)return {sent:0,remaining:queued,blocked:0};
   syncActive.current=true;setSyncing(true);
   let sent=0,blocked=0;
   try{
@@ -97,15 +106,16 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    if(sent){setSummaryVersion(v=>v+1);if(remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");}
    return {sent,remaining,blocked};
   }finally{syncActive.current=false;setSyncing(false);}
- },[token,queued]);
+ },[token,queued,manager]);
  useEffect(()=>{
+  if(manager)return;
   let active=true;
   void listWorkerRecords(token).then(rows=>{if(active)setQueued(rows.length);if(navigator.onLine)void replay();})
    .catch(()=>{if(active)setError("تعذر قراءة السجل المحلي المشفر.");});
   const onOnline=()=>{void replay();};
   window.addEventListener("online",onOnline);
   return()=>{active=false;window.removeEventListener("online",onOnline);};
- },[token,replay]);
+ },[token,replay,manager]);
 
  const preset=catalog?.presets.find(p=>p.id===presetId);
  const totalAddons=useMemo(()=>(catalog?.addons||[])
@@ -141,6 +151,24 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
   };
   setBusy(true);
   try{
+   if(manager){
+    if(!navigator.onLine)throw Error("لا يمكن تسجيل سيارة من لوحة المدير أثناء انقطاع الإنترنت");
+    const {data:{session}}=await supabase.auth.getSession();
+    if(!session)throw Error("جلسة الإدارة غير متاحة، افتح رابط المدير");
+    const response=await fetch("/api/worker-links/record",{
+     method:"POST",headers:{"content-type":"application/json",
+      authorization:"Bearer "+session.access_token},
+     body:JSON.stringify(payload),credentials:"same-origin",cache:"no-store"
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok)throw Error(result.error||"تعذر تسجيل السيارة");
+    setSummaryVersion(v=>v+1);
+    setStatus("تم تسجيل السيارة من لوحة المدير بنجاح.");
+    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
+    setCustomerPhone("");setConsent(false);setMethod("cash");
+    window.scrollTo({top:0,behavior:"smooth"});
+    return;
+   }
    // Write ahead: every submission is an immutable encrypted outbox item BEFORE network IO.
    // Retrying after an uncertain response reuses the same UUID and cannot double-book.
    await queueWorkerRecord(token,payload);
@@ -154,18 +182,20 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
     else setStatus("التسجيل محفوظ على الجهاز ولم يتأكد وصوله بعد. لا تحذفه.");
    }
    window.scrollTo({top:0,behavior:"smooth"});
-  }catch{
-   setError("تعذر الحفظ الآمن على هذا الجهاز. لم تُسجل السيارة؛ لا تغلق الصفحة قبل مراجعة اتصال الجهاز.");
+  }catch(e){
+   setError(manager
+    ?e instanceof Error?e.message:"تعذر تسجيل السيارة"
+    :"تعذر الحفظ الآمن على هذا الجهاز. لم تُسجل السيارة؛ لا تغلق الصفحة قبل مراجعة اتصال الجهاز.");
   }finally{setBusy(false);}
  }
  return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
   <header className="card text-center space-y-2">
-   <h1 className="section-title">🚗 تسجيل السيارات</h1>
+   <h1 className="section-title">🚗 تسجيل السيارات {manager?"— الإدارة":""}</h1>
    <p className="txt-muted text-sm">مغسلة سيارتك اللامعة</p>
    {catalog&&<p className="text-sm font-bold">{catalog.label}</p>}
   </header>
-  {safeToken&&!invalid&&<WorkerDailySummary token={token} refreshKey={summaryVersion}/>}
-  {queued>0&&<section className="card space-y-2" role="status">
+  {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
+  {!manager&&queued>0&&<section className="card space-y-2" role="status">
     <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
     <p className="txt-muted text-sm">محفوظة مشفرة على نفس هذا الجهاز. لا تحذف بيانات Safari قبل إتمام المزامنة. قد تُرفض أسعار قديمة عند العودة للإنترنت.</p>
     <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?"جارٍ المزامنة":"إعادة المزامنة الآن"}</button>
@@ -237,7 +267,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||!preset}>
     {busy?"جارٍ حفظ العملية...":"تسجيل السيارة"}
    </button>
-   <p className="txt-muted text-xs text-center">لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يمكنك الحفظ أثناء انقطاع الشبكة بعد فتح الصفحة مرة واحدة؛ يثبت التسجيل في النظام بعد نجاح المزامنة.</p>
+   <p className="txt-muted text-xs text-center">{manager?"يسجل المدير بنفس قائمة الخدمات والأسعار التي تظهر للعامل، مع عرض الأيام غير المعتمدة.":"لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يمكنك الحفظ أثناء انقطاع الشبكة بعد فتح الصفحة مرة واحدة؛ يثبت التسجيل في النظام بعد نجاح المزامنة."}</p>
   </form>}
  </main>;
 }
