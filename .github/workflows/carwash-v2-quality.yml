@@ -100,4 +100,5 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_worker_phone_regex_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_month_close_governance_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_integrated_v2_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_finance_completion_e2e.sql
             '
