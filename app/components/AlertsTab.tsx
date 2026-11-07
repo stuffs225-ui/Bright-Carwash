@@ -99,10 +99,10 @@ export function AlertsTab({isOwner}: {isOwner:boolean}) {
         <tbody>{ALERT_DEFS.map(x=>{
           const limit=thresholds[x.key],v=values[x.key],on=limit>0;
           const label=(n:number)=>x.metric==="money"?formatCurrency(n):String(n);
-          return <tr key={x.key}><td>{x.label}</td><td>{label(v)}</td><td>
+          return <tr key={x.key}><td data-label="المؤشر">{x.label}</td><td data-label="القيمة الحالية">{label(v)}</td><td data-label="حد التنبيه">
             {isOwner?<input type="number" min="0" step={x.metric==="money"?"0.01":"1"}
               value={limit} onChange={e=>setThresholds(s=>({...s,[x.key]:Math.max(0,Number(e.target.value)||0)}))}/>:label(limit)}
-          </td><td>{on?condition(x.key,v,limit):"معطّل"}</td></tr>;
+          </td><td data-label="حد التنبيه">{on?condition(x.key,v,limit):"معطّل"}</td></tr>;
         })}</tbody>
       </table></div>
       {isOwner&&<button type="button" className="btn-primary mt-4" disabled={busy} onClick={()=>void save()}>{busy?"جارٍ الحفظ...":"حفظ أهداف التنبيه"}</button>}
