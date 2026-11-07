@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="referrer" content="no-referrer"/>
+<title>تسجيل المدير دون إنترنت — مغسلة سيارتك اللامعة</title>
+<style>
+:root{color-scheme:light;--bg:#f3f4f6;--surface:#fff;--surface2:#f8fafc;--text:#111827;--muted:#64748b;--border:#e2e8f0;--blue:#1d4ed8;--success:#047857}
+@media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0b1220;--surface:#151f32;--surface2:#1b273d;--text:#e6edf7;--muted:#93a3ba;--border:#2a3a55;--blue:#2563eb;--success:#34d399}}
+*{box-sizing:border-box}
+body{font-family:"Cairo",system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);margin:0;padding:14px;min-height:100vh}
+main{max-width:640px;margin:0 auto}.card{background:var(--surface);border:1px solid var(--border);padding:16px;margin-bottom:14px;border-radius:16px;box-shadow:0 5px 14px #11182710}
+h1{font-size:23px;margin:0 0 6px}p{line-height:1.7}.muted{color:var(--muted);font-size:13px}
+label{font-weight:700;display:block;margin:12px 0 5px}
+input,select{width:100%;min-height:52px;border:1px solid var(--border);border-radius:11px;padding:11px;font:inherit;background:var(--surface);color:var(--text)}
+input[type=checkbox]{width:22px;min-height:22px;vertical-align:middle}
+.choice{display:flex;gap:8px}.choice button{flex:1;background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+button{border:0;border-radius:11px;background:var(--blue);color:white;min-height:54px;font-size:16px;font-weight:800;padding:12px;width:100%;margin-top:10px;cursor:pointer}
+button[aria-pressed=true]{background:var(--blue);color:white}button[aria-pressed=false]{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+#status{color:var(--success);font-weight:700;white-space:pre-line}#error{color:#dc2626;white-space:pre-line}
+#addons label{padding:7px 0;margin:0}.total{background:var(--surface2);padding:12px;border-radius:12px;font-size:20px;font-weight:800;margin-top:12px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+@media(max-width:480px){body{padding:10px}.card{padding:14px}.choice{gap:5px}.choice button{padding:8px}}
+</style></head><body><main>
+<section class="card"><h1>🚗 تسجيل السيارات</h1><p class="muted">مغسلة سيارتك اللامعة — وضع الإدارة دون اتصال</p>
+<p>هذه صفحة تسجيل السيارات فقط، وليست لوحة الإدارة المالية. تُحفظ التسجيلات مشفرة على هذا الجهاز فقط. لا تُحتسب في لوحة المدير حتى تعود الشبكة وتنجح المزامنة.</p>
+<div id="status" role="status"></div><div id="error" role="alert"></div>
+<p id="count" class="muted"></p><button type="button" id="reconnect">المزامنة عند رجوع الإنترنت</button></section>
+<form class="card" id="form" hidden>
+<label for="preset">نوع السيارة والخدمة</label><select id="preset" required></select>
+<div id="addons"></div>
+<button type="button" id="discount-toggle" aria-pressed="false">إضافة خصم (اختياري)</button>
+<div id="discount-area" hidden><label for="discount">قيمة الخصم (بحد أقصى 10 ريالات)</label><input id="discount" type="number" inputmode="decimal" min="0" max="10" step=".01" value="0"/></div>
+<label>طريقة الدفع</label><div class="choice" id="payment-method">
+<button type="button" data-method="cash" aria-pressed="true">كاش</button>
+<button type="button" data-method="card" aria-pressed="false">شبكة</button>
+<button type="button" data-method="mixed" aria-pressed="false">مختلط</button></div>
+<div id="mixed" hidden><label for="cash">كاش</label><input id="cash" type="number" inputmode="decimal" min="0" step=".01"/>
+<label for="card">شبكة</label><input id="card" type="number" inputmode="decimal" min="0" step=".01"/></div>
+<div class="total">الإجمالي: <span id="total"></span></div>
+<details><summary>معلومات إضافية (اختيارية)</summary>
+<label for="notes">ملاحظات</label><input id="notes" maxlength="500"/>
+<label for="phone">رقم جوال العميل</label><input id="phone" type="tel" inputmode="tel" placeholder="05XXXXXXXX"/>
+<label><input type="checkbox" id="consent"/> موافقة العميل على إشعار واتساب</label></details>
+<button id="save" type="submit">حفظ السيارة على هذا الجهاز</button>
+<p class="muted">يجب فتح صفحة الإدارة مرة واحدة بالإنترنت على هذا الجهاز لتجهيز نسخة التسجيل الآمن. الأسعار المخزنة مؤقتة وتخضع للتحقق من السيرفر. لا تحذف بيانات Safari قبل المزامنة.</p>
+</form>
+</main><script src="/worker-offline.js" defer></script></body></html>
