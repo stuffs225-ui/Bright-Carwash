@@ -3,13 +3,13 @@
  * The authenticated app HTML, API responses, financial rows and OTP traffic
  * are NEVER cached. Main / navigation is network-first, offline fallback ONLY.
  */
-const ASSETS_CACHE="carwash-static-v4";
-const OFFLINE_CACHE="carwash-offline-shell-v4";
+const ASSETS_CACHE="carwash-static-v5";
+const OFFLINE_CACHE="carwash-offline-shell-v5";
 const FALLBACK="/offline.html";
 
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(OFFLINE_CACHE)
-    .then(cache=>cache.addAll([FALLBACK,"/offline-worker.html","/worker-offline.js"]))
+    .then(cache=>cache.addAll([FALLBACK,"/offline-worker.html","/offline-manager.html","/worker-offline.js"]))
     .then(()=>self.skipWaiting()));
 });
 self.addEventListener("activate",event=>{
@@ -45,7 +45,7 @@ self.addEventListener("fetch",event=>{
   if(request.mode==="navigate" && url.pathname==="/"){
     event.respondWith(fetch(request).catch(async()=>{
       const cache=await caches.open(OFFLINE_CACHE);
-      return (await cache.match(FALLBACK))||Response.error();
+      return (await cache.match("/offline-manager.html"))||Response.error();
     }));
     return;
   }
