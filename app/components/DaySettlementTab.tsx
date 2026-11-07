@@ -5,6 +5,7 @@ import {fetchAllRows} from "@/lib/fetchAll";
 import {formatCurrency} from "@/lib/business";
 import {dayIsFinished,riyadhDayKey,calendarDayTotals} from "@/lib/carwashCalendarDay";
 import {Modal} from "./Modal";
+import {arabicDate} from "./ArabicDateField";
 import {MetricCard} from "./MetricCard";
 import type {Entry} from "@/lib/types";
 
@@ -30,6 +31,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [posActual,setPosActual]=useState("");
  const [posStatement,setPosStatement]=useState<File|null>(null);
  const [reason,setReason]=useState("");
+ const [confirmedWorkerSync,setConfirmedWorkerSync]=useState(false);
  const [editing,setEditing]=useState<Entry|null>(null);
  const [editCash,setEditCash]=useState("");
  const [editCard,setEditCard]=useState("");
@@ -85,6 +87,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  async function closeDay(){
   if(!current||current.status!=="open"||!dayIsFinished(selected,now))return;
   if(incomplete.length){setError("يوجد أجهزة لم تؤكد نهاية مزامنة هذا اليوم.");return;}
+  if(!confirmedWorkerSync){setError("يرجى تأكيد مراجعة التسجيلات المعلقة على أجهزة العمال قبل اعتماد الموازنة.");return;}
   if(cashActual.trim()===""||posActual.trim()===""||
    !Number.isFinite(Number(cashActual))||!Number.isFinite(Number(posActual))||
    Number(cashActual)<0||Number(posActual)<0){
@@ -111,7 +114,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   });
   setBusy(false);
   if(error){setError("فشل الاعتماد: "+error.message);return;}
-  setCashActual("");setPosActual("");setPosStatement(null);setReason("");
+  setCashActual("");setPosActual("");setPosStatement(null);setReason("");setConfirmedWorkerSync(false);
   alert(data==="approved"
    ?"تم اعتماد يوم "+selected+"؛ اختفت تسجيلاته من حساب العمال وبقي الأرشيف محفوظًا.":"فرق الموازنة محفوظ ويحتاج موافقة المدير؛ اليوم لا يزال ظاهرًا للعامل.");
   await reloadDays();await reloadDay();
@@ -157,8 +160,8 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <div className="flex flex-wrap gap-2">
      {days.map(d=><button type="button" key={d.business_date}
        className={selected===d.business_date?"btn-primary":"btn-secondary"}
-       onClick={()=>{setSelected(d.business_date);setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);}}>
-       {d.business_date} · {d.status==="approved"?"✓ معتمد":d.status==="awaiting_owner"?"بانتظار المدير":"غير معتمد"}
+       onClick={()=>{setSelected(d.business_date);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
+       {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.status==="awaiting_owner"?"بانتظار المدير":"غير معتمد"}
       </button>)}
     </div>}
   </section>
@@ -195,7 +198,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      <p>فرق الكاش: {cashDiff===null?"—":formatCurrency(cashDiff)} · فرق الشبكة: {cardDiff===null?"—":formatCurrency(cardDiff)}</p>
      <label className="form-label">صورة / PDF تقرير الشبكة<input type="file" accept="image/*,application/pdf" onChange={e=>setPosStatement(e.target.files?.[0]||null)} /></label>
      {hasVariance&&<label className="form-label">سبب الفرق<textarea rows={3} value={reason} onChange={e=>setReason(e.target.value)} /></label>}
-     <button type="button" className="btn-primary w-full" disabled={busy||incomplete.length>0} onClick={()=>void closeDay()}>
+     <label className="flex items-start gap-3 rounded-xl border p-3 text-sm leading-relaxed" style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
+      <input type="checkbox" className="mt-1" checked={confirmedWorkerSync} onChange={e=>setConfirmedWorkerSync(e.target.checked)}/>
+      <span>تأكدت من العمال أن سيارات هذا اليوم أُرسلت إلى النظام، ولا توجد تسجيلات معلّقة على أجهزتهم. رابط العامل لا يكشف العمليات المحفوظة دون إنترنت.</span>
+     </label>
+     <button type="button" className="btn-primary w-full" disabled={busy||incomplete.length>0||!confirmedWorkerSync} onClick={()=>void closeDay()}>
       {busy?"جارٍ الاعتماد":"اعتماد هذا اليوم فقط"}
      </button>
     </section>:<section className="card"><p className="txt-muted">يوم {selected} لم ينتهِ بعد. يمكن مراجعته ولكن لا يعتمد قبل 12 صباحًا بتوقيت الرياض.</p></section>):
@@ -218,7 +225,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   </Modal>}
   {detail&&<Modal title="تفاصيل عملية السيارة" onClose={()=>setDetail(null)}>
    <p>{detail.car_type} · {detail.service_type}</p>
-   <p>الوقت بتوقيت الرياض: {new Date(detail.occurred_at).toLocaleString("en-GB",{timeZone:"Asia/Riyadh"})}</p>
+   <p>الوقت بتوقيت الرياض: {new Date(detail.occurred_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh",day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"})}</p>
    <p>كاش {formatCurrency(detail.cash_paid)} · شبكة {formatCurrency(detail.card_paid)} · خصم {formatCurrency(detail.discount_amount||0)}</p>
    {detail.notes&&<p>الملاحظات: {detail.notes}</p>}
    {current?.status==="open"&&<button type="button" className="btn-secondary w-full mt-3" onClick={()=>{startEdit(detail);setDetail(null);}}>تصحيح العملية قبل الاعتماد</button>}
