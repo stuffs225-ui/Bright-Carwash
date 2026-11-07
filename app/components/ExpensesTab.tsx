@@ -8,6 +8,8 @@ import { fetchAllRows } from "@/lib/fetchAll";
 import { AR_GREGORIAN_LOCALE, formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import type { Expense } from "@/lib/types";
+import {canonicalExpenseType,EXPENSE_QUICK_CHOICES} from "@/lib/expenseCategories";
+import {ArabicDateField} from "./ArabicDateField";
 import { enqueue } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineSync";
 import { riyadhDate, expenseEffectiveTimestamp, lateExpenseMonth } from "@/lib/expenseDates";
@@ -41,6 +43,8 @@ export function ExpensesTab() {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [workerId, setWorkerId] = useState("");
   const [paymentSource, setPaymentSource] = useState("cash");
+  const [expensePaymentSource,setExpensePaymentSource]=useState<"cash"|"network"|"bank"|"other">("cash");
+  const [customExpenseLabel,setCustomExpenseLabel]=useState("");
   const isSalary = expenseType === "راتب";
 
   const colorMap = useMemo(() => {
@@ -88,7 +92,8 @@ export function ExpensesTab() {
       const bucket = map.get(key)!;
       bucket.total += Number(exp.amount);
       bucket.entries.push(exp);
-      bucket.types[exp.expense_type] = (bucket.types[exp.expense_type] || 0) + Number(exp.amount);
+      const canonical=canonicalExpenseType(exp.expense_type,exp.notes);
+      bucket.types[canonical]=(bucket.types[canonical]||0)+Number(exp.amount);
     });
     return map;
   }, [expenses]);
@@ -101,6 +106,11 @@ export function ExpensesTab() {
 
   const currentMonth = selectedMonth ? summary.get(selectedMonth) : undefined;
 
+  const suggestedAmount=useMemo(()=>{
+    const match=expenses.find(e=>e.expense_type===expenseType &&
+      (!notes||!EXPENSE_QUICK_CHOICES.some(q=>q.note===notes)||String(e.notes||"").includes(notes)));
+    return match?Number(match.amount):null;
+  },[expenses,expenseType,notes]);
   const chartData = useMemo(() => {
     if (!currentMonth) return null;
     const labels = Object.keys(currentMonth.types);
@@ -132,18 +142,28 @@ export function ExpensesTab() {
       showToast("المصروفات المتعلقة بشهر سابق تحتاج شرحًا لا يقل عن 5 أحرف.", "warning");
       return;
     }
-    if (isSalary && !workerId) {
-      showToast("اختر العامل الذي يخصه مصروف الراتب.", "warning");
+    if (isSalary) {
+      showToast("سجّل مستحقات الرواتب وصرفها من قسم «العمال والرواتب» لمنع القيد المكرر.", "warning");
       return;
     }
+    if(expenseType==="اخرى"&&!customExpenseLabel.trim()&&!notes.trim()){
+      showToast("اكتب وصفًا للمصروف غير المصنف.", "warning");return;
+    }
     setSubmitting(true);
-    const payload = { expense_type: expenseType, amount: amt, notes: notes || null, occurred_at: expenseEffectiveTimestamp(expenseDate), client_recorded_at: new Date().toISOString(), salary_worker_id: isSalary ? workerId : null, salary_payment_source: isSalary ? paymentSource : null, client_mutation_id: crypto.randomUUID() };
+    const combinedNotes=expenseType==="اخرى"&&customExpenseLabel.trim()
+      ?customExpenseLabel.trim()+(notes.trim()?" — "+notes.trim():""):notes.trim();
+    const payload={expense_type:expenseType,amount:amt,notes:combinedNotes||null,
+      occurred_at:expenseEffectiveTimestamp(expenseDate),
+      client_recorded_at:new Date().toISOString(),
+      salary_worker_id:null,salary_payment_source:null,
+      payment_source:expensePaymentSource,recognition_kind:"operating",
+      client_mutation_id:crypto.randomUUID()};
 
     if (!navigator.onLine) {
       enqueue("expenses", payload);
       setSubmitting(false);
       showToast("لا يوجد اتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
-      setExpenseType(""); setAmount(""); setNotes(""); setExpenseDate(riyadhDate());
+      setExpenseType(""); setAmount(""); setNotes(""); setCustomExpenseLabel(""); setExpenseDate(riyadhDate());
       return;
     }
 
@@ -163,6 +183,7 @@ export function ExpensesTab() {
     // The database trigger creates/updates the linked worker payment atomically.
     showToast("تم حفظ المصروف بنجاح.");
     setExpenseType("");
+    setCustomExpenseLabel("");
     setAmount("");
     setNotes("");
     setExpenseDate(riyadhDate());
@@ -208,56 +229,56 @@ export function ExpensesTab() {
       <section className="card">
         <h2 className="section-title">إضافة مصروف جديد</h2>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="form-label">نوع المصروف</label>
-            <div className="select-wrapper">
-              <select value={expenseType} onChange={(e) => setExpenseType(e.target.value)} required>
-                <option value="">اختر...</option>
-                {expenseTypes.map((t) => (
-                  <option key={t.name} value={t.name}>{t.name}</option>
-                ))}
-              </select>
-            </div>
+          <div className="space-y-3">
+           <p className="form-label">اختيارات سريعة للمصروفات</p>
+           <div className="carwash-quick-choices">
+            {EXPENSE_QUICK_CHOICES.map(choice=><button type="button" key={choice.name}
+             className={expenseType===choice.category&&notes===choice.note?"active":""}
+             onClick={()=>{setExpenseType(choice.category);setNotes(choice.note);setCustomExpenseLabel("");}}>
+             {choice.name}
+            </button>)}
+           </div>
+           <label className="form-label">الفئة المحاسبية
+            <select value={expenseType} onChange={e=>{setExpenseType(e.target.value);setCustomExpenseLabel("");}} required>
+             <option value="">اختر نوع المصروف</option>
+             {expenseTypes.map(t=><option key={t.name} value={t.name}>{t.name}</option>)}
+            </select>
+           </label>
+           {expenseType==="اخرى"&&<label className="form-label">وصف المصروف بحرية
+            <input type="text" maxLength={120} value={customExpenseLabel}
+             onChange={e=>setCustomExpenseLabel(e.target.value)} placeholder="مثل مشتريات طارئة أو رسوم أخرى"/>
+           </label>}
+           {isSalary&&<p className="txt-warning text-sm">
+            الرواتب والسلف والدفعات تسجّل من صفحة «العمال والرواتب». يمنع النظام إنشاء مصروف راتب جديد من هنا لتجنب تكرار التكلفة.</p>}
           </div>
           <div>
             <label className="form-label">التاريخ الذي يخصه المصروف (بتوقيت الرياض)</label>
-            <input type="date" required max={riyadhDate()} value={expenseDate} onChange={(e) => setExpenseDate(e.target.value)} />
+            <ArabicDateField value={expenseDate} onChange={setExpenseDate} ariaLabel="تاريخ المصروف" max={riyadhDate()}/>
             {lateExpenseMonth(expenseDate) && <p className="txt-warning text-sm mt-2">هذا مصروف يخص شهرًا سابقًا. سيحفظ النظام تاريخ التسجيل الفعلي منفصلًا، ويُلزمك بتوضيح السبب. إذا كان الشهر مقفلًا فستدخل عملية مراجعة الفترات المقفلة قبل اعتماد التقارير.</p>}
           </div>
           <div>
             <label className="form-label">المبلغ (ر.س)</label>
             <input type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} required />
+            {suggestedAmount!==null&&<button type="button" className="btn-secondary mt-2 text-sm"
+             onClick={()=>setAmount(String(suggestedAmount))}>
+             استخدام مبلغ آخر عملية مشابهة: {formatCurrency(suggestedAmount)}
+            </button>}
+
           </div>
-          {isSalary && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="form-label">العامل (اختياري — يقيّد بدفتر حسابه)</label>
-                <div className="select-wrapper">
-                  <select value={workerId} onChange={(e) => setWorkerId(e.target.value)}>
-                    <option value="">بدون ربط</option>
-                    {workers.map((w) => (
-                      <option key={w.id} value={w.id}>{w.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="form-label">مصدر الدفع</label>
-                <div className="select-wrapper">
-                  <select value={paymentSource} onChange={(e) => setPaymentSource(e.target.value)}>
-                    {PAYMENT_SOURCES.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-          )}
+          <label className="form-label">مصدر دفع المصروف
+           <select value={expensePaymentSource}
+            onChange={e=>setExpensePaymentSource(e.target.value as "cash"|"network"|"bank"|"other")}>
+            <option value="cash">كاش من صندوق المغسلة</option>
+            <option value="network">شبكة / بطاقة</option>
+            <option value="bank">تحويل بنكي</option>
+            <option value="other">مصدر آخر</option>
+           </select>
+          </label>
           <div>
             <label className="form-label">ملاحظات</label>
             <input type="text" placeholder="اختياري..." value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
-          <button type="submit" disabled={submitting} className="btn-add-expense w-full">
+          <button type="submit" disabled={submitting||isSalary} className="btn-add-expense w-full">
             {submitting ? <span className="spinner" /> : "حفظ المصروف"}
           </button>
         </form>
