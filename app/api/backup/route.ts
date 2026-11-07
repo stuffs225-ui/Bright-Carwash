@@ -21,7 +21,9 @@ const TABLES=[
  "carwash_day_settlements","carwash_import_batches","carwash_pin_rate_limits",
  "carwash_manager_pin_verifiers","carwash_worker_links",
  "carwash_worker_link_submissions","carwash_owner_activation_links",
- "carwash_owner_devices"
+ "carwash_owner_devices",
+ "carwash_entry_line_items","carwash_entry_readiness",
+ "carwash_readiness_events","carwash_cash_movements"
 ] as const;
 const MAX_ARCHIVE_BYTES=42*1024*1024;
 const MAX_EVIDENCE_FILES=500;
@@ -38,12 +40,12 @@ async function readAll(admin:ReturnType<typeof createAdminClient>,table:string){
  }
  return rows;
 }
-async function evidenceArchive(admin:ReturnType<typeof createAdminClient>){
+async function evidenceArchive(admin:ReturnType<typeof createAdminClient>,bucket:string){
  const result:Array<{path:string;mime:string;body:string}>=[];
  let bytes=0;
  async function walk(prefix:string){
   for(let offset=0;;offset+=100){
-   const {data,error}=await admin.storage.from("carwash-pos-evidence")
+   const {data,error}=await admin.storage.from(bucket)
     .list(prefix,{limit:100,offset});
    if(error)throw Error("Unable to list POS evidence");
    const batch=data||[];
@@ -51,7 +53,7 @@ async function evidenceArchive(admin:ReturnType<typeof createAdminClient>){
     if(!object.id){await walk(prefix+object.name+"/");continue;}
     const path=prefix+object.name;
     const {data:download,error:downloadError}=await admin.storage
-     .from("carwash-pos-evidence").download(path);
+     .from(bucket).download(path);
     if(downloadError||!download)throw Error("Unable to download POS evidence");
     const buffer=Buffer.from(await download.arrayBuffer());
     bytes+=buffer.length;
@@ -83,12 +85,13 @@ export async function GET(request:Request){
   // Daily immutable filenames avoid duplicate archives and extra storage usage.
   const tables:Record<string,unknown[]>={};
   for(const table of TABLES)tables[table]=await readAll(admin,table);
-  const objects=await evidenceArchive(admin);
+  const objects=await evidenceArchive(admin,"carwash-pos-evidence");
+  const readyPhotos=await evidenceArchive(admin,"carwash-ready-photos");
   const rowCounts=Object.fromEntries(Object.entries(tables).map(([k,v])=>[k,v.length]));
   const archivedAt=new Date().toISOString();
   const payload={format:"bright-carwash-v2",version:1,archivedAt,
    projectRef:process.env.CARWASH_DATABASE_PROJECT_REF,
-   rowCounts,tables,storage:{"carwash-pos-evidence":objects}};
+   rowCounts,tables,storage:{"carwash-pos-evidence":objects,"carwash-ready-photos":readyPhotos}};
   const encrypted=encryptBackup(payload,key);
   if(encrypted.byteLength>MAX_ARCHIVE_BYTES)return fail(413,"Encrypted backup exceeds storage size limit");
   const filename="daily/"+archivedAt.slice(0,10)+".bcw2";
@@ -151,6 +154,7 @@ export async function GET(request:Request){
   return NextResponse.json({ok:true,archivedAt,
    rowCounts:restored.rowCounts,
    evidenceFiles:restored.storage?.["carwash-pos-evidence"]?.length||0,
+   readyPhotos:restored.storage?.["carwash-ready-photos"]?.length||0,
    sha256:hash,storagePath:filename,archiveVerified:true,
    offsiteDelivered,offsiteConfigured,
    note:offsiteDelivered?"Encrypted offsite copy delivered":
