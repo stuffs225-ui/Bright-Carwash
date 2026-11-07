@@ -5,6 +5,7 @@ import {supabase} from "@/lib/supabaseClient";
 import {showToast} from "@/lib/toast";
 import {formatCurrency} from "@/lib/business";
 import {riyadhDate} from "@/lib/expenseDates";
+import {ArabicDateField,arabicDate} from "./ArabicDateField";
 
 type CrewBonus = {id:string;shift_date:string;amount:number;reason:string;created_at:string;deleted_at:string|null};
 
@@ -55,7 +56,7 @@ export function CrewBonusesTab() {
       <form className="space-y-4 mt-4" onSubmit={add}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label className="form-label">تاريخ الوردية
-            <input type="date" required max={riyadhDate()} value={day} onChange={e=>setDay(e.target.value)} />
+            <ArabicDateField value={day} onChange={setDay} ariaLabel="تاريخ الوردية" max={riyadhDate()}/>
           </label>
           <label className="form-label">مكافأة الفريق (ر.س)
             <input type="number" min="0.01" step="0.01" required value={amount} onChange={e=>setAmount(e.target.value)} />
@@ -73,7 +74,7 @@ export function CrewBonusesTab() {
       {items.filter(x=>!x.deleted_at).length===0
         ? <p className="txt-muted">لا توجد مكافآت مسجلة.</p>
         : <div className="space-y-3">{items.filter(x=>!x.deleted_at).map(x=><div key={x.id} className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-          <span>{x.shift_date} — {formatCurrency(x.amount)} — {x.reason}</span>
+          <span>{arabicDate(x.shift_date)} — {formatCurrency(x.amount)} — {x.reason}</span>
           <button type="button" className="btn-secondary" onClick={()=>void voidBonus(x.id)}>إلغاء مع حفظ الأثر</button>
         </div>)}</div>}
     </section>
