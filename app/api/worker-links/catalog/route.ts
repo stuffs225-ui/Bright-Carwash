@@ -30,13 +30,23 @@ export async function POST(request:Request){
    label=link.label;
   }
   const [presets,addons]=await Promise.all([
-   admin.from("entry_presets").select("id,car_type,service_type,amount").eq("active",true)
+   admin.from("entry_presets").select("id,car_type,service_type,amount,sort_order").eq("active",true)
     .order("sort_order",{ascending:true}),
    admin.from("carwash_addons").select("id,name,price").eq("active",true)
     .order("name",{ascending:true})
   ]);
   if(presets.error||addons.error)return deny(503,"تعذر تحميل الخدمات");
+  const policy=await admin.from("settings").select("key,value").in("key",[
+    "worker_manual_service_enabled","worker_manual_addon_enabled","worker_discount_max"
+  ]);
+  if(policy.error)return deny(503,"تعذر تحميل صلاحيات الأسعار");
+  const conf=Object.fromEntries((policy.data||[]).map(p=>[p.key,p.value]));
+  const rawLimit=Number(conf.worker_discount_max??10);
+  const discountLimit=Number.isFinite(rawLimit)?Math.max(0,Math.min(1000,rawLimit)):10;
   return NextResponse.json({label,
-   presets:presets.data||[],addons:addons.data||[]},{headers:NO_STORE});
+   presets:presets.data||[],addons:addons.data||[],
+   discountLimit,manualServiceEnabled:conf.worker_manual_service_enabled!==false,
+   manualAddonEnabled:conf.worker_manual_addon_enabled!==false
+  },{headers:NO_STORE});
  }catch{return deny(503,"الخدمة غير متاحة");}
 }
