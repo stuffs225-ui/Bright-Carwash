@@ -6,6 +6,7 @@ import {showToast} from "@/lib/toast";
 import {formatCurrency} from "@/lib/business";
 import {riyadhDate} from "@/lib/expenseDates";
 import {ArabicMonthField} from "./ArabicDateField";
+import {MonthlyReview} from "./MonthlyReview";
 
 type Month = {
   id:string; period:string;status:"open"|"approved"|"reopened";version:number;
@@ -81,6 +82,7 @@ export function AccountingMonthsTab(){
       </>:<button type="button" className="btn-primary w-full" disabled={loading||period>=riyadhDate().slice(0,7)} onClick={()=>void approve()}>اعتماد التقرير بعد المراجعة</button>}
       {month?.status==="reopened"&&<p className="txt-warning text-sm">الشهر مفتوح للتصحيحات ولم يعد تقريره نهائيًا. أعد الاعتماد بعد إنهاء جميع الإدخالات.</p>}
     </section>
+    <MonthlyReview period={period}/>
     <section className="card">
       <h2 className="section-title">سجل إصدارات التقرير المعتمدة</h2>
       {versions.length===0?<p className="txt-muted">لا توجد إصدارات معتمدة بعد.</p>:
