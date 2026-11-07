@@ -336,6 +336,8 @@ function LookupSection({ table, title }: { table: LookupTable; title: string }) 
 function CarwashAddonsSettings(){
   type AddonRow={id:string;name:string;price:number;active:boolean};
   const [rows,setRows]=useState<AddonRow[]>([]);
+  type Proposal={id:string;name:string;evidence:string;status:string};
+  const [proposals,setProposals]=useState<Proposal[]>([]);
   const [name,setName]=useState("");
   const [price,setPrice]=useState("");
   const [busy,setBusy]=useState(false);
@@ -344,6 +346,9 @@ function CarwashAddonsSettings(){
       .select("id,name,price,active").order("name");
     if(error){showToast("تعذر قراءة الإضافات: "+error.message,"error");return;}
     setRows((data||[]) as AddonRow[]);
+    const pending=await supabase.from("carwash_addon_proposals")
+      .select("id,name,evidence,status").eq("status","needs_review").order("created_at");
+    if(!pending.error)setProposals((pending.data||[]) as Proposal[]);
   },[]);
   useEffect(()=>{void refresh();},[refresh]);
   async function add(){
@@ -352,9 +357,18 @@ function CarwashAddonsSettings(){
       showToast("اكتب اسم الإضافة وسعرًا صحيحًا.","warning");return;
     }
     setBusy(true);
-    const {error}=await supabase.from("carwash_addons").insert({name:name.trim(),price:amount,active:true});
+    const {data,error}=await supabase.from("carwash_addons")
+      .insert({name:name.trim(),price:amount,active:true}).select("id").single();
     setBusy(false);
     if(error){showToast(error.message,"error");return;}
+    const matching=proposals.find(p=>p.name===name.trim());
+    if(matching&&data?.id){
+      const {data:{user}}=await supabase.auth.getUser();
+      await supabase.from("carwash_addon_proposals").update({
+       status:"approved",reviewed_at:new Date().toISOString(),
+       reviewed_by:user?.id||null,approved_addon_id:data.id
+      }).eq("id",matching.id);
+    }
     setName("");setPrice("");void refresh();
     showToast("تمت إضافة خدمة إضافية معتمدة.");
   }
@@ -377,6 +391,26 @@ function CarwashAddonsSettings(){
   }
   return <Section title="الخدمات الإضافية وأسعارها" hint="خدمات اختيارية تُضاف إلى أسعار الغسيل الثابتة. الأسعار المعتمدة فقط تظهر للعامل.">
     <div className="space-y-3">
+      {proposals.length>0&&<div className="rounded-xl border p-3 space-y-2" style={{borderColor:"var(--border)"}}>
+       <h3 className="font-bold">اقتراحات تحتاج تسعير المدير</h3>
+       <p className="txt-muted text-sm">ظهور اسم في المشتريات لا يعني إثبات بيعه؛ لا نفعّل الإضافة أو نعتمد سعرًا من دون مراجعتك.</p>
+       {proposals.map(p=><div key={p.id} className="border-b pb-2 space-y-1">
+        <strong>{p.name}</strong><p className="txt-muted text-xs">{p.evidence}</p>
+        <div className="flex flex-wrap gap-2">
+         <button type="button" className="btn-secondary" onClick={()=>{setName(p.name);setPrice("");}}>
+          اختيار للاعتماد مع إدخال السعر
+         </button>
+         <button type="button" className="btn-secondary" onClick={async()=>{
+          if(!confirm("تجاهل اقتراح "+p.name+" دون إنشاء خدمة؟"))return;
+          const {data:{user}}=await supabase.auth.getUser();
+          const {error}=await supabase.from("carwash_addon_proposals").update({
+           status:"dismissed",reviewed_at:new Date().toISOString(),reviewed_by:user?.id||null
+          }).eq("id",p.id);
+          if(error)showToast(error.message,"error");else void refresh();
+         }}>تجاهل الاقتراح</button>
+        </div>
+       </div>)}
+      </div>}
       {rows.map(item=><div key={item.id} className="flex flex-wrap justify-between items-center gap-2 border-b py-3">
         <span className="font-semibold">{item.name} · {formatCurrency(item.price)} · {item.active?"مفعّلة":"موقفة"}</span>
         <div className="flex gap-2">
