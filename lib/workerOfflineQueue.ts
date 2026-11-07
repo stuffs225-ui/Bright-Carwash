@@ -2,7 +2,7 @@
 // Never persist the raw bearer URL or worker capability token.
 export type WorkerSubmission={
  presetId:string;addons:string[];cash:number;card:number;discount:number;
- notes:string;customerPhone:string|null;whatsappConsent:boolean;mutationId:string;
+ notes:string;customerPhone:string|null;whatsappConsent:boolean;mutationId:string;recordedAt?:string;
  oneTime?:{enabled:true;carType:string;service:string;price:number;addons:{name:string;price:number}[];reason:string};
 };
 export type WorkerCatalog={
