@@ -18,7 +18,7 @@ import type { LedgerEntry, Worker } from "@/lib/types";
 import { MetricCard } from "./MetricCard";
 import { Modal } from "./Modal";
 
-export function WorkersTab() {
+export function WorkersTab({view="workers"}:{view?:"workers"|"dues"|"payments"|"statements"}) {
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [openWorker, setOpenWorker] = useState<Worker | null>(null);
@@ -73,11 +73,11 @@ export function WorkersTab() {
 
   return (
     <div className="space-y-6">
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {view!=="workers"&&<section className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <MetricCard label="مستحق للعمال" value={formatCurrency(totals.owed)} tone="amber" onClick={()=>setWorkerMetric("owed")} hint="كشف حساب أرصدة العمال الدائنة" />
         <MetricCard label="سلف على العمال" value={formatCurrency(totals.advanced)} tone="purple" onClick={()=>setWorkerMetric("advanced")} hint="تفاصيل سلف العمال" />
         <MetricCard label="إجمالي المدفوع" value={formatCurrency(totals.paid)} tone="emerald" onClick={()=>setWorkerMetric("paid")} hint="تفاصيل مبالغ دفعت للعمال" />
-      </section>
+      </section>}
 
       {workerMetric && (
         <Modal title={workerMetric==="owed"?"تفاصيل المستحقات":workerMetric==="advanced"?"تفاصيل سلف العمال":"تفاصيل مدفوعات العمال"} onClose={()=>setWorkerMetric(null)}>
@@ -96,7 +96,7 @@ export function WorkersTab() {
       )}
 
       <section className="card">
-        <h2 className="section-title mb-1">دفتر حساب العمال</h2>
+        <h2 className="section-title mb-1">{view==="workers"?"إدارة العمال":view==="dues"?"المستحقات والرواتب":view==="payments"?"الدفعات والسلف":"كشوف حساب العمال"}</h2>
         <p className="txt-muted text-sm mb-4">
           الرصيد = المستحق − المدفوع. الرقم الموجب يعني له عندك، والسالب يعني أخذ سلفة.
           اضغط على أي عامل لفتح كشف حسابه.
@@ -137,7 +137,7 @@ export function WorkersTab() {
           </table>
         </div>
 
-        <div className="flex flex-wrap gap-2 items-end mt-5">
+        {view==="workers"&&<div className="flex flex-wrap gap-2 items-end mt-5">
           <div className="flex-1" style={{ minWidth: 200 }}>
             <label className="form-label">إضافة عامل جديد</label>
             <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} />
@@ -153,7 +153,7 @@ export function WorkersTab() {
             <input type="number" min="0" step="0.01" value={newHourlyRate} onChange={e=>setNewHourlyRate(e.target.value)} />
           </div>
           <button type="button" className="btn-primary" onClick={handleAddWorker}>إضافة</button>
-        </div>
+        </div>}
       </section>
 
       {openWorker && (
@@ -194,7 +194,7 @@ function WorkerLedgerModal({
       return;
     }
     setSaving(true);
-    await addLedgerEntry({
+    const {error}=await addLedgerEntry({
       worker_id: worker.id,
       kind,
       amount: amt,
@@ -202,6 +202,7 @@ function WorkerLedgerModal({
       notes: notes || null,
     });
     setSaving(false);
+    if(error){showToast("لم يُحفظ القيد: "+error.message,"error");return;}
     setAmount("");
     setNotes("");
     showToast(kind === "earning" ? "تم تسجيل المستحق." : "تم تسجيل الدفعة.");
