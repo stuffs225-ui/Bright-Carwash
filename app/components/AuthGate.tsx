@@ -71,7 +71,10 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    // INITIAL_SESSION arrives on every load and must not restart the loader.
    if(event==="INITIAL_SESSION"||event==="TOKEN_REFRESHED")return;
    if(event==="SIGNED_OUT"){
-    setIdentity(null);setOfflineActor(null);setLoading(false);return;
+    // A short-lived Supabase token may expire while the 90-day HttpOnly
+    // owner-device pairing cookie is still valid. Re-pair silently.
+    setTimeout(()=>{void refresh();},0);
+    return;
    }
    if(event==="SIGNED_IN"||event==="USER_UPDATED"){
     setTimeout(()=>{void refresh();},0);
