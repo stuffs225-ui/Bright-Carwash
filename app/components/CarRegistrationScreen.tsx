@@ -34,7 +34,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [manualAddonName,setManualAddonName]=useState("");
  const [manualAddonPrice,setManualAddonPrice]=useState("");
  const [priceReason,setPriceReason]=useState("");
- const managerPending=useRef<{fingerprint:string;id:string}|null>(null);
+
  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
  const [method,setMethod]=useState<"cash"|"card"|"mixed">("cash");
  const [discount,setDiscount]=useState("0");
@@ -130,6 +130,9 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    if(blocked)setError("هناك تسجيلات معلقة رُفضت من السيرفر. اطلب من المدير مراجعة الرابط أو السعر؛ لم تُحذف البيانات.");
    if(sent){setSummaryVersion(v=>v+1);if(remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");}
    return {sent,remaining,blocked};
+  }catch(e){
+   setError(e instanceof Error?e.message:"فشلت المزامنة، ولا تزال العمليات محفوظة محليًا.");
+   return {sent,remaining:queued,blocked:0};
   }finally{syncActive.current=false;setSyncing(false);}
  },[token,queued,manager,outboxKey]);
  useEffect(()=>{
@@ -190,10 +193,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     service:manualMode?manualService.trim():preset?.service_type||"",
     price:rounded(basePrice),addons:[...manualAddons],reason:priceReason.trim()}}:{})
   };
-  const fingerprint=JSON.stringify(basis);
-  const id=manager&&managerPending.current?.fingerprint===fingerprint
-   ?managerPending.current.id:crypto.randomUUID();
-  if(manager)managerPending.current={fingerprint,id};
+  const id=crypto.randomUUID(); // Each car always receives its own immutable idempotency key.
   const payload:WorkerSubmission={...basis,mutationId:id,recordedAt:new Date().toISOString()};
   setBusy(true);
   try{
