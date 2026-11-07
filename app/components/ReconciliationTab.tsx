@@ -68,6 +68,10 @@ export function ReconciliationTab() {
         <div className="card"><strong>إجمالي القضايا</strong><p className="text-2xl font-bold">{issues.length}</p></div>
       </div>
     </section>
+    <section className="card space-y-2">
+      <h3 className="section-title mb-1">توزيع الرواتب القديمة</h3>
+      <p className="txt-muted text-sm">كشف المراجعة وجد 388 مصروف راتب تاريخيًا بقيمة 69,429 ر.س، دون سجلات عمال مرتبطة أو دفتر مستحقات. تبقى مصنفة كرواتب للمغسلة، ولا تُنسب تلقائيًا لأي عامل حتى تتوفر بيانات صاحب كل مبلغ. مخصص الفريق اليومي (10 ر.س لكل سيارة) حساب تشغيلي مستقل وليس صرفًا لهذه الرواتب القديمة.</p>
+    </section>
     <section className="card space-y-3">
       <h3 className="section-title">أرشيف الفروق الموثقة ({mismatches.length})</h3>
       <p className="txt-muted text-sm">فروقات قديمة من 2025 بين الإجمالي المكتوب ومبالغ التحصيل. جميع مبالغ الكاش والشبكة محفوظة كما وردت، والفروق لا تُعَدّ عمليات ضائعة. تُعرض التفاصيل للتدقيق عند الطلب.</p>
