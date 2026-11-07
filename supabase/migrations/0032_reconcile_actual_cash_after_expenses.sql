@@ -9,6 +9,7 @@ AS $function$
 declare v_day public.carwash_days%rowtype;v_cash numeric(12,2);
  v_card numeric(12,2);v_count integer;v_cash_diff numeric(12,2);
  v_card_diff numeric(12,2);v_today date;
+ v_crew_count integer;
  v_cash_expenses numeric(12,2):=0;
  v_cash_worker_payments numeric(12,2):=0;
  v_cash_movements_net numeric(12,2):=0;
@@ -30,8 +31,9 @@ begin
  or not exists(select 1 from storage.objects
   where bucket_id='carwash-pos-evidence' and name=p_report_path)
  then raise exception 'Verified POS statement attachment required';end if;
- select coalesce(sum(cash_paid),0),coalesce(sum(card_paid),0),count(*)::integer
- into v_cash,v_card,v_count from public.entries
+ select coalesce(sum(cash_paid),0),coalesce(sum(card_paid),0),count(*)::integer,
+ count(*) filter(where car_type in ('سيارة صغيرة','سيارة كبيرة'))::integer
+ into v_cash,v_card,v_count,v_crew_count from public.entries
  where business_date=p_date and deleted_at is null;
  -- Recorded cash is not necessarily cash still in the till.
  -- Posted cash expenses and staff payouts reduce expected cash; transfers adjust it.
@@ -58,7 +60,7 @@ begin
  report_object_path,difference_reason,manager_id,
  expected_cash,cash_expenses,cash_worker_payments,cash_movements_net
  ) values(p_date,v_cash,v_card,p_actual_cash,p_terminal_card,
- v_cash_diff,v_card_diff,v_count,v_count*10,p_report_path,
+ v_cash_diff,v_card_diff,v_count,v_crew_count*10,p_report_path,
  nullif(trim(coalesce(p_reason,'')),''),(select auth.uid()),
  v_expected_cash,v_cash_expenses,v_cash_worker_payments,v_cash_movements_net);
  if v_cash_diff<>0 or v_card_diff<>0 then
