@@ -11,8 +11,7 @@ import { AlertsTab } from "./components/AlertsTab";
 import { ReconciliationTab } from "./components/ReconciliationTab";
 import { CrewBonusesTab } from "./components/CrewBonusesTab";
 import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
-import { CarEntryTab } from "./components/CarEntryTab";
-import { WorkerDailySummary } from "./components/WorkerDailySummary";
+import { CarRegistrationScreen } from "./w/[token]/page";
 import { DaySettlementTab } from "./components/DaySettlementTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
@@ -54,7 +53,7 @@ function CarwashApp({identity}:{identity:AppIdentity}){
       onClick={()=>setTab(item.key)}>{item.label}</button>)}
    </nav>
    <div className="content-section-wrapper">
-    {tab==="car"&&<div className="space-y-4"><WorkerDailySummary manager/><CarEntryTab ownerView/></div>}
+    {tab==="car"&&<CarRegistrationScreen manager/>}
     {tab==="settlement"&&<DaySettlementTab canApproveVariance/>}
     {tab==="expenses"&&<ExpensesTab/>}
     {tab==="analysis"&&<AnalysisTab/>}
