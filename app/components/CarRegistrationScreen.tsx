@@ -14,7 +14,12 @@ type Catalog={label:string;presets:Preset[];addons:Addon[];
 const sar=(value:number)=>new Intl.NumberFormat("ar-SA",{maximumFractionDigits:2,minimumFractionDigits:2}).format(value)+" ر.س";
 const rounded=(n:number)=>Math.round(n*100)/100;
 
-export function CarRegistrationScreen({token="",manager=false}:{token?:string;manager?:boolean}){
+export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:{token?:string;manager?:boolean;managerUserId?:string}){
+ // Stable per-manager namespace, not an authorization credential.
+ // Outbox records are encrypted using a random non-extractable device key.
+ const outboxKey=manager
+  ? (/^[0-9a-f-]{36}$/i.test(managerUserId)?managerUserId.toLowerCase().replace(/-/g,"").padEnd(64,"0"):"")
+  :token;
  const [catalog,setCatalog]=useState<Catalog|null>(null);
  const [invalid,setInvalid]=useState("");
  const [busy,setBusy]=useState(false);
@@ -70,10 +75,10 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
       const first=info.presets.find((p:Preset)=>p.car_type===last)||info.presets[0];
       setPresetId(first.id);setCarType(first.car_type);
      }
-     if(!manager)void storeWorkerCatalog(token,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
+     if(outboxKey)void storeWorkerCatalog(outboxKey,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
     }
    }catch(e){
-    const fallback=manager?null:await loadWorkerCatalog(token).catch(()=>null);
+    const fallback=outboxKey?await loadWorkerCatalog(outboxKey).catch(()=>null):null;
     if(!cancelled){
      if(fallback){setCatalog(fallback);if(fallback.presets?.length){setPresetId(fallback.presets[0].id);setCarType(fallback.presets[0].car_type);}
       setStatus("أنت دون اتصال: الأسعار المحفوظة مؤقتة، وسيُراجعها السيرفر عند المزامنة.");}
@@ -83,7 +88,7 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
    finally{if(!cancelled)setLoading(false);}
   }
   void load();return()=>{cancelled=true;};
- },[token,manager]);
+ },[token,manager,outboxKey]);
 
  useEffect(()=>{
   if(manager)return;
@@ -96,16 +101,23 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
  },[safeToken,manager]);
 
  const replay=useCallback(async()=>{
-  if(manager||syncActive.current||!navigator.onLine)return {sent:0,remaining:queued,blocked:0};
+  if(!outboxKey||syncActive.current||!navigator.onLine)return {sent:0,remaining:queued,blocked:0};
   syncActive.current=true;setSyncing(true);
   let sent=0,blocked=0;
   try{
-   const rows=await listWorkerRecords(token);
+   const rows=await listWorkerRecords(outboxKey);
+   let bearer="";
+   if(manager){
+    const {data:{session}}=await supabase.auth.getSession();
+    if(!session)throw Error("جلسة المدير غير متاحة حاليًا؛ العمليات محفوظة محليًا");
+    bearer=session.access_token;
+   }
    for(const row of rows){
     try{
      const response=await fetch("/api/worker-links/record",{
-      method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({...row.payload,token}),cache:"no-store"
+      method:"POST",headers:{"content-type":"application/json",
+       ...(manager?{authorization:"Bearer "+bearer}:{})},
+      body:JSON.stringify({...row.payload,...(manager?{}:{token})}),cache:"no-store"
      });
      if(response.ok){await deleteWorkerRecord(row.id);sent++;continue;}
      if(response.status===429||response.status>=500)break;
@@ -113,22 +125,22 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
      // Rejected items are never discarded automatically: owner can review.
     }catch{break;}
    }
-   const remaining=(await listWorkerRecords(token)).length;
+   const remaining=(await listWorkerRecords(outboxKey)).length;
    setQueued(remaining);
    if(blocked)setError("هناك تسجيلات معلقة رُفضت من السيرفر. اطلب من المدير مراجعة الرابط أو السعر؛ لم تُحذف البيانات.");
    if(sent){setSummaryVersion(v=>v+1);if(remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");}
    return {sent,remaining,blocked};
   }finally{syncActive.current=false;setSyncing(false);}
- },[token,queued,manager]);
+ },[token,queued,manager,outboxKey]);
  useEffect(()=>{
-  if(manager)return;
+  if(!outboxKey)return;
   let active=true;
-  void listWorkerRecords(token).then(rows=>{if(active)setQueued(rows.length);if(navigator.onLine)void replay();})
+  void listWorkerRecords(outboxKey).then(rows=>{if(active)setQueued(rows.length);if(navigator.onLine)void replay();})
    .catch(()=>{if(active)setError("تعذر قراءة السجل المحلي المشفر.");});
   const onOnline=()=>{void replay();};
   window.addEventListener("online",onOnline);
   return()=>{active=false;window.removeEventListener("online",onOnline);};
- },[token,replay,manager]);
+ },[outboxKey,replay]);
 
  const preset=catalog?.presets.find(p=>p.id===presetId);
  const allCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)));
@@ -185,44 +197,25 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
   const payload:WorkerSubmission={...basis,mutationId:id,recordedAt:new Date().toISOString()};
   setBusy(true);
   try{
-   if(manager){
-    if(!navigator.onLine)throw Error("لا يمكن تسجيل سيارة من لوحة المدير أثناء انقطاع الإنترنت");
-    const {data:{session}}=await supabase.auth.getSession();
-    if(!session)throw Error("جلسة الإدارة غير متاحة، افتح رابط المدير");
-    const response=await fetch("/api/worker-links/record",{
-     method:"POST",headers:{"content-type":"application/json",
-      authorization:"Bearer "+session.access_token},
-     body:JSON.stringify(payload),credentials:"same-origin",cache:"no-store"
-    });
-    const result=await response.json().catch(()=>({}));
-    if(!response.ok)throw Error(result.error||"تعذر تسجيل السيارة");
-    managerPending.current=null;
-    setSummaryVersion(v=>v+1);
-    setStatus("تم تسجيل السيارة من لوحة المدير بنجاح.");
-    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
-   setManualMode(false);setManualAddons([]);setPriceReason("");
-    setManualMode(false);setManualAddons([]);setPriceReason("");
-    setCustomerPhone("");setConsent(false);setMethod("cash");
-    window.scrollTo({top:0,behavior:"smooth"});
-    return;
-   }
    // Write ahead: every submission is an immutable encrypted outbox item BEFORE network IO.
    // Retrying after an uncertain response reuses the same UUID and cannot double-book.
-   await queueWorkerRecord(token,payload);
-   setQueued((await listWorkerRecords(token)).length);
+   await queueWorkerRecord(outboxKey,payload);
+   setQueued((await listWorkerRecords(outboxKey)).length);
    setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
+   setManualMode(false);setManualAddons([]);setPriceReason("");
    setCustomerPhone("");setConsent(false);setMethod("cash");
    if(navigator.onLine){
-    const result=await replay();
+    const result=await replay().catch((e:unknown)=>{
+     setError(e instanceof Error?e.message:"تعذرت المزامنة؛ العملية محفوظة على الجهاز.");
+     return {sent:0,remaining:1,blocked:0};
+    });
     if(result.remaining===0&&result.blocked===0)setStatus("تم تسجيل السيارة بنجاح.");
     else setStatus("التسجيل محفوظ على الجهاز ولم يتأكد وصوله بعد. لا تحذفه.");
    }
    window.scrollTo({top:0,behavior:"smooth"});
   }catch(e){
-   setError(manager
-    ?e instanceof Error?e.message:"تعذر تسجيل السيارة"
-    :"تعذر الحفظ الآمن على هذا الجهاز. لم تُسجل السيارة؛ لا تغلق الصفحة قبل مراجعة اتصال الجهاز.");
+   setError(e instanceof Error?e.message:"تعذر الحفظ الآمن؛ لم تُسجل السيارة.");
   }finally{setBusy(false);}
  }
  return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
@@ -232,7 +225,7 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
    {catalog&&<p className="text-sm font-bold">{catalog.label}</p>}
   </header>
   {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
-  {!manager&&queued>0&&<section className="card space-y-2" role="status">
+  {queued>0&&<section className="card space-y-2" role="status">
     <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
     <p className="txt-muted text-sm">محفوظة مشفرة على نفس هذا الجهاز. لا تحذف بيانات Safari قبل إتمام المزامنة. قد تُرفض أسعار قديمة عند العودة للإنترنت.</p>
     <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?"جارٍ المزامنة":"إعادة المزامنة الآن"}</button>
@@ -379,9 +372,9 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
     </div>
    </details>
    <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||(!preset&&!manualMode)||price<=0}>
-    {busy?"جارٍ حفظ العملية...":"تسجيل السيارة"}
+    {busy?"جارٍ الحفظ الآمن...":"تسجيل السيارة"}
    </button>
-   <p className="txt-muted text-xs text-center">{manager?"يسجل المدير بنفس قائمة الخدمات والأسعار التي تظهر للعامل، مع عرض الأيام غير المعتمدة.":"لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يمكنك الحفظ أثناء انقطاع الشبكة بعد فتح الصفحة مرة واحدة؛ يثبت التسجيل في النظام بعد نجاح المزامنة."}</p>
+   <p className="txt-muted text-xs text-center">يمكن حفظ التسجيل مشفرًا على هذا الجهاز عند انقطاع الاتصال بعد فتح الصفحة أول مرة. لا يصبح التسجيل معتمدًا إلا بعد نجاح المزامنة، ولا يُرحّل تسجيل اليوم السابق تلقائيًا إلى يوم جديد.</p>
   </form>}
   {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
  </main>;
