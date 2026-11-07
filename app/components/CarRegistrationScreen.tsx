@@ -5,10 +5,12 @@ import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords
 import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
 import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
+import {ReadyCarsPanel} from "./ReadyCarsPanel";
 
-type Preset={id:string;car_type:string;service_type:string;amount:number};
+type Preset={id:string;car_type:string;service_type:string;amount:number;sort_order?:number};
 type Addon={id:string;name:string;price:number};
-type Catalog={label:string;presets:Preset[];addons:Addon[]};
+type Catalog={label:string;presets:Preset[];addons:Addon[];
+ discountLimit?:number;manualServiceEnabled?:boolean;manualAddonEnabled?:boolean};
 const sar=(value:number)=>new Intl.NumberFormat("ar-SA",{maximumFractionDigits:2,minimumFractionDigits:2}).format(value)+" ر.س";
 const rounded=(n:number)=>Math.round(n*100)/100;
 
@@ -18,6 +20,16 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
  const [presetId,setPresetId]=useState("");
+ const [carType,setCarType]=useState("");
+ const [showMoreServices,setShowMoreServices]=useState(false);
+ const [manualMode,setManualMode]=useState(false);
+ const [manualService,setManualService]=useState("");
+ const [manualPrice,setManualPrice]=useState("");
+ const [manualAddons,setManualAddons]=useState<{name:string;price:number}[]>([]);
+ const [manualAddonName,setManualAddonName]=useState("");
+ const [manualAddonPrice,setManualAddonPrice]=useState("");
+ const [priceReason,setPriceReason]=useState("");
+ const managerPending=useRef<{fingerprint:string;id:string}|null>(null);
  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
  const [method,setMethod]=useState<"cash"|"card"|"mixed">("cash");
  const [discount,setDiscount]=useState("0");
@@ -53,13 +65,17 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
     if(!res.ok)throw Error(info.error||"الرابط غير صالح");
     if(!cancelled){
      setCatalog(info);
-     if(info.presets?.length)setPresetId(info.presets[0].id);
+     if(info.presets?.length){
+      const last=typeof window!=="undefined"?localStorage.getItem("carwash_last_car_type_v1"):null;
+      const first=info.presets.find((p:Preset)=>p.car_type===last)||info.presets[0];
+      setPresetId(first.id);setCarType(first.car_type);
+     }
      if(!manager)void storeWorkerCatalog(token,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
     }
    }catch(e){
     const fallback=manager?null:await loadWorkerCatalog(token).catch(()=>null);
     if(!cancelled){
-     if(fallback){setCatalog(fallback);if(fallback.presets?.length)setPresetId(fallback.presets[0].id);
+     if(fallback){setCatalog(fallback);if(fallback.presets?.length){setPresetId(fallback.presets[0].id);setCarType(fallback.presets[0].car_type);}
       setStatus("أنت دون اتصال: الأسعار المحفوظة مؤقتة، وسيُراجعها السيرفر عند المزامنة.");}
      else setInvalid(e instanceof Error?e.message:"تعذر فتح الرابط");
     }
@@ -115,13 +131,20 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
  },[token,replay,manager]);
 
  const preset=catalog?.presets.find(p=>p.id===presetId);
+ const allCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)));
+ const filteredPresets=(catalog?.presets||[]).filter(p=>p.car_type===(carType||preset?.car_type));
+ const manualServiceAllowed=manager||catalog?.manualServiceEnabled!==false;
+ const manualAddonAllowed=manager||catalog?.manualAddonEnabled!==false;
+ const useException=manualMode||manualAddons.length>0;
  const totalAddons=useMemo(()=>(catalog?.addons||[])
   .filter(a=>selectedAddons.includes(a.id)).reduce((v,a)=>v+Number(a.price),0),
  [catalog,selectedAddons]);
+ const manualExtras=manualAddons.reduce((a,b)=>a+b.price,0);
  const discountNumber=Number(discount)||0;
- const price=rounded(Number(preset?.amount||0)+totalAddons-discountNumber);
+ const basePrice=manualMode?Number(manualPrice||0):Number(preset?.amount||0);
+ const price=rounded(basePrice+totalAddons+manualExtras-discountNumber);
  useEffect(()=>{
-  if(!preset)return;
+  if(!preset&&!manualMode)return;
   if(method==="cash"){setCash(String(price));setCard("0");}
   else if(method==="card"){setCash("0");setCard(String(price));}
   else{
@@ -132,20 +155,34 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
 
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
-  if(!catalog||!preset||busy)return;
+  if(!catalog||busy||(!preset&&!manualMode))return;
+  if(useException&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
+  if(manualAddons.length&&!manualAddonAllowed){setError("الإضافات المخصصة معطلة في الإعدادات");return;}
+  if(useException&&priceReason.trim().length<3){setError("اكتب سبب الخدمة أو السعر الاستثنائي");return;}
+  if(manualMode&&(manualService.trim().length<2||!Number.isFinite(basePrice)||basePrice<=0||basePrice>5000)){
+   setError("اسم الخدمة أو سعرها الاستثنائي غير صحيح");return;
+  }
   const c=Number(cash),d=Number(card),discountValue=Number(discount);
   if(!Number.isFinite(c)||!Number.isFinite(d)||c<0||d<0||
-     !Number.isFinite(discountValue)||discountValue<0||discountValue>10||
+     !Number.isFinite(discountValue)||discountValue<0||discountValue>Number(catalog.discountLimit??10)||
      rounded(c+d)!==price){
    setError("راجع مبلغ الكاش والشبكة والخصم؛ مجموع الدفع يجب أن يطابق السعر النهائي.");return;
   }
   const phone=customerPhone.trim()?normalizeSaudiMobile(customerPhone):null;
   if(customerPhone.trim()&&!phone){setError("رقم جوال العميل غير صحيح. يمكنك تركه فارغًا.");return;}
   if(phone&&!consent){setError("يجب تأكيد موافقة العميل قبل استخدام جواله لواتساب، أو اترك الرقم فارغًا.");return;}
-  const payload:WorkerSubmission={
+  const basis={
    presetId,addons:[...selectedAddons],cash:c,card:d,discount:discountValue,
-   notes,customerPhone:phone,whatsappConsent:!!phone&&consent,mutationId:crypto.randomUUID()
+   notes,customerPhone:phone,whatsappConsent:!!phone&&consent,
+   ...(useException?{oneTime:{enabled:true as const,carType:carType||preset?.car_type||"",
+    service:manualMode?manualService.trim():preset?.service_type||"",
+    price:rounded(basePrice),addons:[...manualAddons],reason:priceReason.trim()}}:{})
   };
+  const fingerprint=JSON.stringify(basis);
+  const id=manager&&managerPending.current?.fingerprint===fingerprint
+   ?managerPending.current.id:crypto.randomUUID();
+  if(manager)managerPending.current={fingerprint,id};
+  const payload:WorkerSubmission={...basis,mutationId:id};
   setBusy(true);
   try{
    if(manager){
@@ -159,9 +196,12 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
     });
     const result=await response.json().catch(()=>({}));
     if(!response.ok)throw Error(result.error||"تعذر تسجيل السيارة");
+    managerPending.current=null;
     setSummaryVersion(v=>v+1);
     setStatus("تم تسجيل السيارة من لوحة المدير بنجاح.");
     setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
+   setManualMode(false);setManualAddons([]);setPriceReason("");
+    setManualMode(false);setManualAddons([]);setPriceReason("");
     setCustomerPhone("");setConsent(false);setMethod("cash");
     window.scrollTo({top:0,behavior:"smooth"});
     return;
