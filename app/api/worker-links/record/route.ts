@@ -1,7 +1,8 @@
 import {NextResponse} from "next/server";
+import {createClient} from "@supabase/supabase-js";
 import {createAdminClient} from "@/lib/supabaseAdmin";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
-import {capabilityHash,validCapability,NO_STORE,requestIsSameOrigin} from "@/lib/carwashCapability";
+import {capabilityHash,validCapability,managerAccess,NO_STORE,requestIsSameOrigin} from "@/lib/carwashCapability";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 
@@ -18,7 +19,8 @@ export async function POST(request:Request){
   if(!requestIsSameOrigin(request))return reply(403,"طلب غير مسموح");
   if(Number(request.headers.get("content-length")||"0")>4096)return reply(400,"طلب كبير جدًا");
   const body=await request.json().catch(()=>null);
-  if(!validCapability(body?.token)||typeof body?.presetId!=="string"||
+  const viaWorker=validCapability(body?.token);
+  if(typeof body?.presetId!=="string"||
       !uuid.test(body.presetId)||typeof body?.mutationId!=="string"||
       !uuid.test(body.mutationId))return reply(400,"الرابط أو بيانات الخدمة غير صالحة");
   const cash=money(body.cash),card=money(body.card),discount=money(body.discount);
@@ -34,6 +36,46 @@ export async function POST(request:Request){
    return reply(400,"رقم العميل غير صالح");
   const whatsappConsent=body.whatsappConsent===true;
   if(whatsappConsent&&!phone)return reply(400,"يلزم رقم العميل للموافقة على واتساب");
+  if(!viaWorker){
+   // Manager uses the identical screen but writes through their own authenticated
+   // Supabase JWT, so native RLS, business-date and audit triggers remain active.
+   const access=await managerAccess(request);
+   if(!access)return reply(403,"صلاحية المدير مطلوبة");
+   const {data:preset,error:presetError}=await access.admin.from("entry_presets")
+    .select("car_type,service_type,amount").eq("id",body.presetId).eq("active",true).maybeSingle();
+   if(presetError||!preset)return reply(409,"الخدمة غير متاحة");
+   const {data:extras,error:extraError}=addons.length?await access.admin.from("carwash_addons")
+    .select("id,price").in("id",addons).eq("active",true):
+    {data:[],error:null};
+   if(extraError||(extras||[]).length!==addons.length)return reply(409,"إحدى الإضافات غير مفعلة");
+   const expected=Math.round((Number(preset.amount)+(extras||[]).reduce((v,a)=>v+Number(a.price),0))*100);
+   if(Math.round((cash+card+discount)*100)!==expected)
+    return reply(409,"المبالغ لا تطابق الأسعار المعتمدة");
+   const already=await access.admin.from("entries").select("id")
+    .eq("created_by",access.user.id).eq("client_mutation_id",body.mutationId)
+    .maybeSingle();
+   if(already.error)return reply(503,"تعذر التحقق من تكرار العملية");
+   if(already.data?.id)return NextResponse.json({ok:true,id:already.data.id,duplicate:true},{headers:NO_STORE});
+   const jwt=(request.headers.get("authorization")||"").replace(/^Bearer\\s+/i,"");
+   const userClient=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
+     auth:{persistSession:false,autoRefreshToken:false},
+     global:{headers:{Authorization:"Bearer "+jwt}}
+    });
+   const {data:inserted,error:insertError}=await userClient.from("entries").insert({
+    car_type:preset.car_type,service_type:preset.service_type,
+    cash_paid:cash,card_paid:card,discount_amount:discount,
+    addon_ids:addons,customer_phone:phone,whatsapp_consent:whatsappConsent,
+    sms_consent:false,notes:notes||null,occurred_at:new Date().toISOString(),
+    created_by:access.user.id,client_mutation_id:body.mutationId
+   }).select("id").single();
+   if(insertError){
+    if(/approved|review|day|price|discount|payment|rate/i.test(insertError.message))
+     return reply(409,"اليوم غير متاح أو البيانات لا تطابق السعر المعتمد");
+    return reply(503,"تعذر تسجيل السيارة بواسطة جلسة المدير");
+   }
+   return NextResponse.json({ok:true,id:inserted?.id,duplicate:false},{headers:NO_STORE});
+  }
   const admin=createAdminClient();
   // The function is explicitly EXECUTE-service_role only and enforces
   // expiry, price, per-link limits, idempotency and native business triggers.
