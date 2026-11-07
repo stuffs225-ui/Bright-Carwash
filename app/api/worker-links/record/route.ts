@@ -56,7 +56,7 @@ export async function POST(request:Request){
     .maybeSingle();
    if(already.error)return reply(503,"تعذر التحقق من تكرار العملية");
    if(already.data?.id)return NextResponse.json({ok:true,id:already.data.id,duplicate:true},{headers:NO_STORE});
-   const jwt=(request.headers.get("authorization")||"").replace(/^Bearer\\s+/i,"");
+   const jwt=(request.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
    const userClient=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
      auth:{persistSession:false,autoRefreshToken:false},
