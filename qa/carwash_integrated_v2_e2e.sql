@@ -41,7 +41,7 @@ end $qa_custom_and_readiness$;
 -- Test salary recognition/payments and actual cash balance on a free past day.
 set role authenticated;
 set request.jwt.claim.sub='22222222-2222-4222-8222-222222222222';
-select set_config('qa.finance_day',((now() at time zone 'Asia/Riyadh')::date-12)::text,false);
+select set_config('qa.finance_day',((now() at time zone 'Asia/Riyadh')::date-4)::text,false);
 insert into public.workers(id,name,sort_order,worker_type,hourly_rate)
  values('aaaaeeee-eeee-4eee-8eee-eeeeeeeeeeee','QA dummy worker',991,'worker',10);
 insert into public.entries(car_type,service_type,cash_paid,card_paid,
