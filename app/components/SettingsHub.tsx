@@ -4,6 +4,7 @@ import {SettingsTab} from "./SettingsTab";
 import {AlertsTab} from "./AlertsTab";
 import {ReconciliationTab} from "./ReconciliationTab";
 import {UsersTab} from "./UsersTab";
+import {ImportSheetSection} from "./ImportSheetSection";
 type Section="general"|"services"|"alerts"|"audit"|"links"|"backup";
 const pages:{key:Section;title:string}[]=[
  {key:"general",title:"الإعدادات العامة"},
@@ -25,7 +26,7 @@ export function SettingsHub(){
   {section==="general"&&<SettingsTab section="general"/>}
   {section==="services"&&<SettingsTab section="services"/>}
   {section==="alerts"&&<AlertsTab isOwner/>}
-  {section==="audit"&&<ReconciliationTab/>}
+  {section==="audit"&&<div className="space-y-4"><ReconciliationTab/><ImportSheetSection/></div>}
   {section==="links"&&<UsersTab/>}
   {section==="backup"&&<SettingsTab section="backup"/>}
  </div>;
