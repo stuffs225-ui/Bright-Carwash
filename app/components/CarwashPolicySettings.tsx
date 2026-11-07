@@ -83,7 +83,7 @@ export function CarwashPolicySettings(){
      value={policy.ready_photo_retention_days}
      onChange={e=>setPolicy(p=>({...p,ready_photo_retention_days:Number(e.target.value)}))}/>
    </label>
-   <p className="txt-warning text-xs">تحديد مدة الاحتفاظ يسجل السياسة، لكنه لا يثبت تنفيذ الحذف الآلي حتى تتوفر مهمة احتفاظ مجدولة ونتيجة تحقق.</p>
+   <p className="txt-warning text-xs">تُراجع مدة الاحتفاظ يوميًا بعد نجاح إنشاء نسخة احتياطية مشفرة والتحقق منها. لا يُحذف أي ملف إذا فشلت عملية النسخ، ويظل سجل الحذف موثقًا.</p>
    <button type="button" className="btn-primary w-full" onClick={()=>void save()} disabled={busy}>
     {busy?"جارٍ الحفظ":"حفظ السياسات"}
    </button>
