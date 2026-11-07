@@ -776,3 +776,58 @@ body{padding-bottom:env(safe-area-inset-bottom,0px)}
 :root[data-theme="light"] .btn-add-car{color:#fff}
 :root:not([data-theme="light"]) .btn-primary{background:#2563eb;color:#fff}
 :root:not([data-theme="light"]) .btn-primary:hover{background:#1d4ed8}
+
+/* Carwash V2 – iPhone / Android final layout audit */
+:root:not(.touch-mode){--control-h:46px;--tap-h:48px}
+body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.app-shell{overflow-x:clip}
+.app-header h1{line-height:1.4;letter-spacing:-.015em}
+.manager-groups{gap:8px}
+.manager-sections{
+ display:grid;grid-template-columns:repeat(auto-fit,minmax(142px,1fr));
+ gap:8px;padding:10px;overflow:visible
+}
+.manager-section-button{
+ min-width:0;width:100%;min-height:44px;
+ white-space:normal;text-wrap:balance;line-height:1.35;border-radius:12px
+}
+.arabic-date-grid{display:grid;grid-template-columns:minmax(60px,.72fr) minmax(104px,1.35fr) minmax(74px,.83fr);gap:6px}
+.arabic-month-grid{display:grid;grid-template-columns:minmax(128px,1.5fr) minmax(82px,1fr);gap:8px}
+.arabic-date-grid select,.arabic-month-grid select{min-width:0;padding:8px 6px;text-align:center;font-size:.94rem}
+.metric-value{overflow-wrap:anywhere;text-wrap:balance;line-height:1.45}
+.metric-card{gap:3px}
+.metric-card .metric-label{line-height:1.45}
+.metric-card .metric-value{unicode-bidi:plaintext}
+.content-section-wrapper,.card{max-width:100%}
+.modal{padding:calc(16px + env(safe-area-inset-top,0px)) 12px calc(16px + env(safe-area-inset-bottom,0px))}
+.modal-content{width:min(900px,100%);max-height:min(92dvh,calc(100dvh - env(safe-area-inset-top,0px) - 24px));overscroll-behavior:contain}
+@media(max-width:760px){
+ .app-header{padding:14px 12px 15px}
+ .app-header h1{font-size:1.55rem;line-height:1.42}
+ .app-header p{line-height:1.5}
+ .manager-groups{gap:7px;padding:9px}
+ .manager-group-button{min-height:49px;line-height:1.35;font-size:.94rem}
+ .manager-sections{grid-template-columns:repeat(2,minmax(0,1fr));padding:8px;gap:7px}
+ .manager-section-button{font-size:.9rem;padding:9px 8px;min-height:45px}
+ .content-section-wrapper{padding:9px;min-height:0}
+ .content-section-wrapper>.space-y-6{--tw-space-y-reverse:0}
+ .card{padding:14px}
+ .section-title{font-size:1.1rem;line-height:1.45;margin-bottom:10px}
+ .subsection-title{font-size:1.02rem;line-height:1.4;margin-bottom:10px}
+ .metric-card{min-height:96px;padding:12px 8px}
+ .metric-label{font-size:.85rem}
+ .metric-value{font-size:1.06rem}
+ .form-label{font-size:.89rem;margin-bottom:5px}
+ .content-section-wrapper .space-y-6>:not([hidden])~:not([hidden]){margin-top:18px}
+ .content-section-wrapper .space-y-4>:not([hidden])~:not([hidden]){margin-top:12px}
+ input[type="text"],input[type="number"],input[type="date"],input[type="email"],input[type="password"],
+ input[type="tel"],input[type="month"],select{min-height:46px;padding:9px 11px;font-size:1rem}
+ .btn-primary,.btn-secondary,.btn-danger{min-height:44px}
+ .chart-box{height:265px}.chart-box-lg{height:290px}
+ .arabic-date-grid select,.arabic-month-grid select{padding:8px 3px;font-size:.9rem}
+}
+@media(max-width:365px){
+ .manager-group-button{font-size:.86rem}
+ .manager-section-button{font-size:.85rem}
+ .arabic-date-grid{grid-template-columns:minmax(46px,.7fr) minmax(94px,1.4fr) minmax(65px,.8fr);gap:4px}
+}
