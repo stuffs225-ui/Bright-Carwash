@@ -18,16 +18,22 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const refreshing=useRef(false);
+ const initialFinished=useRef(false);
+ const timeout=<T,>(work:PromiseLike<T>,ms=10000):Promise<T>=>new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>reject(Error("Authentication timed out")),ms);
+  Promise.resolve(work).then(v=>{clearTimeout(timer);resolve(v);},e=>{clearTimeout(timer);reject(e);});
+ });
  const refresh=useCallback(async()=>{
   if(refreshing.current)return;
   refreshing.current=true;
-  setLoading(true);
+  // Never replace an already-open dashboard with a full-screen loader on token refresh.
+  if(!initialFinished.current)setLoading(true);
   try{
-   let result=await supabase.auth.getUser();
+   let result=await timeout(supabase.auth.getUser());
    if(!result.data.user){
-    const paired=await fetch("/api/owner/session",{
+    const paired=await timeout(fetch("/api/owner/session",{
      method:"POST",credentials:"same-origin",cache:"no-store"
-    });
+    }));
     if(paired.ok){
      const payload=await paired.json().catch(()=>({}));
      if(payload.access_token&&payload.refresh_token){
@@ -35,14 +41,14 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
        access_token:payload.access_token,refresh_token:payload.refresh_token
       });
       if(applied.error)throw applied.error;
-      result=await supabase.auth.getUser();
+      result=await timeout(supabase.auth.getUser());
      }
     }
    }
    const user=result.data.user;
    if(!user){setIdentity(null);setOfflineActor(null);return;}
-   const {data:membership,error:memberError}=await supabase.from("app_members")
-    .select("role,active").eq("user_id",user.id).maybeSingle();
+   const {data:membership,error:memberError}=await timeout(supabase.from("app_members")
+    .select("role,active").eq("user_id",user.id).maybeSingle());
    if(memberError||membership?.role!=="manager"||!membership.active){
     setIdentity(null);setOfflineActor(null);
     setError("افتح رابط الإدارة المباشر الخاص بك.");return;
@@ -54,15 +60,22 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    setIdentity(null);setOfflineActor(null);
    setError("تعذر استعادة جلسة الإدارة. تحقق من الإنترنت أو افتح رابط الإدارة الخاص بك.");
   }finally{
+   initialFinished.current=true;
    setLoading(false);refreshing.current=false;
   }
  },[]);
  useEffect(()=>{
   if(!supabaseConfigured){setLoading(false);return;}
   void refresh();
-  const {data:subscription}=supabase.auth.onAuthStateChange(()=>{
-   // Defer Auth SDK calls until callback lock is released.
-   setTimeout(()=>{void refresh();},0);
+  const {data:subscription}=supabase.auth.onAuthStateChange((event)=>{
+   // INITIAL_SESSION arrives on every load and must not restart the loader.
+   if(event==="INITIAL_SESSION"||event==="TOKEN_REFRESHED")return;
+   if(event==="SIGNED_OUT"){
+    setIdentity(null);setOfflineActor(null);setLoading(false);return;
+   }
+   if(event==="SIGNED_IN"||event==="USER_UPDATED"){
+    setTimeout(()=>{void refresh();},0);
+   }
   });
   return()=>subscription.subscription.unsubscribe();
  },[refresh]);
