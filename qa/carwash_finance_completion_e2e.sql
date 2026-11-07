@@ -27,6 +27,26 @@ begin
   raise exception 'Mixed-payment car totals mismatch: %,%,%',v_cash,v_card,v_cars;
  end if;
 end $qa_complete_revenue$;
+-- A pending device must block settlement, then be explicitly sealed.
+do $qa_unsealed_completion$
+declare blocked boolean:=false;
+begin
+ if exists(select 1 from public.carwash_day_devices
+    where business_date=current_setting('qa.completion_day')::date and sealed_at is null) then
+  begin
+   perform public.submit_carwash_day_settlement(
+    current_setting('qa.completion_day')::date,45,42,
+    'day/'||current_setting('qa.completion_day')||'/qa-final-pos.pdf',
+    'QA blocked on unsealed device');
+  exception when others then blocked:=true;end;
+  if not blocked then raise exception 'Settlement succeeded before devices sealed';end if;
+ end if;
+end $qa_unsealed_completion$;
+reset role;
+update public.carwash_day_devices set sealed_at=now()
+ where business_date=current_setting('qa.completion_day')::date and sealed_at is null;
+set role authenticated;
+set request.jwt.claim.sub='22222222-2222-4222-8222-222222222222';
 select public.submit_carwash_day_settlement(
  current_setting('qa.completion_day')::date,45,42,
  'day/'||current_setting('qa.completion_day')||'/qa-final-pos.pdf',
