@@ -50,7 +50,7 @@ describe("Carwash worker service worker private data isolation",()=>{
     expect(fetching).toHaveBeenCalledTimes(1);
     expect(caching).not.toHaveBeenCalled();
   });
-  it("falls back ONLY to reviewed public offline.html if home network request fails",async()=>{
+  it("falls back ONLY to reviewed public manager offline shell if home network request fails",async()=>{
     const {listeners,cache,fetching,caching}=boot();
     fetching.mockRejectedValueOnce(Error("network disconnected"));
     const offline={status:200,body:"reviewed public offline HTML"};
@@ -59,7 +59,7 @@ describe("Carwash worker service worker private data isolation",()=>{
     listeners.get("fetch")?.({request:{...request("https://carwash.example/"),mode:"navigate"},respondWith});
     expect(await respondWith.mock.calls[0][0]).toBe(offline);
     expect(caching).not.toHaveBeenCalled();
-    expect(cache.match).toHaveBeenCalledWith("/offline.html");
+    expect(cache.match).toHaveBeenCalledWith("/offline-manager.html");
   });
   it("never stores shared worker bearer URLs and serves the public offline worker form only when disconnected",async()=>{
     const {listeners,cache,fetching,caching}=boot();
