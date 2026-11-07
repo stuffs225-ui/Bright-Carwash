@@ -76,15 +76,11 @@ export async function GET(request:Request){
   const email=(process.env.CARWASH_BACKUP_EMAIL||"").trim();
   const from=(process.env.CARWASH_BACKUP_FROM_EMAIL||"").trim();
   const resendKey=process.env.RESEND_API_KEY;
-  if(!email||!/^\S+@\S+\.\S+$/.test(email)||!from||!resendKey)
-   return fail(503,"Encrypted offsite backup configuration is incomplete");
+  // A free private-storage archive must still work without an email service.
+  // External offsite delivery remains an optional later enhancement.
+  const offsiteConfigured=!!(email&&/^\S+@\S+\.\S+$/.test(email)&&from&&resendKey);
   const admin=createAdminClient();
-  const backupDay=new Date().toISOString().slice(0,10);
-  const previous=await admin.from("settings").select("value").eq("key","backup_last_sent_at").maybeSingle();
-  if(previous.error)return fail(503,"Unable to verify latest backup delivery");
-  if(typeof previous.data?.value==="string"&&previous.data.value.startsWith(backupDay))
-   return NextResponse.json({ok:true,skipped:true,reason:"Daily encrypted archive already delivered"},
-    {headers:NO_STORE});
+  // Daily immutable filenames avoid duplicate archives and extra storage usage.
   const tables:Record<string,unknown[]>={};
   for(const table of TABLES)tables[table]=await readAll(admin,table);
   const objects=await evidenceArchive(admin);
@@ -114,19 +110,52 @@ export async function GET(request:Request){
       decoded.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF)
     return fail(503,"Stored archive does not match this database");
   }
-  const hash=createHash("sha256").update(archive).digest("hex");
-  const emailResult=await new Resend(resendKey).emails.send({
-   from,to:email,subject:"Bright Carwash encrypted daily backup — "+archivedAt.slice(0,10),
-   html:"<p>Encrypted carwash backup attached. The AES-256-GCM key is never included. Preserve the key separately.</p>",
-   attachments:[{filename:archivedAt.slice(0,10)+".bcw2",content:archive.toString("base64")}]
-  });
-  if(emailResult.error)return fail(503,"Encrypted archive saved but offsite delivery failed");
-  const recorded=await admin.from("settings").upsert({
-   key:"backup_last_sent_at",value:archivedAt
+  const verify=await admin.storage.from("backups").download(filename);
+  if(verify.error||!verify.data)return fail(503,"Stored encrypted archive could not be read back");
+  const stored=Buffer.from(await verify.data.arrayBuffer());
+  const restored=decryptBackup(stored,key) as {
+   format?:string;version?:number;projectRef?:string;
+   tables?:Record<string,unknown[]>;rowCounts?:Record<string,number>;
+   storage?:Record<string,unknown[]>
+  };
+  if(restored.format!=="bright-carwash-v2"||restored.version!==1||
+     restored.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF||
+     !restored.tables||!restored.rowCounts||
+     !Object.keys(restored.rowCounts).every(table=>
+       Array.isArray(restored.tables?.[table])&&
+       restored.tables?.[table].length===restored.rowCounts?.[table]))
+   return fail(503,"Encrypted archive integrity verification failed");
+  const hash=createHash("sha256").update(stored).digest("hex");
+  const saved=await admin.from("settings").upsert({
+   key:"backup_last_saved_at",value:archivedAt
   },{onConflict:"key"});
-  if(recorded.error)return fail(503,"Backup delivered but confirmation state was not stored");
-  return NextResponse.json({ok:true,archivedAt,rowCounts,evidenceFiles:objects.length,sha256:hash,
-   storagePath:filename,offsiteDelivered:true},{headers:NO_STORE});
+  if(saved.error)return fail(503,"Archive saved but status update failed");
+  const checksum=await admin.from("settings").upsert({
+   key:"backup_last_sha256",value:hash
+  },{onConflict:"key"});
+  if(checksum.error)return fail(503,"Archive saved but checksum status update failed");
+  let offsiteDelivered=false;
+  if(offsiteConfigured){
+   const emailResult=await new Resend(resendKey!).emails.send({
+    from,to:email,subject:"Bright Carwash encrypted daily backup — "+archivedAt.slice(0,10),
+    html:"<p>Encrypted daily carwash archive attached. The AES-256-GCM key is kept separately on the server.</p>",
+    attachments:[{filename:archivedAt.slice(0,10)+".bcw2",content:stored.toString("base64")}]
+   });
+   offsiteDelivered=!emailResult.error;
+   if(offsiteDelivered){
+    await admin.from("settings").upsert({
+     key:"backup_last_sent_at",value:archivedAt
+    },{onConflict:"key"});
+   }
+  }
+  return NextResponse.json({ok:true,archivedAt,
+   rowCounts:restored.rowCounts,
+   evidenceFiles:restored.storage?.["carwash-pos-evidence"]?.length||0,
+   sha256:hash,storagePath:filename,archiveVerified:true,
+   offsiteDelivered,offsiteConfigured,
+   note:offsiteDelivered?"Encrypted offsite copy delivered":
+    "Encrypted private storage backup complete; external email delivery not configured or not delivered"
+  },{headers:NO_STORE});
  }catch{
   return fail(503,"Unable to produce verified encrypted backup");
  }
