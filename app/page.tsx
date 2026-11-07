@@ -66,7 +66,7 @@ function CarwashApp({identity}:{identity:AppIdentity}){
     </button>)}
    </nav>
    <main className="content-section-wrapper">
-    {restored&&tab==="car"&&<CarRegistrationScreen manager/>}
+    {restored&&tab==="car"&&<CarRegistrationScreen manager managerUserId={identity.userId}/>}
     {restored&&tab==="dashboard"&&<AnalysisTab/>}
     {restored&&tab==="expenses"&&<ExpensesTab/>}
     {restored&&tab==="workers"&&<WorkersHub/>}
