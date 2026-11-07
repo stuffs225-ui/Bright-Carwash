@@ -140,7 +140,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
       {section === "backup" && (
         <div className="space-y-4">
           <Section title="حالة النسخ المشفر — تلقائي يوميًا">
-            <p className="txt-muted text-sm">النسخ اليومي يعمل بجدولة Vercel الساعة 06:00 صباحًا بتوقيت الرياض، ويحفظ ملفًا مشفرًا داخل مساحة خاصة في Supabase. لا تعتمد هذه الصفحة على إعدادات البريد القديمة.</p>
+            <p className="txt-muted text-sm">النسخ المشفر مجدول يوميًا الساعة 06:00 صباحًا بتوقيت الرياض. تعرض الحالة الفعلية آخر عملية ناجحة؛ إعداد الجدولة لا يثبت اكتمالها أو إمكانية الاستعادة.</p>
             {backupError&&<p role="alert" className="txt-warning text-sm">{backupError}</p>}
             {!backupStatus&&!backupError&&<p className="txt-muted">جارٍ جلب آخر حالة...</p>}
             {backupStatus&&<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
