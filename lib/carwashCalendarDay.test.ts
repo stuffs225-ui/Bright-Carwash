@@ -12,8 +12,8 @@ describe("Midnight Riyadh business dates (not old 15:00-04:00 shift)",()=>{
  it("shows two or more unapproved days but hides only manager-approved date",()=>{
   const entries=[
     {id:"1",business_date:"2026-11-04",occurred_at:"2026-11-04T12:00:00Z",cash_paid:25,card_paid:0},
-    {id:"2",business_date:"2026-11-05",occurred_at:"2026-11-05T12:00:00Z",cash_paid:0,card_paid:30},
-    {id:"3",business_date:"2026-11-06",occurred_at:"2026-11-06T12:00:00Z",cash_paid:10,card_paid:10}
+    {id:"2",car_type:"سيارة كبيرة",business_date:"2026-11-05",occurred_at:"2026-11-05T12:00:00Z",cash_paid:0,card_paid:30},
+    {id:"3",car_type:"سيارة صغيرة",business_date:"2026-11-06",occurred_at:"2026-11-06T12:00:00Z",cash_paid:10,card_paid:10}
   ];
   const days=[
     {business_date:"2026-11-04",status:"approved" as const},
