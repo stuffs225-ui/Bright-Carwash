@@ -11,73 +11,65 @@ import { AlertsTab } from "./components/AlertsTab";
 import { ReconciliationTab } from "./components/ReconciliationTab";
 import { CrewBonusesTab } from "./components/CrewBonusesTab";
 import { AccountingMonthsTab } from "./components/AccountingMonthsTab";
-import { WorkerRegisterTab } from "./components/WorkerRegisterTab";
+import { CarEntryTab } from "./components/CarEntryTab";
 import { DaySettlementTab } from "./components/DaySettlementTab";
 import { OfflineStatusBadge } from "./components/OfflineStatusBadge";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
-import { InstallAppButton } from "./components/InstallAppButton";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ErrorMonitor } from "./components/ErrorMonitor";
 
+
 type Tab = "car" | "settlement" | "expenses" | "analysis" | "workers" | "crewbonus" | "months" | "settings" | "users" | "alerts" | "reconciliation";
-const NAV: { key: Tab; label: string; allowed: ("manager" | "worker")[] }[] = [
-  { key: "car", label: "🚗 تسجيل السيارات", allowed: ["worker"] },
-  { key: "settlement", label: "🧾 موازنة الأيام", allowed: ["manager"] },
-  { key: "expenses", label: "💳 المصروفات", allowed: ["manager"] },
-  { key: "analysis", label: "📊 اللوحة الرئيسية", allowed: ["manager"] },
-  { key: "workers", label: "👷 العمال والرواتب", allowed: ["manager"] },
-  { key: "crewbonus", label: "⭐ مكافآت العاملين", allowed: ["manager"] },
-  { key: "months", label: "🗓️ تقارير الشهور", allowed: ["manager"] },
-  { key: "settings", label: "⚙ الإعدادات", allowed: ["manager"] },
-  { key: "users", label: "🔗 روابط العمال", allowed: ["manager"] },
-  { key: "alerts", label: "🔔 التنبيهات", allowed: ["manager"] },
-  { key: "reconciliation", label: "🧾 تدقيق البيانات", allowed: ["manager"] },
+type Group="overview"|"operations"|"finance"|"management";
+const GROUPS:{key:Group;label:string;items:{key:Tab;label:string}[]}[]=[
+ {key:"overview",label:"📊 الرئيسية",items:[
+  {key:"analysis",label:"لوحة المؤشرات"},{key:"alerts",label:"التنبيهات"}]},
+ {key:"operations",label:"🚗 التشغيل",items:[
+  {key:"car",label:"تسجيل السيارات"},{key:"settlement",label:"موازنة الأيام"}]},
+ {key:"finance",label:"💰 المالية",items:[
+  {key:"expenses",label:"المصروفات"},{key:"workers",label:"العمال والرواتب"},
+  {key:"crewbonus",label:"مكافآت الفريق"},{key:"months",label:"تقارير الشهور"}]},
+ {key:"management",label:"⚙️ الإدارة",items:[
+  {key:"users",label:"رابط العامل"},{key:"settings",label:"الإعدادات"},{key:"reconciliation",label:"تدقيق الأرشيف"}]}
 ];
-
-function CarwashApp({ identity }: { identity: AppIdentity }) {
-  const [tab, setTab] = useState<Tab>(identity.role==="manager"?"analysis":"car");
-  const permitted = NAV.filter((item) => item.allowed.includes(identity.role));
-  const actualTab = permitted.some((t) => t.key === tab) ? tab : (identity.role==="manager"?"analysis":"car");
-  const canManage = identity.role === "manager";
-
-
-  return (
-    <ErrorBoundary>
-      <ErrorMonitor />
-      <div className="app-shell" dir="rtl">
-        <header className="app-header">
-          <h1 className="text-2xl sm:text-3xl font-extrabold">مغسلة سيارتك اللامعة</h1>
-          <p className="text-sm opacity-90 mt-2">
-            {identity.role==="manager"?"لوحة المدير — الإدارة الشاملة":"تسجيل السيارات — العامل"}
-          </p>
-          <div className="flex items-center justify-center gap-3 mt-3 text-sm">
-            <span>لوحة الإدارة — هذا الجهاز معتمد</span>
-          </div>
-        </header>
-        <nav className="tabs-bar" aria-label="القائمة الرئيسية">
-          {permitted.map(({key,label}) =>
-            <button key={key} type="button" className={`tab-button ${actualTab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>
-          )}
-        </nav>
-        <div className="content-section-wrapper">
-          {actualTab === "car" && <WorkerRegisterTab/>}
-          {canManage && actualTab === "settlement" && <DaySettlementTab canApproveVariance />}
-          {canManage && actualTab === "expenses" && <ExpensesTab />}
-          {canManage && actualTab === "analysis" && <AnalysisTab />}
-          {canManage && actualTab === "workers" && <WorkersTab />}
-          {canManage && actualTab === "crewbonus" && <CrewBonusesTab />}
-          {canManage && actualTab === "months" && <AccountingMonthsTab />}
-          {canManage && actualTab === "settings" && <SettingsTab />}
-          {canManage && actualTab === "users" && <UsersTab />}
-          {canManage && actualTab === "alerts" && <AlertsTab isOwner={canManage} />}
-          {canManage && actualTab === "reconciliation" && <ReconciliationTab />}
-        </div>
-        <div id="toast-container" />
-        <OfflineStatusBadge />
-        <ServiceWorkerRegister />
-      </div>
-    </ErrorBoundary>
-  );
+function CarwashApp({identity}:{identity:AppIdentity}){
+ const [tab,setTab]=useState<Tab>("analysis");
+ const group=GROUPS.find(g=>g.items.some(i=>i.key===tab))||GROUPS[0];
+ return <ErrorBoundary>
+  <ErrorMonitor />
+  <div className="app-shell" dir="rtl">
+   <header className="app-header">
+    <h1 className="text-2xl sm:text-3xl font-extrabold">مغسلة سيارتك اللامعة</h1>
+    <p className="text-sm opacity-90 mt-2">لوحة الإدارة — تسجيل السيارات ومتابعة التشغيل والحسابات</p>
+    <p className="text-xs opacity-80 mt-2">هذا الجهاز معتمد للإدارة</p>
+   </header>
+   <nav className="manager-groups" aria-label="الأقسام الرئيسية">
+    {GROUPS.map(g=><button key={g.key} type="button" className="manager-group-button"
+     aria-pressed={g.key===group.key} onClick={()=>setTab(g.items[0].key)}>{g.label}</button>)}
+   </nav>
+   <nav className="manager-sections" aria-label="صفحات القسم">
+    {group.items.map(item=><button key={item.key} type="button" className="manager-section-button"
+      aria-current={tab===item.key?"page":undefined}
+      onClick={()=>setTab(item.key)}>{item.label}</button>)}
+   </nav>
+   <div className="content-section-wrapper">
+    {tab==="car"&&<CarEntryTab ownerView/>}
+    {tab==="settlement"&&<DaySettlementTab canApproveVariance/>}
+    {tab==="expenses"&&<ExpensesTab/>}
+    {tab==="analysis"&&<AnalysisTab/>}
+    {tab==="workers"&&<WorkersTab/>}
+    {tab==="crewbonus"&&<CrewBonusesTab/>}
+    {tab==="months"&&<AccountingMonthsTab/>}
+    {tab==="settings"&&<SettingsTab/>}
+    {tab==="users"&&<UsersTab/>}
+    {tab==="alerts"&&<AlertsTab isOwner/>}
+    {tab==="reconciliation"&&<ReconciliationTab/>}
+   </div>
+   <div id="toast-container"/>
+   <OfflineStatusBadge/>
+   <ServiceWorkerRegister/>
+  </div>
+ </ErrorBoundary>;
 }
 export default function Home() {
   return <AuthGate>{identity => <CarwashApp identity={identity} />}</AuthGate>;
