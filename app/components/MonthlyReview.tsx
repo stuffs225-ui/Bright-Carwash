@@ -2,7 +2,7 @@
 import {useEffect,useMemo,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 import {fetchAllRows} from "@/lib/fetchAll";
-import {riyadhDayKey} from "@/lib/carwashCalendarDay";
+import {riyadhDayKey,crewBonusEligible} from "@/lib/carwashCalendarDay";
 import {arabicDate} from "./ArabicDateField";
 import {canonicalExpenseType} from "@/lib/expenseCategories";
 import {displaySar,operatingResult,OPERATING_RESULT_NOTE} from "@/lib/financialPresentation";
@@ -89,7 +89,7 @@ export function MonthlyReview({period}:{period:string}){
   const approvals=days.filter(d=>d.status==="approved").length;
   const result=operatingResult(cash+card,spent);
   return {cash,card,spent,wages,bonus,posVariance,cashVariance,imported,missingOperational,
-   approvals,openDays:days.length-approvals,result,crewProvision:entries.length*10};
+   approvals,openDays:days.length-approvals,result,crewProvision:entries.filter(e=>crewBonusEligible(e.car_type)).length*10};
  },[entries,expenses,bonuses,days,settlements,rows]);
  return <section className="card space-y-4">
   <h2 className="section-title">مراجعة شهر {period}</h2>
