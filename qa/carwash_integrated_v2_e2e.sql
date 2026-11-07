@@ -77,6 +77,10 @@ begin
  then raise exception 'Salary accrual or cash payment was double counted';end if;
 end $qa_accrual_once$;
 reset role;
+-- Prior synthetic workers enrolled devices for many test dates.
+-- This fixture explicitly marks only its own test-day devices as synchronized.
+update public.carwash_day_devices set sealed_at=now()
+ where business_date=current_setting('qa.finance_day')::date and sealed_at is null;
 insert into storage.objects(bucket_id,name)
  values('carwash-pos-evidence','day/'||current_setting('qa.finance_day')||'/qa-settlement.jpg');
 set role authenticated;
