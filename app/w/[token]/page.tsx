@@ -3,6 +3,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,type WorkerSubmission} from "@/lib/workerOfflineQueue";
 import {normalizeSaudiMobile} from "@/lib/phone";
+import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
 
 type Preset={id:string;car_type:string;service_type:string;amount:number};
 type Addon={id:string;name:string;price:number};
@@ -29,6 +30,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
  const [consent,setConsent]=useState(false);
  const [notes,setNotes]=useState("");
  const [status,setStatus]=useState("");
+ const [summaryVersion,setSummaryVersion]=useState(0);
  const [error,setError]=useState("");
  const syncActive=useRef(false);
  const safeToken=/^[a-f0-9]{64}$/.test(token);
@@ -63,6 +65,10 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
  },[token]);
 
  useEffect(()=>{
+  document.documentElement.classList.add("touch-mode");
+  return()=>document.documentElement.classList.remove("touch-mode");
+ },[]);
+ useEffect(()=>{
   if(!safeToken||!("serviceWorker" in navigator))return;
   void navigator.serviceWorker.register("/sw.js",{scope:"/"}).catch(()=>{});
  },[safeToken]);
@@ -88,7 +94,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    const remaining=(await listWorkerRecords(token)).length;
    setQueued(remaining);
    if(blocked)setError("هناك تسجيلات معلقة رُفضت من السيرفر. اطلب من المدير مراجعة الرابط أو السعر؛ لم تُحذف البيانات.");
-   if(sent&&remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");
+   if(sent){setSummaryVersion(v=>v+1);if(remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");}
    return {sent,remaining,blocked};
   }finally{syncActive.current=false;setSyncing(false);}
  },[token,queued]);
@@ -152,12 +158,13 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    setError("تعذر الحفظ الآمن على هذا الجهاز. لم تُسجل السيارة؛ لا تغلق الصفحة قبل مراجعة اتصال الجهاز.");
   }finally{setBusy(false);}
  }
- return <main className="min-h-screen px-4 py-6 max-w-xl mx-auto space-y-4" dir="rtl">
+ return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
   <header className="card text-center space-y-2">
    <h1 className="section-title">🚗 تسجيل السيارات</h1>
    <p className="txt-muted text-sm">مغسلة سيارتك اللامعة</p>
    {catalog&&<p className="text-sm font-bold">{catalog.label}</p>}
   </header>
+  {safeToken&&!invalid&&<WorkerDailySummary token={token} refreshKey={summaryVersion}/>}
   {queued>0&&<section className="card space-y-2" role="status">
     <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
     <p className="txt-muted text-sm">محفوظة مشفرة على نفس هذا الجهاز. لا تحذف بيانات Safari قبل إتمام المزامنة. قد تُرفض أسعار قديمة عند العودة للإنترنت.</p>
@@ -167,7 +174,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
    invalid?<section className="card"><p className="txt-danger">{invalid}</p>
     <p className="txt-muted text-sm mt-2">اطلب رابطًا جديدًا من مدير المغسلة.</p></section>:
   <form onSubmit={submit} className="card space-y-4">
-   {status&&<p className="rounded-lg bg-green-100 text-green-900 p-3 text-sm" role="status">{status}</p>}
+   {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{status}</p>}
    {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
    <label className="form-label">نوع السيارة والخدمة
     <select value={presetId} onChange={e=>setPresetId(e.target.value)} required>
@@ -207,7 +214,7 @@ export default function WorkerLinkPage({params}:{params:{token:string}}){
       onChange={e=>setCard(e.target.value)}/>
     </label>
    </div>}
-   <div className="rounded-xl p-3 bg-slate-100 text-slate-900 flex items-center justify-between">
+   <div className="rounded-xl p-3 flex items-center justify-between" style={{background:"var(--surface-3)",color:"var(--text)"}}>
     <span>الإجمالي بعد الخصم</span><strong className="text-xl">{sar(Math.max(0,price))}</strong>
    </div>
    <details className="border rounded-lg p-3">
