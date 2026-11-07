@@ -383,5 +383,6 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
    </button>
    <p className="txt-muted text-xs text-center">{manager?"يسجل المدير بنفس قائمة الخدمات والأسعار التي تظهر للعامل، مع عرض الأيام غير المعتمدة.":"لا يحتاج هذا الرابط إيميل أو حساب أو كلمة مرور. يتيح تسجيل السيارات فقط. يمكنك الحفظ أثناء انقطاع الشبكة بعد فتح الصفحة مرة واحدة؛ يثبت التسجيل في النظام بعد نجاح المزامنة."}</p>
   </form>}
+  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
  </main>;
 }
