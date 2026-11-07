@@ -30,7 +30,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
   const [threshold, setThreshold] = useState("");
   const [rate, setRate] = useState("");
   const [dailyTarget, setDailyTarget] = useState("");
-  const [backupStatus,setBackupStatus]=useState<{lastSavedAt:string|null;lastSentAt:string|null;lastVerifiedAt?:string|null;lastVerifiedMatchesChecksum?:boolean;latestArchive:string|null;archivedFilesShown:number;offsiteConfigured:boolean;checksumAvailable:boolean;encryptionConfigured:boolean}|null>(null);
+  const [backupStatus,setBackupStatus]=useState<{lastSavedAt:string|null;lastSentAt:string|null;lastVerifiedAt?:string|null;lastFailedAt?:string|null;lastVerifiedMatchesChecksum?:boolean;latestArchive:string|null;archivedFilesShown:number;offsiteConfigured:boolean;checksumAvailable:boolean;encryptionConfigured:boolean}|null>(null);
   const [backupError,setBackupError]=useState("");
   const [backupVerifying,setBackupVerifying]=useState(false);
   const [backupVerifyResult,setBackupVerifyResult]=useState<{
@@ -182,6 +182,11 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
                 <p className="txt-muted mt-1">{backupStatus.lastSentAt?"آخر إرسال: "+new Date(backupStatus.lastSentAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn"):"غير مفعلة أو لم يتم إرسالها"}</p>
               </div>
             </div>}
+            {backupStatus?.lastFailedAt&&(!backupStatus.lastSavedAt||
+             new Date(backupStatus.lastFailedAt)>new Date(backupStatus.lastSavedAt))&&
+             <p className="txt-danger text-sm mt-3" role="alert">
+              تعذر النسخ مؤخرًا: {new Date(backupStatus.lastFailedAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}. راجع إعدادات النسخ واتصال الخادم.
+             </p>}
             {backupStatus?.lastVerifiedAt&&<p className="txt-muted text-sm mt-3">
              آخر تحقق من سلامة الملف المشفر: {new Date(backupStatus.lastVerifiedAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}
              {backupStatus.lastVerifiedMatchesChecksum?" (بصمة مطابقة)":" (أُنشئت نسخة أحدث؛ يلزم إعادة التحقق)"}
