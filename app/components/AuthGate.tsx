@@ -82,10 +82,14 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  if(!supabaseConfigured)return <main className="min-h-screen flex items-center justify-center p-6" dir="rtl">
   <p className="txt-danger">إعدادات قاعدة البيانات غير متوفرة. الإدارة غير متاحة.</p>
  </main>;
- if(loading)return <main className="min-h-screen flex items-center justify-center p-5" dir="rtl">
-  <div className="card w-full max-w-md text-center space-y-3">
-   <h1 className="section-title">مغسلة سيارتك اللامعة</h1>
-   <p>جارٍ فتح الإدارة على جهازك...</p>
+ if(loading)return <main className="app-shell" dir="rtl" aria-busy="true">
+  <header className="app-header"><h1 className="text-2xl font-extrabold">مغسلة سيارتك اللامعة</h1></header>
+  <div className="content-section-wrapper space-y-4">
+   <div className="h-12 rounded-xl animate-pulse" style={{background:"var(--surface-3)"}}/>
+   <div className="grid grid-cols-2 gap-3">
+    {[0,1,2,3].map(i=><div key={i} className="metric-card animate-pulse" style={{background:"var(--surface-3)"}}/>)}
+   </div>
+   <p className="txt-muted text-sm text-center">يتم استعادة الجلسة الآمنة...</p>
   </div>
  </main>;
  if(!identity)return <main className="min-h-screen flex items-center justify-center p-5" dir="rtl">
