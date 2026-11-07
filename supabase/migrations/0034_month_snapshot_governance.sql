@@ -44,7 +44,7 @@ begin
   'cars', (select count(*) from public.entries
     where occurred_at >=v_start and occurred_at <v_end and deleted_at is null),
   'crew_provision',10 * (select count(*) from public.entries
-    where occurred_at >=v_start and occurred_at <v_end and deleted_at is null),
+    where car_type in ('سيارة صغيرة','سيارة كبيرة') and occurred_at >=v_start and occurred_at <v_end and deleted_at is null),
   'crew_extra_bonuses',coalesce((select sum(amount) from public.crew_shift_bonuses
     where shift_date >= (p_period || '-01')::date
       and shift_date < ((p_period || '-01')::date + interval '1 month')::date
