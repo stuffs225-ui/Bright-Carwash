@@ -182,7 +182,7 @@ export function CarRegistrationScreen({token="",manager=false}:{token?:string;ma
   const id=manager&&managerPending.current?.fingerprint===fingerprint
    ?managerPending.current.id:crypto.randomUUID();
   if(manager)managerPending.current={fingerprint,id};
-  const payload:WorkerSubmission={...basis,mutationId:id};
+  const payload:WorkerSubmission={...basis,mutationId:id,recordedAt:new Date().toISOString()};
   setBusy(true);
   try{
    if(manager){
