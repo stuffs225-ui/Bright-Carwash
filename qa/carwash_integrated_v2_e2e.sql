@@ -6,7 +6,7 @@ insert into public.carwash_worker_links(token_hash,label,created_by,expires_at,d
    now()+interval '30 days',250)
 on conflict do nothing;
 do $qa_custom_and_readiness$
-declare v_link uuid;v_first jsonb;v_again jsonb;v_entry uuid;
+declare v_link uuid;v_first jsonb;v_again jsonb;v_entry uuid;v_extras jsonb;v_extra_id uuid;
  v_lines integer;v_total numeric;v_status text;v_denied boolean:=false;
 begin
  select id into v_link from public.carwash_worker_links where token_hash=repeat('e',64);
@@ -27,6 +27,20 @@ begin
  from public.carwash_entry_line_items where entry_id=v_entry;
  if v_lines<>1 or v_total<>40 then
   raise exception 'Exception base price was not saved as immutable line item';end if;
+ -- Independent 2nd car with a custom one-time add-on and mixed cash/card.
+ v_extras:=public.carwash_worker_link_record_exception(
+  repeat('e',64),'سيارة كبيرة','غسيل داخلي خاص',35,
+  '[{"name":"واكس خاص","price":12.50}]'::jsonb,'[]'::jsonb,
+  20,27.50,0,'mixed QA','عمل إضافي مستقل',
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeef'::uuid,null,false);
+ v_extra_id:=(v_extras->>'id')::uuid;
+ select count(*),sum(amount) into v_lines,v_total
+ from public.carwash_entry_line_items where entry_id=v_extra_id;
+ if v_lines<>2 or v_total<>47.50 then
+  raise exception 'Custom add-on line-price snapshot failed';end if;
+ if (select count(*) from public.entry_presets where service_type='غسيل داخلي خاص')<>0
+ then raise exception 'One-time price mutated permanent catalog';end if;
+
  insert into storage.objects(bucket_id,name)
   values('carwash-ready-photos','active/'||v_entry::text||'/qa-photo.jpg');
  perform public.carwash_readiness_action(v_entry,'photo_uploaded','worker',null,v_link,
