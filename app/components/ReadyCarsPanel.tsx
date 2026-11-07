@@ -111,10 +111,28 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
   }catch(e){setError(e instanceof Error?e.message:"فشل الصورة");}
   finally{setBusy("");}
  }
+ async function prepareStoredPhoto(car:Car){
+  if(busy)return;
+  setBusy(car.id);setError("");setNotice("");
+  try{
+   const item=await call("photo",car.id);
+   const response=await fetch(item.url,{cache:"no-store"});
+   if(!response.ok)throw Error("تعذر تحميل الصورة المحفوظة");
+   const original=new File([await response.blob()],"ready-saved.jpg",{type:"image/jpeg"});
+   const prepared=await imageForShare(original);
+   setFiles(prev=>({...prev,[car.id]:prepared}));
+   setNotice("صورة السيارة أصبحت جاهزة. اضغط «مشاركة الجاهزية» لفتح قائمة مشاركة الجهاز.");
+  }catch(e){setError(e instanceof Error?e.message:"لم تتجهز الصورة للمشاركة");}
+  finally{setBusy("");}
+ }
  async function share(car:Car){
   if(car.status!=="ready")return;
   const msg=readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.";
   const file=files[car.id];
+  if(car.photoAvailable&&!file){
+   setError("الصورة محفوظة لكن لم تُجهّز على هذا الجهاز؛ اضغط «تجهيز الصورة للمشاركة» أولًا.");
+   return;
+  }
   const canShare=typeof navigator.share==="function";
   setError("");setNotice("");
   try{
@@ -188,14 +206,31 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
       {car.status==="ready"&&<button type="button" className="btn-secondary"
        disabled={busy===car.id} onClick={()=>void action(car,"delivered")}>
        تم التسليم</button>}
-      {car.status!=="delivered"&&<label className="btn-secondary text-center cursor-pointer">
-       {busy===car.id?"جارٍ الحفظ...":car.photoAvailable?"تحديث صورة السيارة":"📷 تصوير السيارة"}
-       <input type="file" className="sr-only" accept="image/*" capture="environment"
-        disabled={!!busy} onChange={e=>{const f=e.currentTarget.files?.[0];
-         if(f)void upload(car,f);e.currentTarget.value="";}}/>
-      </label>}
+      {car.status!=="delivered"&&<>
+       <label className="btn-secondary text-center cursor-pointer">
+        📷 تصوير السيارة
+        <input type="file" className="sr-only" accept="image/*" capture="environment"
+         disabled={!!busy} onChange={e=>{
+          const photo=e.currentTarget.files?.[0];
+          if(photo)void upload(car,photo);e.currentTarget.value="";
+         }}/>
+       </label>
+       <label className="btn-secondary text-center cursor-pointer">
+        اختيار صورة من المعرض
+        <input type="file" className="sr-only" accept="image/*"
+         disabled={!!busy} onChange={e=>{
+          const photo=e.currentTarget.files?.[0];
+          if(photo)void upload(car,photo);e.currentTarget.value="";
+         }}/>
+       </label>
+      </>}
      </div>
      {car.status==="ready"&&<>
+      {car.photoAvailable&&!files[car.id]&&<button type="button" className="btn-secondary w-full"
+       disabled={!!busy} onClick={()=>void prepareStoredPhoto(car)}>
+       {busy===car.id?"جارٍ تجهيز الصورة...":"تجهيز الصورة المحفوظة للمشاركة"}
+      </button>}
+      {files[car.id]&&<p className="txt-cash text-xs">✓ الصورة جاهزة للمشاركة مع الرسالة</p>}
       <button type="button" className="btn-primary w-full"
        onClick={()=>void share(car)}>مشاركة الجاهزية عبر واتساب</button>
       {car.phone&&<button type="button" className="btn-secondary w-full"
