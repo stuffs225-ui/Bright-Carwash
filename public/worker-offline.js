@@ -4,6 +4,15 @@
  const DB="bright-carwash-worker-encrypted-outbox-v1";
  const $=id=>document.getElementById(id);
  const token=location.pathname.match(/^\/w\/([a-f0-9]{64})$/)?.[1]||"";
+ let offlineManager=null;
+ try{offlineManager=JSON.parse(localStorage.getItem("bright_carwash_manager_offline_id_v1")||"null");}
+ catch{offlineManager=null;}
+ const managerValid=location.pathname==="/" && offlineManager &&
+  /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(offlineManager.userId) &&
+  Date.now()-Number(offlineManager.verifiedAt)>=0 &&
+  Date.now()-Number(offlineManager.verifiedAt)<14*86400000;
+ const managerNamespace=managerValid?offlineManager.userId.toLowerCase().replace(/-/g,"").padEnd(64,"0"):"";
+ const namespace=token||managerNamespace;
  const notify=(msg,err=false)=>{(err?$("error"):$("status")).textContent=msg;};
  const reqResult=req=>new Promise((resolve,reject)=>{
   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
@@ -21,11 +30,11 @@
   };
   req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
  });
- if(!token||!crypto.subtle||typeof indexedDB==="undefined"){
+ if(!namespace||!crypto.subtle||typeof indexedDB==="undefined"){
   notify("لا يمكن تشغيل النسخة المحلية بصورة آمنة. افتح رابط العامل الأصلي عند توفر الإنترنت.",true);
   return;
  }
- const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(token))))
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(namespace))))
   .map(x=>x.toString(16).padStart(2,"0")).join("");
  let db=null;
  try{db=await openDb();}catch{notify("المتصفح لا يدعم التخزين المشفر المطلوب.",true);return;}
@@ -35,6 +44,11 @@
   return;
  }
  const catalog=catalogRow.catalog;
+ const discountLimit=Number.isFinite(Number(catalog.discountLimit))
+  ?Math.max(0,Math.min(1000,Number(catalog.discountLimit))):10;
+ $("discount").max=String(discountLimit);
+ const discountLabel=document.querySelector('label[for="discount"]');
+ if(discountLabel)discountLabel.textContent="قيمة الخصم (بحد أقصى "+discountLimit+" ريال)";
  if(!catalog.presets?.length){notify("لا توجد خدمات محفوظة، افتح الرابط بالإنترنت.",true);return;}
  let method="cash",discountEnabled=false;
  const money=n=>new Intl.NumberFormat("ar-SA",{maximumFractionDigits:2}).format(n)+" ر.س";
@@ -90,7 +104,7 @@
   e.preventDefault();$("error").textContent="";$("status").textContent="";
   const discount=discountEnabled?Number($("discount").value):0;
   const cash=Number($("cash").value),card=Number($("card").value);
-  if(!Number.isFinite(discount)||discount<0||discount>10||
+  if(!Number.isFinite(discount)||discount<0||discount>discountLimit||
    !Number.isFinite(cash)||!Number.isFinite(card)||cash<0||card<0||
    Math.round((cash+card)*100)!==Math.round(price()*100)||price()<=0){
    notify("تحقق من السعر ومبالغ الكاش والشبكة والخصم.",true);return;
@@ -101,7 +115,7 @@
   if(phone&&!$("consent").checked){notify("يلزم موافقة العميل لاستخدام الجوال، أو اتركه فارغًا.",true);return;}
   const payload={presetId:$("preset").value,addons:Array.from($("addons").querySelectorAll("input:checked"))
     .map(x=>x.dataset.addon),cash,card,discount,notes:$("notes").value.trim(),
-   customerPhone:phone||null,whatsappConsent:!!phone&&$("consent").checked,mutationId:crypto.randomUUID()};
+   customerPhone:phone||null,whatsappConsent:!!phone&&$("consent").checked,mutationId:crypto.randomUUID(),recordedAt:new Date().toISOString()};
   $("save").disabled=true;
   try{
    const rows=await reqResult(db.transaction("records","readonly").objectStore("records").getAll());
