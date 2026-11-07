@@ -96,7 +96,7 @@ export function UsersTab(){
    </div>}
   </section>
   {error&&<p className="txt-danger" role="alert">{error}</p>}
-  {status&&<p role="status" className="text-green-700">{status}</p>}
+  {status&&<p role="status" className="txt-cash">{status}</p>}
   <section className="card space-y-3">
    <h2 className="section-title">حالة الرابط المشترك ({links.filter(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now()).length} نشط)</h2>
    {links.length===0?<p className="txt-muted text-sm">لم تُنشأ روابط حتى الآن.</p>:
