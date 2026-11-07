@@ -23,7 +23,8 @@ const TABLES=[
  "carwash_worker_link_submissions","carwash_owner_activation_links",
  "carwash_owner_devices",
  "carwash_entry_line_items","carwash_entry_readiness",
- "carwash_readiness_events","carwash_cash_movements"
+ "carwash_readiness_events","carwash_cash_movements",
+ "carwash_photo_cleanup_log"
 ] as const;
 const MAX_ARCHIVE_BYTES=42*1024*1024;
 const MAX_EVIDENCE_FILES=500;
@@ -68,6 +69,41 @@ async function evidenceArchive(admin:ReturnType<typeof createAdminClient>,bucket
  await walk("");
  return result;
 }
+/** Purge only photos older than the manager's configured retention AFTER a
+ * verified encrypted backup has captured today's photo bytes.
+ * This is bounded per run to protect the free-function time budget.
+ */
+async function cleanExpiredReadyPhotos(admin:ReturnType<typeof createAdminClient>){
+ const config=await admin.from("settings").select("value")
+  .eq("key","ready_photo_retention_days").maybeSingle();
+ if(config.error)return {removed:0,failed:0,status:"policy_unavailable"};
+ const requested=Number(config.data?.value??30);
+ const days=Number.isInteger(requested)&&requested>=1&&requested<=365?requested:30;
+ const cutoff=new Date(Date.now()-days*86400000).toISOString();
+ const older=await admin.from("carwash_entry_readiness")
+  .select("entry_id,photo_path").not("photo_path","is",null)
+  .lt("updated_at",cutoff).limit(30);
+ if(older.error)return {removed:0,failed:0,status:"query_failed"};
+ let removed=0,failed=0;
+ for(const image of older.data||[]){
+  const path=image.photo_path;
+  if(typeof path!=="string"||!path.startsWith("active/"+image.entry_id+"/")){
+   failed++;continue;
+  }
+  const del=await admin.storage.from("carwash-ready-photos").remove([path]);
+  if(del.error){failed++;continue;}
+  const update=await admin.from("carwash_entry_readiness")
+   .update({photo_path:null}).eq("entry_id",image.entry_id).eq("photo_path",path);
+  if(update.error){failed++;continue;}
+  const record=await admin.from("carwash_photo_cleanup_log").insert({
+   entry_id:image.entry_id,object_path:path,reason:"configured_retention"
+  });
+  if(record.error){failed++;continue;}
+  removed++;
+ }
+ return {removed,failed,status:failed?"partial":"ok",retentionDays:days};
+}
+
 export async function GET(request:Request){
  const secret=process.env.CRON_SECRET;
  if(!secret||secret.length<16||request.headers.get("authorization")!=="Bearer "+secret)
@@ -151,10 +187,15 @@ export async function GET(request:Request){
     },{onConflict:"key"});
    }
   }
+  // An archive must pass cryptographic verification before any image expires.
+  const retention=await cleanExpiredReadyPhotos(admin).catch(()=>({
+   removed:0,failed:0,status:"cleanup_unavailable"
+  }));
   return NextResponse.json({ok:true,archivedAt,
    rowCounts:restored.rowCounts,
    evidenceFiles:restored.storage?.["carwash-pos-evidence"]?.length||0,
    readyPhotos:restored.storage?.["carwash-ready-photos"]?.length||0,
+   photoRetention:retention,
    sha256:hash,storagePath:filename,archiveVerified:true,
    offsiteDelivered,offsiteConfigured,
    note:offsiteDelivered?"Encrypted offsite copy delivered":
