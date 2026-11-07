@@ -145,8 +145,8 @@ create policy manager_read_carwash_ready_events on public.carwash_readiness_even
  for select to authenticated using(private.current_app_role() in ('owner','manager'));
 create index if not exists carwash_readiness_events_entry_idx on public.carwash_readiness_events(entry_id,created_at);
 
-insert into storage.buckets(id,name,public,file_size_limit)
- values('carwash-ready-photos','carwash-ready-photos',false,6291456)
+insert into storage.buckets(id,name,public)
+ values('carwash-ready-photos','carwash-ready-photos',false)
 on conflict(id) do nothing;
 
 -- Worker exception writes are only possible through this service_role-only RPC.
