@@ -24,7 +24,7 @@ const TABLES=[
  "carwash_owner_devices",
  "carwash_entry_line_items","carwash_entry_readiness",
  "carwash_readiness_events","carwash_cash_movements",
- "carwash_photo_cleanup_log"
+ "carwash_photo_cleanup_log","carwash_addon_proposals"
 ] as const;
 const MAX_ARCHIVE_BYTES=42*1024*1024;
 const MAX_EVIDENCE_FILES=500;
