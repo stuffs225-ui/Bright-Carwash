@@ -69,11 +69,11 @@ export function ReconciliationTab() {
       </div>
     </section>
     <section className="card space-y-3">
-      <h3 className="section-title">اختلافات المبالغ في الأرشيف ({mismatches.length})</h3>
-      <p className="txt-muted text-sm">للعرض والتدقيق فقط: البيانات الأصلية لا تتغير، ولا يُعتمد أي تعديل تلقائي. تحقق من مستند المصدر قبل اتخاذ قرار محاسبي.</p>
-      {mismatches.length===0?<p className="txt-muted">لم تظهر عمليات موسومة باختلافات ضمن البيانات المقروءة.</p>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr><th>المرجع</th><th>التاريخ</th><th>المبلغ الأصلي</th><th>الكاش + الشبكة</th><th>الفرق</th></tr></thead><tbody>
-       {mismatches.map(r=>{const paid=Number(r.cash_paid)+Number(r.card_paid);const origin=r.legacy_reported_total===null?null:Number(r.legacy_reported_total);return <tr key={r.id}><td>{r.legacy_ref||"—"}</td><td>{new Date(r.occurred_at).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}</td><td>{origin===null?"غير مسجل":origin.toFixed(2)}</td><td>{paid.toFixed(2)}</td><td>{origin===null?"غير معروف":(origin-paid).toFixed(2)}</td></tr>})}
-      </tbody></table></div>}
+      <h3 className="section-title">أرشيف الفروق الموثقة ({mismatches.length})</h3>
+      <p className="txt-muted text-sm">فروقات قديمة من 2025 بين الإجمالي المكتوب ومبالغ التحصيل. جميع مبالغ الكاش والشبكة محفوظة كما وردت، والفروق لا تُعَدّ عمليات ضائعة. تُعرض التفاصيل للتدقيق عند الطلب.</p>
+      {mismatches.length===0?<p className="txt-muted">لا توجد فروقات أرشيفية.</p>:<details className="rounded-xl border p-3"><summary className="cursor-pointer font-bold">عرض تفاصيل الفروقات التاريخية ({mismatches.length})</summary><div className="overflow-x-auto mt-3"><table className="app-table"><thead><tr><th>المرجع</th><th>التاريخ</th><th>المبلغ الأصلي</th><th>الكاش + الشبكة</th><th>الفرق</th></tr></thead><tbody>
+       {mismatches.map(r=>{const paid=Number(r.cash_paid)+Number(r.card_paid);const origin=r.legacy_reported_total===null?null:Number(r.legacy_reported_total);return <tr key={r.id}><td data-label="المرجع">{r.legacy_ref||"—"}</td><td data-label="التاريخ">{new Date(r.occurred_at).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}</td><td data-label="المبلغ الأصلي">{origin===null?"غير مسجل":origin.toFixed(2)}</td><td data-label="الكاش + الشبكة">{paid.toFixed(2)}</td><td data-label="الفرق">{origin===null?"غير معروف":(origin-paid).toFixed(2)}</td></tr>})}
+      </tbody></table></div></details>}
     </section>
     {error&&<p role="alert" className="txt-danger">{error}</p>}
     {success&&<p role="status">{success}</p>}
