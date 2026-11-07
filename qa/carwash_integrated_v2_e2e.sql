@@ -3,7 +3,7 @@
 reset role;
 insert into public.carwash_worker_links(token_hash,label,created_by,expires_at,daily_limit)
  values(repeat('e',64),'QA synthetic worker','22222222-2222-4222-8222-222222222222',
-   now()+interval '30 days',999)
+   now()+interval '30 days',250)
 on conflict do nothing;
 do $qa_custom_and_readiness$
 declare v_link uuid;v_first jsonb;v_again jsonb;v_entry uuid;
