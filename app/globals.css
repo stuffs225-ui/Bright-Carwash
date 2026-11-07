@@ -831,3 +831,27 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
  .manager-section-button{font-size:.85rem}
  .arabic-date-grid{grid-template-columns:minmax(46px,.7fr) minmax(94px,1.4fr) minmax(65px,.8fr);gap:4px}
 }
+
+
+/* Bright Carwash V2: a single six-page manager navigation. */
+.carwash-compact-header{padding-block:18px;min-height:0}
+.carwash-main-tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:7px;padding:9px;background:var(--surface-2);border-inline:1px solid var(--border);border-bottom:1px solid var(--border)}
+.carwash-main-tabs button{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;min-height:48px;padding:9px 6px;border-radius:11px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:800;line-height:1.4;cursor:pointer}
+.carwash-main-tabs button.active{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+.carwash-main-tabs button:focus-visible,.carwash-inner-tabs button:focus-visible{outline:3px solid var(--primary);outline-offset:2px}
+.carwash-inner-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:7px;padding:9px;background:var(--surface-2);border:1px solid var(--border);border-radius:13px}
+.carwash-inner-tabs button{padding:10px 6px;min-height:44px;border-radius:11px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:.93rem;font-weight:700;line-height:1.45}
+.carwash-inner-tabs button.active{color:var(--tone-blue-fg);background:var(--tone-blue-bg);border-color:var(--primary)}
+.carwash-quick-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:8px}
+.carwash-quick-choices button{min-height:60px;padding:12px 8px;display:flex;flex-direction:column;align-items:stretch;justify-content:center;text-align:right;gap:4px;background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:12px;font-size:.95rem;font-weight:800}
+.carwash-quick-choices button.active{background:var(--tone-blue-bg);border:2px solid var(--primary);color:var(--tone-blue-fg)}
+.carwash-quick-choices button:disabled{opacity:.5}
+@media (max-width:800px){
+.carwash-main-tabs{grid-template-columns:repeat(3,minmax(0,1fr));padding:8px;gap:6px}
+.carwash-main-tabs button{flex-direction:column;gap:2px;min-height:64px;font-size:.85rem}
+.carwash-main-tabs button span:first-child{font-size:1.18rem}
+.carwash-inner-tabs{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:7px}
+.carwash-inner-tabs button{font-size:.85rem;padding:9px 5px}
+.carwash-compact-header{padding-block:14px}
+}
+@media (max-width:390px){.carwash-main-tabs button{font-size:.8rem}}
