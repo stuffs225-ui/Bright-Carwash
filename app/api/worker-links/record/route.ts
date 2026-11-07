@@ -47,8 +47,6 @@ export async function POST(request:Request){
   if(Number(request.headers.get("content-length")||"0")>8192)return reply(400,"طلب كبير جدًا");
   const body=await request.json().catch(()=>null);
   const viaWorker=validCapability(body?.token);
-  if(viaWorker&&!submissionInServerRiyadhDay(body?.recordedAt,new Date()))
-   return reply(409,"العملية محفوظة بتاريخ يوم سابق أو ساعة الجهاز غير صحيحة. لم تُرحّل إلى اليوم الجديد؛ اطلب من المدير مراجعتها.");
   const isManual=body?.oneTime?.enabled===true;
   const manual=isManual?normalizeManual(body.oneTime):null;
   if(typeof body?.mutationId!=="string"||!uuid.test(body.mutationId)||
@@ -72,6 +70,15 @@ export async function POST(request:Request){
   if(!viaWorker){
    const access=await managerAccess(request);
    if(!access)return reply(403,"صلاحية المدير مطلوبة");
+   // Always resolve a known idempotency key before checking new price or date.
+   // A previous response can be lost across midnight while the write succeeded.
+   const already=await access.admin.from("entries")
+    .select("id").eq("created_by",access.user.id)
+    .eq("client_mutation_id",body.mutationId).maybeSingle();
+   if(already.error)return reply(503,"تعذر فحص تكرار الطلب");
+   if(already.data?.id)return NextResponse.json({ok:true,id:already.data.id,duplicate:true},{headers:NO_STORE});
+   if(!submissionInServerRiyadhDay(body?.recordedAt,new Date()))
+    return reply(409,"التسجيل المحلي من يوم سابق؛ لم يُرحّل لليوم الجديد. اطلب من المدير مراجعته.");
    const {data:limits}=await access.admin.from("settings")
     .select("key,value").eq("key","worker_discount_max").maybeSingle();
    const policyMax=Number(limits?.value??10);
@@ -97,11 +104,6 @@ export async function POST(request:Request){
    const base=manual?manual.price:Number(preset?.amount||0);
    if(round(cash+card+discount)!==round(base+officialExtras+manualExtras))
     return reply(409,"المدفوعات لا تطابق الأسعار الفعلية؛ راجع تفاصيل الفاتورة");
-   const already=await access.admin.from("entries")
-    .select("id").eq("created_by",access.user.id)
-    .eq("client_mutation_id",body.mutationId).maybeSingle();
-   if(already.error)return reply(503,"تعذر فحص تكرار الطلب");
-   if(already.data?.id)return NextResponse.json({ok:true,id:already.data.id,duplicate:true},{headers:NO_STORE});
    const jwt=(request.headers.get("authorization")||"").replace(/^Bearer\s+/i,"");
    const userClient=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,{
@@ -133,6 +135,25 @@ export async function POST(request:Request){
   }
 
   const admin=createAdminClient();
+  if(!submissionInServerRiyadhDay(body?.recordedAt,new Date())){
+   const {data:link,error:linkError}=await admin.from("carwash_worker_links")
+    .select("id,expires_at,revoked_at,created_by")
+    .eq("token_hash",capabilityHash(body.token)).maybeSingle();
+   if(linkError||!link||link.revoked_at||Date.parse(link.expires_at)<=Date.now())
+    return reply(410,"رابط العامل ملغى أو منتهي الصلاحية");
+   const {data:owner}=await admin.from("app_members")
+    .select("role,active").eq("user_id",link.created_by).maybeSingle();
+   if(!owner?.active||owner.role!=="manager")return reply(403,"رابط العامل موقوف");
+   const {data:already,error:duplicateError}=await admin
+    .from("carwash_worker_link_submissions")
+    .select("entry_id").eq("link_id",link.id)
+    .eq("client_mutation_id",body.mutationId).maybeSingle();
+   if(duplicateError)return reply(503,"تعذر التحقق من عملية محفوظة سابقًا");
+   if(already?.entry_id)return NextResponse.json({
+    ok:true,id:already.entry_id,duplicate:true
+   },{headers:NO_STORE});
+   return reply(409,"هذه العملية سُجّلت على الجهاز في يوم مختلف؛ لن تُضاف تلقائيًا لليوم الجديد. راجع المدير.");
+  }
   const query=manual?admin.rpc("carwash_worker_link_record_exception",{
     p_link_hash:capabilityHash(body.token),
     p_car_type:manual.carType,p_service_type:manual.service,
