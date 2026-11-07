@@ -27,7 +27,14 @@ begin
  from public.carwash_entry_line_items where entry_id=v_entry;
  if v_lines<>1 or v_total<>40 then
   raise exception 'Exception base price was not saved as immutable line item';end if;
- perform public.carwash_readiness_action(v_entry,'ready','worker',null,v_link,null);
+ insert into storage.objects(bucket_id,name)
+  values('carwash-ready-photos','active/'||v_entry::text||'/qa-photo.jpg');
+ perform public.carwash_readiness_action(v_entry,'photo_uploaded','worker',null,v_link,
+  'active/'||v_entry::text||'/qa-photo.jpg');
+ if not exists(select 1 from public.carwash_readiness_events
+   where entry_id=v_entry and event_type='photo_uploaded') then
+  raise exception 'Private car image audit was not recorded';end if;
+  perform public.carwash_readiness_action(v_entry,'ready','worker',null,v_link,null);
  perform public.carwash_readiness_action(v_entry,'share_opened','worker',null,v_link,null);
  perform public.carwash_readiness_action(v_entry,'delivered','worker',null,v_link,null);
  select status into v_status from public.carwash_entry_readiness where entry_id=v_entry;
@@ -101,4 +108,22 @@ begin
    v_cash,v_expected,v_paid,v_expenses,v_net,v_diff;end if;
 end $qa_cash_balance$;
 reset role;
-select 'CARWASH EXCEPTION + READINESS + FINANCE E2E PASSED' as result;
+-- Member ACL: staff account cannot read manager-only car photos and contact metadata.
+set role authenticated;
+set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+do $qa_worker_no_direct_read$
+declare v_visible integer;v_can_call boolean:=false;
+begin
+ select count(*) into v_visible from public.carwash_entry_readiness;
+ if v_visible<>0 then raise exception 'Worker bypassed readiness RLS';end if;
+ begin
+  perform public.carwash_readiness_action(
+   'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'::uuid,
+   'ready','worker',null,null,null);
+  v_can_call:=true;
+ exception when insufficient_privilege then null;
+ end;
+ if v_can_call then raise exception 'Authenticated worker invoked service-only readiness RPC';end if;
+end $qa_worker_no_direct_read$;
+reset role;
+select 'CARWASH EXCEPTION + READINESS + FINANCE + RLS E2E PASSED' as result;
