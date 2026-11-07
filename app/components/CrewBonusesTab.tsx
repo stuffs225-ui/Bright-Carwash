@@ -52,7 +52,7 @@ export function CrewBonusesTab() {
   return <div className="space-y-6">
     <section className="card">
       <h2 className="section-title">مكافأة إضافية لفريق الوردية</h2>
-      <p className="txt-muted text-sm">مخصص العمال الأساسي 10 ريالات إجمالًا لكل سيارة. وهذه المكافأة الإضافية منفصلة وتُضاف إلى مستحقات الفريق، ولا تعني صرفها نقدًا. مكافأة ريالين القديمة مجمّدة.</p>
+      <p className="txt-muted text-sm">مخصص العمال الأساسي 10 ريالات إجمالًا لكل سيارة صغيرة أو كبيرة مؤهلة. وهذه المكافأة الإضافية منفصلة وتُضاف إلى مستحقات الفريق، ولا تعني صرفها نقدًا. مكافأة ريالين القديمة مجمّدة.</p>
       <form className="space-y-4 mt-4" onSubmit={add}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label className="form-label">تاريخ الوردية
