@@ -4,6 +4,7 @@ on:
     branches:
       - chatgpt/carwash-v2-secure-preview-20261101
       - chatgpt/bright-carwash-approved-phases-20261107
+      - chatgpt/carwash-ui-finance-governance-20261107
   workflow_dispatch:
 permissions:
   contents: read
@@ -95,4 +96,5 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_pin_import_whatsapp_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_backup_restore_rehearsal.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_worker_phone_regex_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_month_close_governance_e2e.sql
             '
