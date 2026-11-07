@@ -21,6 +21,13 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [days,setDays]=useState<Day[]>([]);
  const [selected,setSelected]=useState("");
  const [rows,setRows]=useState<Entry[]>([]);
+ const [cashExpenseRows,setCashExpenseRows]=useState<{id:string;amount:number;expense_type:string;notes:string|null}[]>([]);
+ const [cashPayoutRows,setCashPayoutRows]=useState<{id:string;amount:number;notes:string|null}[]>([]);
+ const [movements,setMovements]=useState<{id:string;amount:number;direction:string;reason:string}[]>([]);
+ const [movementAmount,setMovementAmount]=useState("");
+ const [movementDirection,setMovementDirection]=useState<"in"|"out">("out");
+ const [movementReason,setMovementReason]=useState("");
+ const [movementBusy,setMovementBusy]=useState(false);
  const [devices,setDevices]=useState<Device[]>([]);
  const [settlement,setSettlement]=useState<Settlement|null>(null);
  const [busy,setBusy]=useState(false);
@@ -38,7 +45,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [editNotes,setEditNotes]=useState("");
  const current=days.find(d=>d.business_date===selected);
  const totals=useMemo(()=>calendarDayTotals(rows),[rows]);
- const cashDiff=cashActual.trim()?toMoney(Number(cashActual)-totals.cash):null;
+ const cashExpenses=useMemo(()=>toMoney(cashExpenseRows.reduce((n,e)=>n+Number(e.amount),0)),[cashExpenseRows]);
+ const cashWorkerPayouts=useMemo(()=>toMoney(cashPayoutRows.reduce((n,e)=>n+Number(e.amount),0)),[cashPayoutRows]);
+ const movementNet=useMemo(()=>toMoney(movements.reduce((n,e)=>n+(e.direction==="in"?1:-1)*Number(e.amount),0)),[movements]);
+ const expectedCash=toMoney(totals.cash-cashExpenses-cashWorkerPayouts+movementNet);
+ const cashDiff=cashActual.trim()?toMoney(Number(cashActual)-expectedCash):null;
  const cardDiff=posActual.trim()?toMoney(Number(posActual)-totals.card):null;
  const hasVariance=cashDiff!==null&&cardDiff!==null&&(cashDiff!==0||cardDiff!==0);
  const filtered=rows.filter(e=>filter==="all"||filter==="crew"||
@@ -62,7 +73,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const reloadDay=useCallback(async()=>{
   if(!selected||!navigator.onLine)return;
   try{
-   const [loaded,deviceList,proof]=await Promise.all([
+   const start=new Date(selected+"T00:00:00+03:00").toISOString();
+   const end=new Date(new Date(selected+"T00:00:00+03:00").getTime()+86400000).toISOString();
+   const [loaded,deviceList,proof,expenses,payouts,cashMoves]=await Promise.all([
     fetchAllRows<Entry>((from,to)=>supabase.from("entries").select("*")
      .eq("business_date",selected).is("deleted_at",null)
      .order("occurred_at",{ascending:false}).range(from,to)),
@@ -70,9 +83,21 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      .eq("business_date",selected),
     supabase.from("carwash_day_settlements").select("*")
      .eq("business_date",selected).maybeSingle(),
+    supabase.from("expenses").select("id,expense_type,amount,notes")
+     .is("deleted_at",null).eq("payment_source","cash")
+     .gte("occurred_at",start).lt("occurred_at",end),
+    supabase.from("worker_ledger").select("id,amount,notes")
+     .is("deleted_at",null).eq("kind","payment").eq("payment_source","cash")
+     .is("expense_id",null).gte("occurred_at",start).lt("occurred_at",end),
+    supabase.from("carwash_cash_movements").select("id,amount,direction,reason")
+     .is("deleted_at",null).eq("business_date",selected),
    ]);
-   if(deviceList.error||proof.error)throw deviceList.error||proof.error;
+   if(deviceList.error||proof.error||expenses.error||payouts.error||cashMoves.error)
+    throw deviceList.error||proof.error||expenses.error||payouts.error||cashMoves.error;
    setRows(loaded);setDevices((deviceList.data||[]) as Device[]);
+   setCashExpenseRows((expenses.data||[]) as typeof cashExpenseRows);
+   setCashPayoutRows((payouts.data||[]) as typeof cashPayoutRows);
+   setMovements((cashMoves.data||[]) as typeof movements);
    setSettlement((proof.data as Settlement)||null);setError("");
   }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
  },[selected]);
@@ -83,6 +108,27 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   return()=>clearInterval(timer);
  },[reloadDays]);
  useEffect(()=>{void reloadDay();const timer=setInterval(()=>void reloadDay(),12000);return()=>clearInterval(timer)},[reloadDay]);
+
+ async function addCashMovement(e:React.FormEvent){
+  e.preventDefault();
+  const value=Number(movementAmount);
+  if(!selected||current?.status!=="open"||
+    !Number.isFinite(value)||value<=0||toMoney(value)!==value||
+    movementReason.trim().length<5){
+   setError("راجع مبلغ الحركة وسببها (5 أحرف على الأقل).");return;
+  }
+  setMovementBusy(true);setError("");
+  const {data:{user}}=await supabase.auth.getUser();
+  if(!user){setMovementBusy(false);setError("جلسة المدير غير متاحة");return;}
+  const {error}=await supabase.from("carwash_cash_movements").insert({
+   business_date:selected,direction:movementDirection,amount:value,
+   reason:movementReason.trim(),created_by:user.id
+  });
+  setMovementBusy(false);
+  if(error){setError("لم تحفظ حركة الكاش: "+error.message);return;}
+  setMovementAmount("");setMovementReason("");
+  await reloadDay();
+ }
 
  async function closeDay(){
   if(!current||current.status!=="open"||!dayIsFinished(selected,now))return;
@@ -172,12 +218,45 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      <MetricCard tone="blue" label="السيارات" value={totals.cars} onClick={()=>setFilter("all")} />
      <MetricCard tone="green" label="كاش" value={formatCurrency(totals.cash)} onClick={()=>setFilter("cash")} />
      <MetricCard tone="purple" label="شبكة" value={formatCurrency(totals.card)} onClick={()=>setFilter("card")} />
-     <MetricCard tone="emerald" label="عشرات الفريق" value={formatCurrency(totals.collectiveTens)} onClick={()=>setFilter("crew")} />
+     <MetricCard tone="emerald" label="مخصص الفريق الجماعي" value={formatCurrency(totals.collectiveTens)} onClick={()=>setFilter("crew")} />
     </div>
     <div className="mt-3 space-y-2">{rows.map(e=>
      <button type="button" key={e.id} className="w-full flex justify-between text-start items-center border-b py-3 link-inline" onClick={()=>setDetail(e)}>
       <span>{e.car_type} · {e.service_type}</span><strong>{formatCurrency(e.cash_paid+e.card_paid)}</strong>
      </button>)}</div>
+   </section>
+   <section className="card space-y-3">
+    <h3 className="section-title">مراجعة الكاش المتوقع قبل الموازنة</h3>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+     <MetricCard tone="green" label="الكاش المحصل" value={formatCurrency(totals.cash)} onClick={()=>setFilter("cash")}/>
+     <MetricCard tone="red" label="مصروفات مدفوعة كاش" value={formatCurrency(cashExpenses)}/>
+     <MetricCard tone="amber" label="دفعات عمال من الكاش" value={formatCurrency(cashWorkerPayouts)}/>
+     <MetricCard tone="blue" label="الكاش المتوقع في الصندوق" value={formatCurrency(expectedCash)}/>
+    </div>
+    <p className="txt-muted text-sm">التحصيل الكاش − المصروفات الكاش − دفعات العمال الكاش + صافي الإيداعات والسحوبات المسجلة = رصيد الصندوق المتوقع. البيانات القديمة مجهولة مصدر الدفع لا تُخصم تلقائيًا.</p>
+    <div className="space-y-2">
+     {cashExpenseRows.map(e=><p key={e.id} className="border-b py-2 text-sm">{e.expense_type} · {e.notes||"—"} — <strong>{formatCurrency(e.amount)}</strong></p>)}
+     {cashPayoutRows.map(e=><p key={e.id} className="border-b py-2 text-sm">دفعة عامل · {e.notes||"—"} — <strong>{formatCurrency(e.amount)}</strong></p>)}
+     {movements.map(e=><p key={e.id} className="border-b py-2 text-sm">{e.direction==="in"?"كاش وارد":"كاش خارج"} · {e.reason} — <strong>{formatCurrency(e.amount)}</strong></p>)}
+    </div>
+    {current.status==="open"&&<form className="grid grid-cols-1 sm:grid-cols-2 gap-3" onSubmit={e=>void addCashMovement(e)}>
+     <label className="form-label">نوع حركة الصندوق
+      <select value={movementDirection} onChange={e=>setMovementDirection(e.target.value as "in"|"out")}>
+       <option value="in">كاش وارد إلى الصندوق</option>
+       <option value="out">سحب / إيداع خارج الصندوق</option>
+      </select>
+     </label>
+     <label className="form-label">مبلغ الحركة (ر.س)
+      <input type="number" min=".01" step=".01" inputMode="decimal"
+       value={movementAmount} onChange={e=>setMovementAmount(e.target.value)} required/>
+     </label>
+     <label className="form-label sm:col-span-2">سبب حركة الكاش
+      <input value={movementReason} maxLength={250} onChange={e=>setMovementReason(e.target.value)}
+       placeholder="مثل إيداع كاش في البنك" required/>
+     </label>
+     <button className="btn-secondary sm:col-span-2" disabled={movementBusy||busy}
+      type="submit">{movementBusy?"جارٍ الحفظ":"تسجيل حركة كاش منفصلة"}</button>
+    </form>}
    </section>
    <section className="card">
     <h3 className="section-title">تأكيد مزامنة أجهزة هذا اليوم</h3>
@@ -195,7 +274,14 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} onChange={e=>setCashActual(e.target.value)} /></label>
       <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} onChange={e=>setPosActual(e.target.value)} /></label>
      </div>
-     <p>فرق الكاش: {cashDiff===null?"—":formatCurrency(cashDiff)} · فرق الشبكة: {cardDiff===null?"—":formatCurrency(cardDiff)}</p>
+     <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
+      <p>الكاش المسجل: {formatCurrency(totals.cash)}</p>
+      <p>المصروفات والدفعات النقدية: {formatCurrency(cashExpenses+cashWorkerPayouts)}</p>
+      <p>صافي حركة الصندوق: {formatCurrency(movementNet)}</p>
+      <p className="font-bold">الكاش المتوقع: {formatCurrency(expectedCash)}</p>
+      <p>فرق الكاش: {cashDiff===null?"—":formatCurrency(cashDiff)} · فرق الشبكة: {cardDiff===null?"—":formatCurrency(cardDiff)}</p>
+      {cashActual.trim()!==""&&posActual.trim()!==""&&<p className="mt-1">الموازنة الفعلية (كاش + شبكة): {formatCurrency(Number(cashActual)+Number(posActual))}</p>}
+     </div>
      <label className="form-label">صورة / PDF تقرير الشبكة<input type="file" accept="image/*,application/pdf" onChange={e=>setPosStatement(e.target.files?.[0]||null)} /></label>
      {hasVariance&&<label className="form-label">سبب الفرق<textarea rows={3} value={reason} onChange={e=>setReason(e.target.value)} /></label>}
      <label className="flex items-start gap-3 rounded-xl border p-3 text-sm leading-relaxed" style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
