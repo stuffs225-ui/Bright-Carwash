@@ -15,6 +15,8 @@ import { loadPresets } from "@/lib/presets";
 import type { Entry, EntryPreset, Expense } from "@/lib/types";
 import { MetricCard, type Tone } from "./MetricCard";
 import { Modal } from "./Modal";
+import {canonicalExpenseType} from "@/lib/expenseCategories";
+import {arabicDate} from "./ArabicDateField";
 import {operatingResult,expenseReturnPercent,displaySar,displayPercent,OPERATING_RESULT_NOTE} from "@/lib/financialPresentation";
 import {ArabicDateField} from "./ArabicDateField";
 
@@ -79,6 +81,8 @@ export function AnalysisTab() {
   const [kpiDetails, setKpiDetails] = useState<"cars"|"revenue"|"expenses"|"net"|"cash"|"card"|"avgTicket"|"avgCars"|null>(null);
   const [granularity, setGranularity] = useState<Granularity>("daily");
   const [activePeriod, setActivePeriod] = useState<"today" | "week" | "month" | "year" | null>(null);
+  const [activePeriodDay,setActivePeriodDay]=useState<string|null>(null);
+  const [expandedEntry,setExpandedEntry]=useState<string|null>(null);
   const [presets, setPresets] = useState<EntryPreset[]>([]);
 
   useEffect(() => {
@@ -323,7 +327,8 @@ export function AnalysisTab() {
       const row = daily.get(key)!;
       row.expenses += Number(exp.amount);
       expenseTotal += Number(exp.amount);
-      expenseTypes[exp.expense_type] = (expenseTypes[exp.expense_type] || 0) + Number(exp.amount);
+      const category=canonicalExpenseType(exp.expense_type,exp.notes);
+      expenseTypes[category]=(expenseTypes[category]||0)+Number(exp.amount);
     });
 
     daily.forEach((row) => (row.net = row.revenue - row.expenses));
@@ -398,6 +403,17 @@ export function AnalysisTab() {
       .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at));
   }, [activePeriod, quickGlance, allEntries]);
 
+  const periodDays=useMemo(()=>{
+   const map=new Map<string,{date:string;cars:Entry[];cash:number;card:number;total:number}>();
+   for(const entry of periodEntries){
+    const date=riyadhDayKey(new Date(entry.occurred_at));
+    const row=map.get(date)||{date,cars:[],cash:0,card:0,total:0};
+    row.cars.push(entry);row.cash+=Number(entry.cash_paid);
+    row.card+=Number(entry.card_paid);row.total+=Number(entry.gross);
+    map.set(date,row);
+   }
+   return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date));
+  },[periodEntries]);
   return (
     <div className="space-y-6">
       {pendingReviewCount !== null && pendingReviewCount > 0 ? (
@@ -666,34 +682,35 @@ export function AnalysisTab() {
       )}
 
       {activePeriod && (
-        <Modal title={`سيارات ${periodLabels[activePeriod]} (${periodEntries.length})`} onClose={() => setActivePeriod(null)}>
-          <div className="overflow-x-auto">
-            <table className="app-table">
-              <thead>
-                <tr><th>التاريخ</th><th>الوقت</th><th>السيارة</th><th>الخدمة</th><th>الدفع</th><th>الإجمالي</th></tr>
-              </thead>
-              <tbody>
-                {periodEntries.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center txt-muted py-5">لا توجد سيارات بهذي الفترة.</td></tr>
-                ) : (
-                  periodEntries.map((entry) => {
-                    const d = new Date(entry.occurred_at);
-                    return (
-                      <tr key={entry.id}>
-                        <td data-label="التاريخ">{riyadhDayKey(d)}</td>
-                        <td data-label="الوقت">{d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}</td>
-                        <td data-label="السيارة">{entry.car_type}</td>
-                        <td data-label="الخدمة">{entry.service_type}</td>
-                        <td data-label="الدفع">{entry.payment_method}</td>
-                        <td data-label="الإجمالي" className="font-extrabold">{formatCurrency(entry.gross)}</td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Modal>
+       <Modal title={`عمليات ${periodLabels[activePeriod]} (${periodEntries.length})`}
+        onClose={()=>{setActivePeriod(null);setActivePeriodDay(null);setExpandedEntry(null);}}>
+        {!activePeriodDay?<div className="space-y-2">
+         <p className="txt-muted text-sm">إجمالي الأيام: {periodDays.length}. تعرض كل بطاقة يومًا واحدًا مع الكاش والشبكة والإيراد المسجل.</p>
+         {periodDays.length===0?<p className="txt-muted">لا توجد عمليات في هذه الفترة.</p>:
+          periodDays.map(day=><button key={day.date} type="button"
+           className="w-full text-start rounded-xl border p-3"
+           style={{borderColor:"var(--border)",background:"var(--surface-2)"}}
+           onClick={()=>{setActivePeriodDay(day.date);setExpandedEntry(null);}}>
+           <strong>{arabicDate(day.date)} — {day.cars.length} سيارة</strong>
+           <p className="txt-muted text-sm mt-1">كاش {formatCurrency(day.cash)} · شبكة {formatCurrency(day.card)} · الإيراد {formatCurrency(day.total)}</p>
+          </button>)}
+        </div>:
+        <div className="space-y-3">
+         <button type="button" className="btn-secondary"
+          onClick={()=>{setActivePeriodDay(null);setExpandedEntry(null);}}>الرجوع إلى أيام الفترة</button>
+         <h3 className="subsection-title">{arabicDate(activePeriodDay)}</h3>
+         {(periodDays.find(d=>d.date===activePeriodDay)?.cars||[]).map(entry=>
+          <details key={entry.id} className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+           <summary className="cursor-pointer flex justify-between gap-2 font-bold">
+            <span>{entry.car_type} — {entry.service_type}</span>
+            <span>{formatCurrency(entry.gross)}</span>
+           </summary>
+           <p className="txt-muted text-sm mt-2">الوقت: {new Date(entry.occurred_at).toLocaleTimeString("ar-SA-u-nu-latn",{timeZone:"Asia/Riyadh",hour:"2-digit",minute:"2-digit"})}</p>
+           <p className="txt-muted text-sm">كاش {formatCurrency(entry.cash_paid)} · شبكة {formatCurrency(entry.card_paid)} · خصم {formatCurrency(Number(entry.discount_amount||0))}</p>
+           <p className="txt-muted text-xs mt-2">المرجع: {entry.id} {entry.notes?" — "+entry.notes:""}</p>
+          </details>)}
+        </div>}
+       </Modal>
       )}
     </div>
   );
