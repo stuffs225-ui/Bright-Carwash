@@ -54,6 +54,10 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
     setError("افتح رابط الإدارة المباشر الخاص بك.");return;
    }
    setOfflineActor(user.id);
+   // Only the verified manager UUID and verification time; NEVER session tokens,
+   // manager access URL, PIN or customer information.
+   try{localStorage.setItem("bright_carwash_manager_offline_id_v1",
+    JSON.stringify({userId:user.id,verifiedAt:Date.now()}));}catch{}
    setIdentity({userId:user.id,email:user.email||"",role:"manager"});
    setError("");
   }catch{
