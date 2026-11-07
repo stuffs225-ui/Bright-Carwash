@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {createClient} from "@supabase/supabase-js";
 import {createAdminClient} from "@/lib/supabaseAdmin";
+import {submissionInServerRiyadhDay} from "@/lib/workerSubmissionClock";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
 import {capabilityHash,validCapability,managerAccess,NO_STORE,requestIsSameOrigin} from "@/lib/carwashCapability";
 export const runtime="nodejs";
@@ -46,6 +47,8 @@ export async function POST(request:Request){
   if(Number(request.headers.get("content-length")||"0")>8192)return reply(400,"طلب كبير جدًا");
   const body=await request.json().catch(()=>null);
   const viaWorker=validCapability(body?.token);
+  if(viaWorker&&!submissionInServerRiyadhDay(body?.recordedAt,new Date()))
+   return reply(409,"العملية محفوظة بتاريخ يوم سابق أو ساعة الجهاز غير صحيحة. لم تُرحّل إلى اليوم الجديد؛ اطلب من المدير مراجعتها.");
   const isManual=body?.oneTime?.enabled===true;
   const manual=isManual?normalizeManual(body.oneTime):null;
   if(typeof body?.mutationId!=="string"||!uuid.test(body.mutationId)||
