@@ -28,7 +28,7 @@ const GROUPS:{key:Group;label:string;items:{key:Tab;label:string}[]}[]=[
   {key:"car",label:"تسجيل السيارات"},{key:"settlement",label:"موازنة الأيام"}]},
  {key:"finance",label:"💰 المالية",items:[
   {key:"expenses",label:"المصروفات"},{key:"workers",label:"العمال والرواتب"},
-  {key:"crewbonus",label:"مكافآت الفريق"},{key:"months",label:"تقارير الشهور"}]},
+  {key:"crewbonus",label:"مكافآت الفريق"},{key:"months",label:"اعتماد الشهور"}]},
  {key:"management",label:"⚙️ الإدارة",items:[
   {key:"users",label:"رابط العامل"},{key:"settings",label:"الإعدادات"},{key:"reconciliation",label:"تدقيق الأرشيف"}]}
 ];
