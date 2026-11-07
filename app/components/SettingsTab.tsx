@@ -32,6 +32,12 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
   const [dailyTarget, setDailyTarget] = useState("");
   const [backupStatus,setBackupStatus]=useState<{lastSavedAt:string|null;lastSentAt:string|null;latestArchive:string|null;archivedFilesShown:number;offsiteConfigured:boolean;checksumAvailable:boolean;encryptionConfigured:boolean}|null>(null);
   const [backupError,setBackupError]=useState("");
+  const [backupVerifying,setBackupVerifying]=useState(false);
+  const [backupVerifyResult,setBackupVerifyResult]=useState<{
+   ok:boolean;verifiedAt:string;validatedTableCount:number;
+   validatedArchivedRows:{cars:number;expenses:number};
+   encryptedArchiveReadBackVerified:boolean;restorationToSeparateDatabaseTested:boolean;
+  }|null>(null);
 
   const [presets, setPresets] = useState<EntryPreset[]>([]);
   const [theme, setThemeState] = useState<ThemeChoice>("auto");
@@ -61,6 +67,21 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
     showToast("تم الحفظ.");
   }
 
+  async function verifyBackup(){
+    setBackupVerifying(true);setBackupError("");
+    try{
+      const {data:{session}}=await supabase.auth.getSession();
+      if(!session)throw Error("جلسة المدير غير متاحة");
+      const response=await fetch("/api/backup/verify",{
+        headers:{authorization:"Bearer "+session.access_token},cache:"no-store"
+      });
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw Error(data.error||"تعذر التحقق من الملف");
+      setBackupVerifyResult(data);
+      showToast("تم فحص سلامة النسخة المشفرة دون تعديل البيانات الحقيقية.");
+    }catch(e){setBackupError(e instanceof Error?e.message:"فشل فحص النسخة المشفرة");}
+    finally{setBackupVerifying(false);}
+  }
   function chooseTheme(choice: ThemeChoice) {
     setThemeState(choice);
     setTheme(choice);
@@ -161,7 +182,19 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
                 <p className="txt-muted mt-1">{backupStatus.lastSentAt?"آخر إرسال: "+new Date(backupStatus.lastSentAt).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn"):"غير مفعلة أو لم يتم إرسالها"}</p>
               </div>
             </div>}
-            <p className="txt-warning text-xs mt-3">النسخة داخل Supabase ليست بديلاً عن نسخة مستقلة خارج الخدمة، ولا يُعد التحقق من وجود الملف تجربة استعادة كاملة.</p>
+            <div className="mt-4 space-y-2">
+              <button type="button" className="btn-primary w-full"
+               disabled={backupVerifying} onClick={()=>void verifyBackup()}>
+               {backupVerifying?"جارٍ فحص تشفير النسخة وعلاقاتها...":"فحص النسخة الحالية واستعداد الاستعادة"}
+              </button>
+              {backupVerifyResult?.ok&&<div className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+               <p className="font-semibold">✓ نجح فحص التشفير والتحقق من العلاقات داخل الأرشيف</p>
+               <p className="txt-muted text-sm">آخر فحص: {new Date(backupVerifyResult.verifiedAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}</p>
+               <p className="txt-muted text-sm">{backupVerifyResult.validatedTableCount} جدولًا · {backupVerifyResult.validatedArchivedRows.cars} سيارة · {backupVerifyResult.validatedArchivedRows.expenses} مصروفًا وقت النسخ.</p>
+               <p className="txt-warning text-xs">هذا فحص استعادة منطقي داخل الذاكرة، وليس استعادة فعلية للنسخة الحقيقية داخل قاعدة مستقلة.</p>
+              </div>}
+            </div>
+            <p className="txt-warning text-xs mt-3">النسخة داخل Supabase ليست بديلاً عن نسخة مستقلة خارج الخدمة. التدقيق المشفر لا يغني عن تجربة الاستعادة في قاعدة منفصلة.</p>
           </Section>
         </div>
       )}
