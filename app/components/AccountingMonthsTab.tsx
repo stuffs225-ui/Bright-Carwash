@@ -5,6 +5,7 @@ import {supabase} from "@/lib/supabaseClient";
 import {showToast} from "@/lib/toast";
 import {formatCurrency} from "@/lib/business";
 import {riyadhDate} from "@/lib/expenseDates";
+import {ArabicMonthField} from "./ArabicDateField";
 
 type Month = {
   id:string; period:string;status:"open"|"approved"|"reopened";version:number;
@@ -65,10 +66,10 @@ export function AccountingMonthsTab(){
   }
   return <div className="space-y-6">
     <section className="card space-y-4">
-      <h2 className="section-title">اعتماد تقارير الشهور وإعادة فتحها</h2>
-      <p className="txt-muted text-sm">المدير وحده يستطيع اعتماد شهر مكتمل، أو إعادة فتح شهر معتمد مع تسجيل السبب؛ وبعد تسجيل المصروفات القديمة يجب إعادة الاعتماد. يُحتفظ بكل إصدارات التقارير السابقة.</p>
+      <h2 className="section-title">إقفال واعتماد الشهور</h2>
+      <p className="txt-muted text-sm">يعتمد المدير شهرًا مكتملًا بعد إقفال جميع موازنات أيامه ومراجعة المصروفات. وعند التصحيح يُعاد فتح الشهر مع توثيق السبب وإصدار نسخة جديدة؛ تبقى النسخ السابقة محفوظة.</p>
       <label className="form-label">الشهر
-        <input type="month" value={period} onChange={e=>setPeriod(e.target.value)} />
+        <ArabicMonthField value={period} onChange={setPeriod} ariaLabel="الشهر المحاسبي" />
       </label>
       {error&&<p className="txt-danger">{error}</p>}
       <p className="font-bold">حالة الشهر: {month?.status==="approved"?"معتمد":month?.status==="reopened"?"أعيد فتحه":"غير معتمد"} — الإصدار {month?.version||0}</p>
@@ -84,7 +85,7 @@ export function AccountingMonthsTab(){
       <h2 className="section-title">سجل إصدارات التقرير المعتمدة</h2>
       {versions.length===0?<p className="txt-muted">لا توجد إصدارات معتمدة بعد.</p>:
       <div className="space-y-3">{versions.map(x=><div key={x.version} className="border-b pb-3">
-        <p className="font-bold">إصدار {x.version} — {new Date(x.approved_at).toLocaleString("en-GB",{timeZone:"Asia/Riyadh"})}</p>
+        <p className="font-bold">إصدار {x.version} — {new Date(x.approved_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh",day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"})}</p>
         <p className="txt-muted text-sm">سيارات: {x.snapshot.cars??0} · كاش: {formatCurrency(Number(x.snapshot.cash)||0)} · شبكة: {formatCurrency(Number(x.snapshot.card)||0)} · خصومات: {formatCurrency(Number(x.snapshot.discount)||0)} · مخصص الفريق: {formatCurrency(Number(x.snapshot.crew_provision)||0)} · مكافآت إضافية: {formatCurrency(Number(x.snapshot.crew_extra_bonuses)||0)} · مصروفات: {formatCurrency(Number(x.snapshot.expenses)||0)}</p>
       </div>)}</div>}
     </section>
