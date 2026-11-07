@@ -66,6 +66,10 @@ create trigger carwash_cash_movement_guard
  before insert or update on public.carwash_cash_movements
  for each row execute function private.guard_cash_movement_period();
 
+-- A legacy migration auto-created a payout for every salary expense. That
+-- violates accrual accounting (and duplicates payout) on older installations.
+-- Remove only that old trigger; historical rows remain untouched.
+drop trigger if exists expenses_sync_salary on public.expenses;
 -- Earned wages are recognized once as salary expenses, but actual payouts
 -- only move cash/worker balances: no second expense is inserted on payment.
 -- Existing historical salary expenses and their amounts stay untouched.
