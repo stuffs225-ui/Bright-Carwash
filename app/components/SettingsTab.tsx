@@ -9,7 +9,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { addLookup, loadLookup, renameLookup, setLookupActive, type LookupRow, type LookupTable } from "@/lib/lookups";
 import type { EntryPreset } from "@/lib/types";
 import { applyTheme, getTheme, setTheme, type ThemeChoice } from "@/lib/theme";
-import { ImportSheetSection } from "./ImportSheetSection";
+import {CarwashPolicySettings} from "./CarwashPolicySettings";
+import {PriceHistorySuggestions} from "./PriceHistorySuggestions";
 
 type Category = "operations" | "access" | "appearance" | "data" | "backup";
 
@@ -123,11 +124,13 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
         </div>
       )}
 
+      {section === "general" && <CarwashPolicySettings/>}
+
       {section === "services" && (
         <div className="space-y-6">
+          <PriceHistorySuggestions/>
           <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
           <CarwashAddonsSettings />
-          <ImportSheetSection />
           <LookupSection table="car_types" title="أنواع السيارات" />
           <LookupSection table="service_types" title="أنواع الخدمات" />
           <LookupSection table="expense_types" title="أنواع المصروفات" />
