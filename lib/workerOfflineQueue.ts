@@ -3,11 +3,13 @@
 export type WorkerSubmission={
  presetId:string;addons:string[];cash:number;card:number;discount:number;
  notes:string;customerPhone:string|null;whatsappConsent:boolean;mutationId:string;
+ oneTime?:{enabled:true;carType:string;service:string;price:number;addons:{name:string;price:number}[];reason:string};
 };
 export type WorkerCatalog={
  label:string;
  presets:Array<{id:string;car_type:string;service_type:string;amount:number}>;
  addons:Array<{id:string;name:string;price:number}>;
+ discountLimit?:number;manualServiceEnabled?:boolean;manualAddonEnabled?:boolean;
 };
 export type QueuedWorkerRecord={id:string;payload:WorkerSubmission;createdAt:string};
 type Stored={id:string;linkHash:string;iv:number[];cipher:number[];createdAt:string};
