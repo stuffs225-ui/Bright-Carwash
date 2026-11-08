@@ -3,7 +3,7 @@ import {serverUncachedFetch} from "./serverUncachedFetch";
 afterEach(()=>vi.unstubAllGlobals());
 describe("private Supabase server fetch",()=>{
  it("forces no-store while preserving headers, authorization and method",async()=>{
-  const fake=vi.fn(async()=>new Response("ok"));
+  const fake=vi.fn(async (_input:RequestInfo | URL, _init?:RequestInit)=>new Response("ok"));
   vi.stubGlobal("fetch",fake);
   await serverUncachedFetch("https://example.invalid/private",{
    method:"POST",headers:{authorization:"Bearer synthetic-only"},
