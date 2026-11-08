@@ -7,6 +7,7 @@ on:
       - chatgpt/carwash-ui-finance-governance-20261107
       - chatgpt/bright-carwash-integrated-ux-ops-20261107
       - chatgpt/bright-carwash-final-audit-20261107
+      - chatgpt/bright-carwash-backup-cache-verification-20261108
   workflow_dispatch:
 permissions:
   contents: read
