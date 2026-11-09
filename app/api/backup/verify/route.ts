@@ -8,7 +8,7 @@ export const maxDuration=60;
 const fail=(status:number,error:string)=>NextResponse.json({ok:false,error},{status,headers:NO_STORE});
 type Archived={
  format?:string;version?:number;projectRef?:string;archivedAt?:string;
- rowCounts?:Record<string,number>;tables?:Record<string,unknown[]>;storage?:Record<string,unknown[]>
+ rowCounts?:Record<string,number>;tables?:Record<string,unknown[]>;storage?:Record<string,unknown[]>;mediaComplete?:boolean
 };
 export async function GET(request:Request){
  try{
@@ -92,6 +92,10 @@ export async function GET(request:Request){
     expenses:totals("expenses","amount")
    },
    relationshipChecks:{workerLedger:brokenLedger,invoiceLines:brokenLines,readiness:brokenReady},
+   mediaArchiveComplete:archive.mediaComplete===true||
+    (archive.mediaComplete===undefined&&
+     Array.isArray(archive.storage?.["carwash-pos-evidence"])&&
+     Array.isArray(archive.storage?.["carwash-ready-photos"])),
    encryptedArchiveReadBackVerified:true,
    restorationToSeparateDatabaseTested:false,
    note:"تم فك التشفير والتحقق من المحتوى والعلاقات داخل الذاكرة دون تغيير الإنتاج. يلزم اختبار منفصل لاستعادة البيانات الحقيقية إلى قاعدة مستقلة."
