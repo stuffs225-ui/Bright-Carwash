@@ -131,15 +131,38 @@ export async function GET(request:Request){
   // Daily immutable filenames avoid duplicate archives and extra storage usage.
   const tables:Record<string,unknown[]>={};
   for(const table of TABLES)tables[table]=await readAll(admin,table);
-  const objects=await evidenceArchive(admin,"carwash-pos-evidence");
-  const readyPhotos=await evidenceArchive(admin,"carwash-ready-photos");
+  // Financial records take priority. When evidence exceeds the free-function
+  // budget, save a VERIFIED financial archive instead of losing ALL backups.
+  // Media is explicitly marked unprotected and retention cleanup is forbidden.
+  let objects:Array<{path:string;mime:string;body:string}>=[];
+  let readyPhotos:Array<{path:string;mime:string;body:string}>=[];
+  let mediaComplete=true;
+  let mediaWarning:string|null=null;
+  try{
+   objects=await evidenceArchive(admin,"carwash-pos-evidence");
+   readyPhotos=await evidenceArchive(admin,"carwash-ready-photos");
+  }catch{
+   mediaComplete=false;mediaWarning="media_archive_limit_or_storage_error";
+   objects=[];readyPhotos=[];
+  }
   const rowCounts=Object.fromEntries(Object.entries(tables).map(([k,v])=>[k,v.length]));
   const archivedAt=new Date().toISOString();
-  const payload={format:"bright-carwash-v2",version:1,archivedAt,
-   projectRef:process.env.CARWASH_DATABASE_PROJECT_REF,
-   rowCounts,tables,storage:{"carwash-pos-evidence":objects,"carwash-ready-photos":readyPhotos}};
-  const encrypted=encryptBackup(payload,key);
-  if(encrypted.byteLength>MAX_ARCHIVE_BYTES)return await backupErrorStatus(413,"Encrypted backup exceeds storage size limit");
+  const payload:{format:string;version:number;archivedAt:string;projectRef:string|undefined;
+    rowCounts:Record<string,number>;tables:Record<string,unknown[]>;
+    mediaComplete:boolean;storage:Record<string,Array<{path:string;mime:string;body:string}>>}={
+   format:"bright-carwash-v2",version:1,archivedAt,
+   projectRef:process.env.CARWASH_DATABASE_PROJECT_REF,rowCounts,tables,
+   mediaComplete,storage:{"carwash-pos-evidence":objects,"carwash-ready-photos":readyPhotos}
+  };
+  let encrypted=encryptBackup(payload,key);
+  if(encrypted.byteLength>MAX_ARCHIVE_BYTES&&mediaComplete){
+   mediaComplete=false;mediaWarning="media_payload_exceeded_archive_limit";
+   payload.mediaComplete=false;
+   payload.storage={"carwash-pos-evidence":[],"carwash-ready-photos":[]};
+   encrypted=encryptBackup(payload,key);
+  }
+  if(encrypted.byteLength>MAX_ARCHIVE_BYTES)
+   return await backupErrorStatus(413,"Financial archive itself exceeds size limit");
   const filename="daily/"+archivedAt.slice(0,10)+".bcw2";
   let archive=encrypted;
   const upload=await admin.storage.from("backups").upload(filename,archive,{
@@ -163,9 +186,9 @@ export async function GET(request:Request){
   if(verify.error||!verify.data)return await backupErrorStatus(503,"Stored encrypted archive could not be read back");
   const stored=Buffer.from(await verify.data.arrayBuffer());
   const restored=decryptBackup(stored,key) as {
-   format?:string;version?:number;projectRef?:string;
+   format?:string;version?:number;projectRef?:string;archivedAt?:string;
    tables?:Record<string,unknown[]>;rowCounts?:Record<string,number>;
-   storage?:Record<string,unknown[]>
+   mediaComplete?:boolean;storage?:Record<string,unknown[]>
   };
   if(restored.format!=="bright-carwash-v2"||restored.version!==1||
      restored.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF||
@@ -175,14 +198,26 @@ export async function GET(request:Request){
        restored.tables?.[table].length===restored.rowCounts?.[table]))
    return await backupErrorStatus(503,"Encrypted archive integrity verification failed");
   const hash=createHash("sha256").update(stored).digest("hex");
+  // The archive may preexist from an earlier daily CRON run: never claim
+  // a fresh snapshot if this was only a duplicate-archive verification.
+  const actualArchivedAt=restored.archivedAt||archivedAt;
+  const actualMediaComplete=restored.mediaComplete===true||
+   (restored.mediaComplete===undefined&&
+    Array.isArray(restored.storage?.["carwash-pos-evidence"])&&
+    Array.isArray(restored.storage?.["carwash-ready-photos"]));
   const saved=await admin.from("settings").upsert({
-   key:"backup_last_saved_at",value:archivedAt
+   key:"backup_last_saved_at",value:actualArchivedAt
   },{onConflict:"key"});
   if(saved.error)return await backupErrorStatus(503,"Archive saved but status update failed");
   const checksum=await admin.from("settings").upsert({
    key:"backup_last_sha256",value:hash
   },{onConflict:"key"});
   if(checksum.error)return await backupErrorStatus(503,"Archive saved but checksum status update failed");
+  const mediaStatus=await admin.from("settings").upsert([
+   {key:"backup_last_media_complete",value:actualMediaComplete},
+   {key:"backup_last_media_warning",value:actualMediaComplete?"none":mediaWarning||"media_archive_incomplete"}
+  ],{onConflict:"key"});
+  if(mediaStatus.error)return await backupErrorStatus(503,"Unable to record media backup integrity status");
   let offsiteDelivered=false;
   if(offsiteConfigured){
    const emailResult=await new Resend(resendKey!).emails.send({
@@ -198,18 +233,24 @@ export async function GET(request:Request){
    }
   }
   // An archive must pass cryptographic verification before any image expires.
-  const retention=await cleanExpiredReadyPhotos(admin).catch(()=>({
-   removed:0,failed:0,status:"cleanup_unavailable"
-  }));
-  return NextResponse.json({ok:true,archivedAt,
+  const retention=actualMediaComplete
+   ?await cleanExpiredReadyPhotos(admin).catch(()=>({
+     removed:0,failed:0,status:"cleanup_unavailable"
+    }))
+   :{removed:0,failed:0,status:"skipped_media_not_archived"};
+  return NextResponse.json({ok:true,archivedAt:actualArchivedAt,
+   financialArchiveVerified:true,mediaArchiveComplete:actualMediaComplete,
+   mediaWarning:actualMediaComplete?null:mediaWarning||"Media not included in encrypted archive",
    rowCounts:restored.rowCounts,
    evidenceFiles:restored.storage?.["carwash-pos-evidence"]?.length||0,
    readyPhotos:restored.storage?.["carwash-ready-photos"]?.length||0,
    photoRetention:retention,
    sha256:hash,storagePath:filename,archiveVerified:true,
    offsiteDelivered,offsiteConfigured,
-   note:offsiteDelivered?"Encrypted offsite copy delivered":
-    "Encrypted private storage backup complete; external email delivery not configured or not delivered"
+   note:actualMediaComplete
+    ?(offsiteDelivered?"Encrypted full offsite copy delivered":
+      "Encrypted full private-storage backup complete; external delivery may be unavailable")
+    :"FINANCIAL RECORDS ONLY: Media archive incomplete. Photo deletion blocked. Operator action required."
   },{headers:NO_STORE});
  }catch{
   return await backupErrorStatus(503,"Unable to produce verified encrypted backup");
