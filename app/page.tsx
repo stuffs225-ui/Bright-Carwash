@@ -3,7 +3,7 @@ import {useCallback,useEffect,useState} from "react";
 import {AuthGate,type AppIdentity} from "./components/AuthGate";
 import {CarRegistrationScreen} from "./components/CarRegistrationScreen";
 import {AnalysisTab} from "./components/AnalysisTab";
-import {ExpensesTab} from "./components/ExpensesTab";
+import {ExpensesHub} from "./components/ExpensesHub";
 import {WorkersHub} from "./components/WorkersHub";
 import {SettlementHub} from "./components/SettlementHub";
 import {SettingsHub} from "./components/SettingsHub";
@@ -68,7 +68,7 @@ function CarwashApp({identity}:{identity:AppIdentity}){
    <main className="content-section-wrapper">
     {restored&&tab==="car"&&<CarRegistrationScreen manager managerUserId={identity.userId}/>}
     {restored&&tab==="dashboard"&&<AnalysisTab/>}
-    {restored&&tab==="expenses"&&<ExpensesTab/>}
+    {restored&&tab==="expenses"&&<ExpensesHub/>}
     {restored&&tab==="workers"&&<WorkersHub/>}
     {restored&&tab==="settlement"&&<SettlementHub/>}
     {restored&&tab==="settings"&&<SettingsHub/>}
