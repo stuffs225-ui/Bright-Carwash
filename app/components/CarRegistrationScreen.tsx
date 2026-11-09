@@ -50,6 +50,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [summaryVersion,setSummaryVersion]=useState(0);
  const [error,setError]=useState("");
  const syncActive=useRef(false);
+ // Keep the same idempotency key if online direct submission has an uncertain outcome.
+ const directPending=useRef<WorkerSubmission|null>(null);
  const safeToken=manager||/^[a-f0-9]{64}$/.test(token);
 
  useEffect(()=>{
@@ -171,7 +173,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
   if(!catalog||busy||(!preset&&!manualMode))return;
-  if(useException&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
+  if(manualMode&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
   if(manualAddons.length&&!manualAddonAllowed){setError("الإضافات المخصصة معطلة في الإعدادات");return;}
   if(useException&&priceReason.trim().length<3){setError("اكتب سبب الخدمة أو السعر الاستثنائي");return;}
   if(manualMode&&(manualService.trim().length<2||!Number.isFinite(basePrice)||basePrice<=0||basePrice>5000)){
@@ -194,12 +196,49 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     price:rounded(basePrice),addons:[...manualAddons],reason:priceReason.trim()}}:{})
   };
   const id=crypto.randomUUID(); // Each car always receives its own immutable idempotency key.
-  const payload:WorkerSubmission={...basis,mutationId:id,recordedAt:new Date().toISOString()};
+  const payload:WorkerSubmission=directPending.current??{...basis,mutationId:id,recordedAt:new Date().toISOString()};
   setBusy(true);
   try{
-   // Write ahead: every submission is an immutable encrypted outbox item BEFORE network IO.
-   // Retrying after an uncertain response reuses the same UUID and cannot double-book.
-   await queueWorkerRecord(outboxKey,payload);
+   // Prefer an encrypted write-ahead queue. Online-only direct submission is
+   // available if Safari/IndexedDB fails, but NEVER when offline or queue-full.
+   // All retries reuse the same idempotency key, including uncertain responses.
+   try{
+    await queueWorkerRecord(outboxKey,payload);
+    directPending.current=null;
+   }catch(storageError){
+    const detail=storageError instanceof Error?storageError.message:"";
+    if(!navigator.onLine||/queue limit reached|duplicate queued/i.test(detail))throw storageError;
+    directPending.current=payload;
+    const headers:Record<string,string>={"content-type":"application/json"};
+    if(manager){
+     const {data:{session}}=await supabase.auth.getSession();
+     if(!session)throw Error("جلسة المدير غير متاحة. لم يثبت حفظ السيارة.");
+     headers.authorization="Bearer "+session.access_token;
+    }
+    const response=await fetch("/api/worker-links/record",{
+     method:"POST",headers,credentials:"same-origin",cache:"no-store",
+     body:JSON.stringify({...payload,...(manager?{}:{token})})
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok){
+     // 4xx (except rate-limit) is a definitive rejection; a 5xx/429
+     // keeps the pending UUID so the next attempt cannot duplicate a car.
+     if(response.status<500&&response.status!==429)directPending.current=null;
+     throw Error(response.status>=500||response.status===429
+      ?"لم يتأكد تسجيل السيارة. أعد المحاولة من نفس الصفحة دون تحديثها كي تستخدم نفس رقم العملية."
+      :result.error||"السيرفر رفض تسجيل السيارة");
+    }
+    if(result.ok!==true||!result.id)
+     throw Error("لم يتأكد استلام التسجيل؛ أعد المحاولة من نفس الصفحة.");
+    directPending.current=null;
+    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
+    setManualMode(false);setManualAddons([]);setPriceReason("");
+    setCustomerPhone("");setConsent(false);setMethod("cash");
+    setStatus("تم تسجيل السيارة مباشرة في السيرفر. التخزين المحلي غير متاح على هذا الجهاز.");
+    setSummaryVersion(v=>v+1);
+    window.scrollTo({top:0,behavior:"smooth"});
+    return;
+   }
    setQueued((await listWorkerRecords(outboxKey)).length);
    setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
@@ -374,7 +413,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||(!preset&&!manualMode)||price<=0}>
     {busy?"جارٍ الحفظ الآمن...":"تسجيل السيارة"}
    </button>
-   <p className="txt-muted text-xs text-center">يمكن حفظ التسجيل مشفرًا على هذا الجهاز عند انقطاع الاتصال بعد فتح الصفحة أول مرة. لا يصبح التسجيل معتمدًا إلا بعد نجاح المزامنة، ولا يُرحّل تسجيل اليوم السابق تلقائيًا إلى يوم جديد.</p>
+   <p className="txt-muted text-xs text-center">عند توفر التخزين الآمن تُحفظ العمليات مشفرة حتى تتزامن. إذا تعذر التخزين المحلي والإنترنت متصل، يُرسل التسجيل مباشرة مع منع التكرار. لا يُرحّل تسجيل اليوم السابق تلقائيًا.</p>
   </form>}
   {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
  </main>;
