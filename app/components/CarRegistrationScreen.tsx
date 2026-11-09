@@ -50,6 +50,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [summaryVersion,setSummaryVersion]=useState(0);
  const [error,setError]=useState("");
  const syncActive=useRef(false);
+ const savingNow=useRef(false);
  // Keep the same idempotency key if online direct submission has an uncertain outcome.
  const directPending=useRef<WorkerSubmission|null>(null);
  const safeToken=manager||/^[a-f0-9]{64}$/.test(token);
@@ -73,9 +74,17 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     if(!cancelled){
      setCatalog(info);
      if(info.presets?.length){
-      const last=typeof window!=="undefined"?localStorage.getItem("carwash_last_car_type_v1"):null;
-      const first=info.presets.find((p:Preset)=>p.car_type===last)||info.presets[0];
+      let lastType:string|null=null,lastPreset:string|null=null,lastPayment:string|null=null;
+      try{
+       lastType=localStorage.getItem("carwash_last_car_type_v1");
+       lastPreset=localStorage.getItem("carwash_last_preset_v1");
+       lastPayment=localStorage.getItem("carwash_last_payment_v1");
+      }catch{}
+      const first=info.presets.find((p:Preset)=>p.id===lastPreset)||
+       info.presets.find((p:Preset)=>p.car_type===lastType)||info.presets[0];
       setPresetId(first.id);setCarType(first.car_type);
+      if(lastPayment==="cash"||lastPayment==="card"||lastPayment==="mixed")
+       setMethod(lastPayment);
      }
      if(outboxKey)void storeWorkerCatalog(outboxKey,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
     }
@@ -150,6 +159,17 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const preset=catalog?.presets.find(p=>p.id===presetId);
  const allCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)));
  const filteredPresets=(catalog?.presets||[]).filter(p=>p.car_type===(carType||preset?.car_type));
+ // Two popular prices per car type, in configured official display order.
+ // One tap sets car type AND service without opening secondary menus.
+ const quickPresets=useMemo(()=>{
+  const grouped=new Map<string,Preset[]>();
+  for(const item of catalog?.presets||[]){
+   const list=grouped.get(item.car_type)||[];
+   if(list.length<2)list.push(item);
+   grouped.set(item.car_type,list);
+  }
+  return [...grouped.values()].flat().slice(0,6);
+ },[catalog]);
  const manualServiceAllowed=manager||catalog?.manualServiceEnabled!==false;
  const manualAddonAllowed=manager||catalog?.manualAddonEnabled!==false;
  const useException=manualMode||manualAddons.length>0;
@@ -172,7 +192,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
 
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
-  if(!catalog||busy||(!preset&&!manualMode))return;
+  if(!catalog||busy||savingNow.current||(!preset&&!manualMode))return;
   if(manualMode&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
   if(manualAddons.length&&!manualAddonAllowed){setError("الإضافات المخصصة معطلة في الإعدادات");return;}
   if(useException&&priceReason.trim().length<3){setError("اكتب سبب الخدمة أو السعر الاستثنائي");return;}
@@ -197,7 +217,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   };
   const id=crypto.randomUUID(); // Each car always receives its own immutable idempotency key.
   const payload:WorkerSubmission=directPending.current??{...basis,mutationId:id,recordedAt:new Date().toISOString()};
-  setBusy(true);
+  savingNow.current=true;setBusy(true);
   try{
    // Prefer an encrypted write-ahead queue. Online-only direct submission is
    // available if Safari/IndexedDB fails, but NEVER when offline or queue-full.
@@ -233,7 +253,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     directPending.current=null;
     setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
     setManualMode(false);setManualAddons([]);setPriceReason("");
-    setCustomerPhone("");setConsent(false);setMethod("cash");
+    setCustomerPhone("");setConsent(false);
     setStatus("تم تسجيل السيارة مباشرة في السيرفر. التخزين المحلي غير متاح على هذا الجهاز.");
     setSummaryVersion(v=>v+1);
     window.scrollTo({top:0,behavior:"smooth"});
@@ -243,7 +263,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
    setManualMode(false);setManualAddons([]);setPriceReason("");
-   setCustomerPhone("");setConsent(false);setMethod("cash");
+   setCustomerPhone("");setConsent(false);
    if(navigator.onLine){
     const result=await replay().catch((e:unknown)=>{
      setError(e instanceof Error?e.message:"تعذرت المزامنة؛ العملية محفوظة على الجهاز.");
@@ -255,7 +275,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    window.scrollTo({top:0,behavior:"smooth"});
   }catch(e){
    setError(e instanceof Error?e.message:"تعذر الحفظ الآمن؛ لم تُسجل السيارة.");
-  }finally{setBusy(false);}
+  }finally{savingNow.current=false;setBusy(false);}
  }
  return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
   <header className="card text-center space-y-2">
@@ -263,7 +283,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    <p className="txt-muted text-sm">مغسلة سيارتك اللامعة</p>
    {catalog&&<p className="text-sm font-bold">{catalog.label}</p>}
   </header>
-  {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
   {queued>0&&<section className="card space-y-2" role="status">
     <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
     <p className="txt-muted text-sm">محفوظة مشفرة على نفس هذا الجهاز. لا تحذف بيانات Safari قبل إتمام المزامنة. قد تُرفض أسعار قديمة عند العودة للإنترنت.</p>
@@ -275,6 +294,29 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   <form onSubmit={submit} className="card space-y-4">
    {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{status}</p>}
    {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
+   {quickPresets.length>0&&<div className="space-y-2">
+    <p className="form-label">⚡ تسجيل سريع — اختر السيارة والخدمة بضغطة واحدة</p>
+    <div className="grid grid-cols-2 gap-2">
+     {quickPresets.map(p=><button type="button" key={p.id}
+       className={!manualMode&&presetId===p.id?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
+       aria-pressed={!manualMode&&presetId===p.id}
+       onClick={()=>{
+        setCarType(p.car_type);setPresetId(p.id);setShowMoreServices(false);
+        setManualMode(false);setManualAddons([]);setSelectedAddons([]);setPriceReason("");
+        try{
+         localStorage.setItem("carwash_last_car_type_v1",p.car_type);
+         localStorage.setItem("carwash_last_preset_v1",p.id);
+        }catch{}
+       }}>
+       <span className="block text-xs">{p.car_type}</span>
+       <strong className="block">{p.service_type}</strong>
+       <span className="block text-sm">{sar(Number(p.amount))}</span>
+      </button>)}
+    </div>
+   </div>}
+   <details className="border rounded-xl p-3" style={{borderColor:"var(--border)"}}>
+    <summary className="cursor-pointer font-bold">تغيير نوع السيارة أو عرض كل الخدمات</summary>
+    <div className="space-y-3 pt-3">
    <div className="space-y-2">
     <p className="form-label">1. نوع السيارة</p>
     <div className="carwash-quick-choices">
@@ -284,7 +326,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
         setCarType(name);setShowMoreServices(false);
         const first=catalog?.presets.find(p=>p.car_type===name);
         if(first)setPresetId(first.id);
-        setManualMode(false);setManualAddons([]);
+        setManualMode(false);setManualAddons([]);setSelectedAddons([]);
         try{localStorage.setItem("carwash_last_car_type_v1",name);}catch{}
        }}>{name}</button>)}
     </div>
@@ -297,7 +339,10 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
        <button type="button" key={p.id}
         className={!manualMode&&presetId===p.id?"active":""}
         aria-pressed={!manualMode&&presetId===p.id}
-        onClick={()=>{setPresetId(p.id);setManualMode(false);setPriceReason("");}}>
+        onClick={()=>{
+         setPresetId(p.id);setManualMode(false);setPriceReason("");
+         try{localStorage.setItem("carwash_last_preset_v1",p.id);}catch{}
+        }}>
         <span>{p.service_type}</span><strong>{sar(Number(p.amount))}</strong>
        </button>)}
      </div>}
@@ -323,6 +368,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
      </label>
     </div>}
    </div>
+    </div>
+   </details>
    {(catalog?.addons.length||0)>0&&<div className="space-y-2">
     <p className="form-label">خدمات إضافية (اختياري)</p>
     {catalog?.addons.map(a=><label key={a.id} className="flex items-center justify-between gap-2 p-3 border rounded-lg">
@@ -374,7 +421,10 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     <div className="grid grid-cols-3 gap-2">
      {(["cash","card","mixed"] as const).map(x=>
       <button type="button" key={x} className={method===x?"btn-primary":"btn-secondary"}
-       onClick={()=>setMethod(x)}>{x==="cash"?"كاش":x==="card"?"شبكة":"مختلط"}</button>)}
+       onClick={()=>{
+        setMethod(x);
+        try{localStorage.setItem("carwash_last_payment_v1",x);}catch{}
+       }}>{x==="cash"?"كاش":x==="card"?"شبكة":"مختلط"}</button>)}
     </div>
    </div>
    {method==="mixed"&&<div className="grid grid-cols-2 gap-3">
@@ -415,6 +465,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    </button>
    <p className="txt-muted text-xs text-center">عند توفر التخزين الآمن تُحفظ العمليات مشفرة حتى تتزامن. إذا تعذر التخزين المحلي والإنترنت متصل، يُرسل التسجيل مباشرة مع منع التكرار. لا يُرحّل تسجيل اليوم السابق تلقائيًا.</p>
   </form>}
+  {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token}
+   manager={manager} refreshKey={summaryVersion}/>}
   {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
  </main>;
 }
