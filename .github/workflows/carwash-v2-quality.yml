@@ -8,6 +8,7 @@ on:
       - chatgpt/bright-carwash-integrated-ux-ops-20261107
       - chatgpt/bright-carwash-final-audit-20261107
       - chatgpt/bright-carwash-backup-cache-verification-20261108
+      - chatgpt/bright-carwash-reliability-fixes-20261109
   workflow_dispatch:
 permissions:
   contents: read
@@ -102,4 +103,5 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_month_close_governance_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_integrated_v2_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_finance_completion_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_independent_addon_policies_e2e.sql
             '
