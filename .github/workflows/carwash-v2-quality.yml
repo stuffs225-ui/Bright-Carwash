@@ -11,6 +11,7 @@ on:
       - chatgpt/bright-carwash-reliability-fixes-20261109
       - chatgpt/bright-carwash-fast-registration-inventory-20261109
       - chatgpt/carwash-daily-wages-worker-close-20261111
+      - chatgpt/carwash-manager-parity-variance-ready-20261111
   workflow_dispatch:
 permissions:
   contents: read
