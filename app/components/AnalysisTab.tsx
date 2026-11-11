@@ -430,6 +430,7 @@ export function AnalysisTab() {
    }
    return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date));
   },[periodEntries,periodExpenses]);
+  if(!historyReady||loading)return <section className="card text-center py-6" role="status"><p>{historyError?"تعذر تحميل الأرقام المالية.":"جارٍ تجهيز الأرقام المالية..."}</p>{historyError&&<button type="button" className="btn-secondary mt-3" onClick={()=>void loadHistory()}>إعادة المحاولة</button>}</section>;
   return (
     <div className="space-y-6">
       {pendingReviewCount !== null && pendingReviewCount > 0 ? (
