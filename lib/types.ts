@@ -22,6 +22,7 @@ export type Entry = {
 
 export type Expense = {
   id: string;
+  crew_business_date?: string | null;
   salary_worker_id?: string | null;
   salary_payment_source?: string | null;
   expense_type: string;
