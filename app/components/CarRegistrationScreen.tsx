@@ -431,7 +431,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    <p className="txt-muted text-xs text-center">عند توفر التخزين الآمن تُحفظ العمليات مشفرة حتى تتزامن. إذا تعذر التخزين المحلي والإنترنت متصل، يُرسل التسجيل مباشرة مع منع التكرار. لا يُرحّل تسجيل اليوم السابق تلقائيًا.</p>
   </form>}
   {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token}
-   manager={manager} refreshKey={summaryVersion}/>}
+   manager={manager} refreshKey={summaryVersion} queued={queued}/>}
   {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
  </main>;
 }
