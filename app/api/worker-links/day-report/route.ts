@@ -14,7 +14,14 @@ export async function GET(request:Request){
  try{
   const access=await managerAccess(request);
   if(!access)return deny(403,"صلاحية المدير مطلوبة");
-  const date=new URL(request.url).searchParams.get("date");
+  const params=new URL(request.url).searchParams;
+  if(params.get("list")==="1"){
+   const {data,error}=await access.admin.from("carwash_worker_day_reports")
+    .select("business_date").order("business_date",{ascending:false}).limit(120);
+   if(error)return deny(503,"تعذر تحميل حالات الموازنة");
+   return NextResponse.json({reportedDates:(data||[]).map(r=>r.business_date)},{headers:NO_STORE});
+  }
+  const date=params.get("date");
   if(!validDate(date))return deny(400,"تاريخ غير صالح");
   const {data,error}=await access.admin.from("carwash_worker_day_reports").select("*").eq("business_date",date).maybeSingle();
   if(error)return deny(503,"تعذر تحميل تقرير العامل");
@@ -30,15 +37,26 @@ export async function POST(request:Request){
   if(Number(request.headers.get("content-length")||0)>4*1024*1024)return deny(413,"الصورة كبيرة؛ اختر صورة أصغر");
   const form=await request.formData();
   const token=form.get("token"),date=form.get("date");
-  if(!validCapability(token)||!validDate(date)||!dayIsFinished(date))return deny(400,"الرابط أو تاريخ اليوم غير صالح");
+  if(!validDate(date)||!dayIsFinished(date))return deny(400,"تاريخ اليوم غير صالح");
+  const manager=typeof token==="string"&&token?null:await managerAccess(request);
+  if(!manager&&!validCapability(token))return deny(403,"صلاحية المدير أو رابط العامل مطلوبة");
   const cash=money(form.get("cash")),card=money(form.get("card")),terminal=money(form.get("terminal"));
   if([cash,card,terminal].some(n=>!Number.isFinite(n)||n<0||n>10000000))return deny(400,"أدخل الكاش والشبكة وإجمالي تقرير الجهاز");
   const admin=createAdminClient();
-  const {data:link,error:linkError}=await admin.from("carwash_worker_links").select("id,created_by,expires_at,revoked_at")
-   .eq("token_hash",capabilityHash(token)).maybeSingle();
-  if(linkError||!link||link.revoked_at||Date.parse(link.expires_at)<=Date.now())return deny(403,"رابط العامل غير نشط");
-  const member=await admin.from("app_members").select("active,role").eq("user_id",link.created_by).maybeSingle();
-  if(member.error||!member.data?.active||member.data.role!=="manager")return deny(403,"الرابط موقوف");
+  let linkId:string|null=null;
+  if(!manager){
+   if(!validCapability(token))return deny(403,"رابط العامل غير صالح");
+   const {data:link,error:linkError}=await admin.from("carwash_worker_links")
+    .select("id,created_by,expires_at,revoked_at")
+    .eq("token_hash",capabilityHash(token)).maybeSingle();
+   if(linkError||!link||link.revoked_at||Date.parse(link.expires_at)<=Date.now())
+    return deny(403,"رابط العامل غير نشط");
+   const member=await admin.from("app_members").select("active,role")
+    .eq("user_id",link.created_by).maybeSingle();
+   if(member.error||!member.data?.active||member.data.role!=="manager")
+    return deny(403,"الرابط موقوف");
+   linkId=link.id;
+  }
   const existing=await admin.from("carwash_worker_day_reports").select("business_date").eq("business_date",date).maybeSingle();
   if(existing.error)return deny(503,"تعذر التحقق من التقرير");
   if(existing.data)return NextResponse.json({ok:true,alreadySubmitted:true},{headers:NO_STORE});
@@ -58,7 +76,13 @@ export async function POST(request:Request){
   const bucket=admin.storage.from("carwash-pos-evidence");
   const up=await bucket.upload(path,bytes,{contentType:file.type,upsert:false});
   if(up.error)return deny(503,"تعذر رفع صورة الموازنة");
-  const report=await admin.rpc("carwash_submit_worker_day_report",{p_date:date,p_cash:cash,p_card:card,p_terminal:terminal,p_path:path,p_link:link.id});
+  const report=manager
+   ?await admin.rpc("carwash_submit_manager_day_report",{
+     p_date:date,p_cash:cash,p_card:card,p_terminal:terminal,p_path:path,p_manager:manager.user.id
+    })
+   :await admin.rpc("carwash_submit_worker_day_report",{
+     p_date:date,p_cash:cash,p_card:card,p_terminal:terminal,p_path:path,p_link:linkId
+    });
   if(report.error||report.data!==true){
    // Only remove this request's own unreferenced upload.
    if(report.error)return deny(409,"لم يتأكد حفظ التقرير؛ أعد المحاولة للتحقق من وصوله");
