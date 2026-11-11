@@ -12,6 +12,7 @@ const NO_STORE={"Cache-Control":"no-store, private"};
 // Explicit allowlist: business records, supporting ledgers, audit history, and link metadata.
 // No Supabase Auth passwords or service-role credentials are exported.
 const TABLES=[
+ "carwash_inventory_items","carwash_inventory_movements","carwash_worker_day_reports",
  "car_types","service_types","expense_types","settings","entries","expenses",
  "audit_log","error_log","entry_presets","workers","worker_ledger","app_members",
  "audit_events","legacy_source_rows","legacy_import_issues","ready_sms_outbox",
