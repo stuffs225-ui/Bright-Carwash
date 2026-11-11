@@ -50,11 +50,11 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0,queued=0}:P
   </div>
   {error&&<p role="status" className="txt-warning text-sm">{error} — تظهر آخر بيانات تم تحميلها.</p>}
   {days.length===0&&!loading?<p className="txt-muted text-sm">لا توجد أيام مفتوحة أو تسجيلات جديدة حاليًا.</p>:null}
-  {!manager&&days.some(d=>dayIsFinished(d.date)&&d.status==="open"&&!d.submitted)&&<p className="txt-warning font-bold">مطلوب إرسال موازنة اليوم المنتهي والصورة قبل اعتماد المدير.</p>}
-  {days.map((day,i)=><details key={day.date} open={i===0||(!manager&&dayIsFinished(day.date)&&!day.submitted)} className="border rounded-xl p-3"
+  {days.some(d=>dayIsFinished(d.date)&&d.status==="open"&&!d.submitted)&&<p className="txt-warning font-bold">مطلوب إرسال موازنة اليوم المنتهي والصورة قبل اعتماد المدير.</p>}
+  {days.map((day,i)=><details key={day.date} open={i===0||(dayIsFinished(day.date)&&!day.submitted)} className="border rounded-xl p-3"
    style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
    <summary className="cursor-pointer font-bold flex items-center justify-between gap-2">
-    <span>{dateLabel(day.date)} {day.status==="awaiting_owner"||day.submitted?"— بانتظار اعتماد المدير":""}</span>
+    <span>{dateLabel(day.date)} — {day.status==="awaiting_owner"||day.submitted?"بانتظار الاعتماد":"غير معتمد"}</span>
     <span className="txt-muted text-xs">{day.cars} سيارة</span>
    </summary>
    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
@@ -68,8 +68,8 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0,queued=0}:P
      <strong className="metric-value">{sar(day.crew)}</strong></div>
    </div>
    <p className="txt-muted text-xs mt-2">10 ريالات للفريق كاملًا عن كل سيارة؛ ليست راتبًا أو دفعة فردية.</p>
-   {!manager&&token&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&<WorkerDayReport date={day.date} token={token} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
-   {!manager&&day.submitted&&<p className="txt-cash font-bold mt-3">تم إرسال الموازنة والصورة — بانتظار اعتماد المدير.</p>}
+   {(manager||!!token)&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&<WorkerDayReport date={day.date} token={token} manager={manager} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
+   {day.submitted&&<p className="txt-cash font-bold mt-3">تم إرسال الموازنة والصورة — بانتظار الاعتماد.</p>}
   </details>)}
   {today&&<p className="txt-muted text-xs">جميع الأرقام للسجلات المزامنة مع قاعدة البيانات فقط. التسجيلات المعلقة على الجهاز غير محسوبة حتى تُرسل.</p>}
  </section>;

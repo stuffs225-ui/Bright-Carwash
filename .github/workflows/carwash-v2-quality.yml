@@ -11,6 +11,7 @@ on:
       - chatgpt/bright-carwash-reliability-fixes-20261109
       - chatgpt/bright-carwash-fast-registration-inventory-20261109
       - chatgpt/carwash-daily-wages-worker-close-20261111
+      - chatgpt/carwash-manager-parity-variance-ready-20261111
   workflow_dispatch:
 permissions:
   contents: read
@@ -108,4 +109,5 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_independent_addon_policies_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_inventory_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_worker_report_wages_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_manager_report_e2e.sql
             '
