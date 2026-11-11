@@ -54,7 +54,7 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0,queued=0}:P
   {days.map((day,i)=><details key={day.date} open={i===0||(dayIsFinished(day.date)&&!day.submitted)} className="border rounded-xl p-3"
    style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
    <summary className="cursor-pointer font-bold flex items-center justify-between gap-2">
-    <span>{dateLabel(day.date)} {day.status==="awaiting_owner"||day.submitted?"— بانتظار اعتماد المدير":""}</span>
+    <span>{dateLabel(day.date)} — {day.status==="awaiting_owner"||day.submitted?"بانتظار الاعتماد":"غير معتمد"}</span>
     <span className="txt-muted text-xs">{day.cars} سيارة</span>
    </summary>
    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
