@@ -1,7 +1,7 @@
 "use client";
 
 import "@/lib/chartRegistry";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import { supabase } from "@/lib/supabaseClient";
 import { fetchAllRows } from "@/lib/fetchAll";
@@ -70,8 +70,9 @@ export function AnalysisTab() {
   const [serviceTypeFilter, setServiceTypeFilter] = useState("");
   const [carTypeOptions, setCarTypeOptions] = useState<string[]>([]);
   const [serviceTypeOptions, setServiceTypeOptions] = useState<string[]>([]);
-  const [entries, setEntries] = useState<Entry[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [appliedFilter,setAppliedFilter]=useState({start:startDate,end:endDate,car:"",service:""});
+  const refreshInFlight=useRef(false);
+  const refreshAgain=useRef(false);
   const [allEntries, setAllEntries] = useState<Entry[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,68 +100,64 @@ export function AnalysisTab() {
     return () => {disposed=true;};
   }, []);
 
-  const load = useCallback(async (start: string, end: string, carFilter: string, serviceFilter: string) => {
-    setLoading(true);
-    const startDt = new Date(`${start}T00:00:00+03:00`);
-    const endDt = new Date(`${end}T23:59:59.999+03:00`);
-
-    try {
-      const [entryRows, expenseRows] = await Promise.all([
-        fetchAllRows<Entry>((from, to) => {
-          let q = supabase
-            .from("entries")
-            .select("*")
-            .is("deleted_at", null)
-            .gte("occurred_at", startDt.toISOString())
-            .lte("occurred_at", endDt.toISOString())
-            .order("occurred_at", { ascending: true })
-            .range(from, to);
-          if (carFilter) q = q.eq("car_type", carFilter);
-          if (serviceFilter) q = q.eq("service_type", serviceFilter);
-          return q;
-        }),
-        fetchAllRows<Expense>((from, to) =>
-          supabase
-            .from("expenses")
-            .select("*")
-            .is("deleted_at", null)
-            .gte("occurred_at", startDt.toISOString())
-            .lte("occurred_at", endDt.toISOString())
-            .order("occurred_at", { ascending: true })
-            .range(from, to)
-        ),
-      ]);
-      setEntries(entryRows);
-      setExpenses(expenseRows);
-    } catch (err) {
-      showToast("خطأ في تحليل البيانات: " + (describeError(err)), "error");
-    } finally {
-      setLoading(false);
+  // Fetch the complete history once, then reuse that in-memory snapshot for
+  // every report and filter. The manager never waits for a second query when
+  // switching tabs or date ranges. The first page supplies the exact row count.
+  async function fetchHistory<T extends {id:string}>(table:"entries"|"expenses",columns:string):Promise<T[]>{
+    const page=(from:number,to:number)=>supabase.from(table).select(columns)
+      .is("deleted_at",null).order("occurred_at",{ascending:true}).order("id",{ascending:true}).range(from,to);
+    try{
+      const first=await supabase.from(table).select(columns,{count:"exact"})
+        .is("deleted_at",null).order("occurred_at",{ascending:true}).order("id",{ascending:true}).range(0,999);
+      if(first.error||first.count===null)throw first.error||Error("History count unavailable");
+      const result=(first.data||[]) as unknown as T[];
+      for(let offset=1000;offset<first.count;offset+=3000){
+        const offsets=[offset,offset+1000,offset+2000].filter(n=>n<first.count!);
+        const batch=await Promise.all(offsets.map(n=>page(n,n+999)));
+        for(const part of batch){if(part.error)throw part.error;result.push(...((part.data||[]) as unknown as T[]));}
+      }
+      if(result.length!==first.count||new Set(result.map(row=>row.id)).size!==result.length)
+        throw Error("History changed during pagination");
+      return result;
+    }catch{
+      return fetchAllRows<T>(async(from,to)=>{
+        const result=await page(from,to);
+        return {data:(result.data||[]) as unknown as T[],error:result.error};
+      });
     }
-  }, []);
+  }
 
-  const loadHistory = useCallback(async () => {
-    try {
-      const [e, x] = await Promise.all([
-        fetchAllRows<Entry>((from, to) =>
-          supabase.from("entries").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
-        ),
-        fetchAllRows<Expense>((from, to) =>
-          supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: true }).range(from, to)
-        ),
-      ]);
-      setAllEntries(e);
-      setAllExpenses(x);
-      setHistoryReady(true);setHistoryError(false);
-    } catch (err) {
-      setHistoryError(true);showToast("خطأ في تحميل السجل الكامل: " + (describeError(err)), "error");
-    }
-  }, []);
+  const loadHistory=useCallback(async()=>{
+    if(refreshInFlight.current){refreshAgain.current=true;return;}
+    refreshInFlight.current=true;
+    try{
+      do{
+        refreshAgain.current=false;
+        try{
+          const [e,x]=await Promise.all([
+            fetchHistory<Entry>("entries","id,car_type,service_type,cash_paid,card_paid,gross,payment_method,notes,occurred_at,worker_name,discount_amount,list_price"),
+            fetchHistory<Expense>("expenses","id,expense_type,amount,notes,occurred_at,crew_business_date"),
+          ]);
+          setAllEntries(e);setAllExpenses(x);setHistoryReady(true);setHistoryError(false);setLoading(false);
+        }catch(err){
+          setHistoryError(true);setLoading(false);
+          showToast("خطأ في تحميل السجل الكامل: "+describeError(err),"error");
+        }
+      }while(refreshAgain.current);
+    }finally{refreshInFlight.current=false;}
+  },[]);
+
+  const {entries,expenses}=useMemo(()=>{
+    const start=new Date(appliedFilter.start+"T00:00:00+03:00").getTime();
+    const end=new Date(appliedFilter.end+"T23:59:59.999+03:00").getTime();
+    const inRange=(row:{occurred_at:string})=>{const t=Date.parse(row.occurred_at);return t>=start&&t<=end;};
+    return {
+      entries:allEntries.filter(e=>inRange(e)&&(!appliedFilter.car||e.car_type===appliedFilter.car)&&(!appliedFilter.service||e.service_type===appliedFilter.service)),
+      expenses:allExpenses.filter(inRange)
+    };
+  },[allEntries,allExpenses,appliedFilter]);
 
   useEffect(() => {
-    // بالتتابع لا بالتوازي — نطلب كل السجلات التاريخية (7+ صفحات لكل جدول)
-    // مرتين بنفس اللحظة كان يزاحم الشبكة على الجوال ويسبب فشل لحظي.
-    void load(startDate, endDate, carTypeFilter, serviceTypeFilter);
     void loadHistory();
     loadPresets().then(setPresets);
 
@@ -189,7 +186,7 @@ export function AnalysisTab() {
   }, []);
 
   function runFilter(start = startDate, end = endDate, car = carTypeFilter, service = serviceTypeFilter) {
-    load(start, end, car, service);
+    setAppliedFilter({start,end,car,service});
   }
 
   function applyPreset(days: number) {
@@ -430,7 +427,7 @@ export function AnalysisTab() {
    }
    return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date));
   },[periodEntries,periodExpenses]);
-  if(!historyReady||loading)return <section className="card text-center py-6" role="status"><p>{historyError?"تعذر تحميل الأرقام المالية.":"جارٍ تجهيز الأرقام المالية..."}</p>{historyError&&<button type="button" className="btn-secondary mt-3" onClick={()=>void loadHistory()}>إعادة المحاولة</button>}</section>;
+  if(!historyReady||loading)return <section className="card text-center py-6" role="status"><p>{historyError?"تعذر تحميل الأرقام المالية.":"جارٍ تجهيز الأرقام المالية..."}</p>{historyError&&<button type="button" className="btn-secondary mt-3" onClick={()=>{setLoading(true);setHistoryError(false);void loadHistory();}}>إعادة المحاولة</button>}</section>;
   return (
     <div className="space-y-6">
       {pendingReviewCount !== null && pendingReviewCount > 0 ? (
