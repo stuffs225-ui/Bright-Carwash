@@ -1,13 +1,15 @@
 "use client";
 import {useCallback,useEffect,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
+import {WorkerDayReport} from "./WorkerDayReport";
+import {dayIsFinished} from "@/lib/carwashCalendarDay";
 
-type OpenDay={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number};
-type Props={token?:string;manager?:boolean;refreshKey?:number};
+type OpenDay={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number;submitted?:boolean};
+type Props={token?:string;manager?:boolean;refreshKey?:number;queued?:number};
 const sar=(n:number)=>new Intl.NumberFormat("ar-SA-u-nu-latn",{maximumFractionDigits:2}).format(n)+" ر.س";
 const dateLabel=(date:string)=>new Date(date+"T12:00:00+03:00")
  .toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh",year:"numeric",month:"short",day:"numeric"});
-export function WorkerDailySummary({token,manager=false,refreshKey=0}:Props){
+export function WorkerDailySummary({token,manager=false,refreshKey=0,queued=0}:Props){
  const [days,setDays]=useState<OpenDay[]>([]);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
@@ -51,7 +53,7 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0}:Props){
   {days.map((day,i)=><details key={day.date} open={i===0} className="border rounded-xl p-3"
    style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
    <summary className="cursor-pointer font-bold flex items-center justify-between gap-2">
-    <span>{dateLabel(day.date)} {day.status==="awaiting_owner"?"— بانتظار اعتماد الموازنة":""}</span>
+    <span>{dateLabel(day.date)} {day.status==="awaiting_owner"||day.submitted?"— بانتظار اعتماد المدير":""}</span>
     <span className="txt-muted text-xs">{day.cars} سيارة</span>
    </summary>
    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
@@ -65,6 +67,8 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0}:Props){
      <strong className="metric-value">{sar(day.crew)}</strong></div>
    </div>
    <p className="txt-muted text-xs mt-2">10 ريالات للفريق كاملًا عن كل سيارة؛ ليست راتبًا أو دفعة فردية.</p>
+   {!manager&&token&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&<WorkerDayReport date={day.date} token={token} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
+   {!manager&&day.submitted&&<p className="txt-cash font-bold mt-3">تم إرسال الموازنة والصورة — بانتظار اعتماد المدير.</p>}
   </details>)}
   {today&&<p className="txt-muted text-xs">جميع الأرقام للسجلات المزامنة مع قاعدة البيانات فقط. التسجيلات المعلقة على الجهاز غير محسوبة حتى تُرسل.</p>}
  </section>;
