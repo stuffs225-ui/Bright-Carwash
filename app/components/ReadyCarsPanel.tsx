@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useState} from "react";
+import {useCallback,useEffect,useRef,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 type Car={id:string;carType:string;serviceType:string;date:string;occurredAt:string;
  cash:number;card:number;discount:number;phone:string|null;consent:boolean;
@@ -43,6 +43,8 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [files,setFiles]=useState<Record<string,File>>({});
+ const [brandedImage,setBrandedImage]=useState<File|null>(null);
+ const preloadAttempted=useRef(new Set<string>());
  const [truncated,setTruncated]=useState(false);
  const headers=useCallback(async(contentType=true)=>{
   const h:Record<string,string>={};
@@ -79,6 +81,57 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
   const timer=window.setInterval(()=>{if(!document.hidden&&navigator.onLine)void load();},25000);
   return()=>window.clearInterval(timer);
  },[open,load,refreshKey]);
+
+ // The single share action has a ready-to-send image before it is pressed.
+ // A real car photo is used if one exists; otherwise we share a branded ready card.
+ useEffect(()=>{
+  if(!open)return;
+  try{
+   const canvas=document.createElement("canvas");
+   canvas.width=1200;canvas.height=630;
+   const ctx=canvas.getContext("2d");
+   if(!ctx)return;
+   const grad=ctx.createLinearGradient(0,0,1200,630);
+   grad.addColorStop(0,"#214bc5");grad.addColorStop(1,"#4296e6");
+   ctx.fillStyle=grad;ctx.fillRect(0,0,1200,630);
+   ctx.fillStyle="#ffffff";ctx.textAlign="center";ctx.direction="rtl";
+   ctx.font="bold 58px sans-serif";ctx.fillText("مغسلة سيارتك اللامعة",600,165);
+   ctx.font="bold 78px sans-serif";ctx.fillText("سيارتك جاهزة للاستلام",600,325);
+   ctx.font="36px sans-serif";ctx.fillText("شكرًا لزيارتك، نسعد بخدمتك",600,425);
+   const binary=atob(canvas.toDataURL("image/png").split(",")[1]);
+   const bytes=new Uint8Array(binary.length);
+   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+   setBrandedImage(new File([bytes],"carwash-ready.png",{type:"image/png"}));
+  }catch{/* Text-only fallback remains available. */}
+ },[open]);
+
+ // Prefetch actual photos silently, never requiring a separate preparation tap.
+ useEffect(()=>{
+  if(!open)return;
+  const queue=cars.filter(car=>car.status==="ready"&&car.photoAvailable&&
+   !preloadAttempted.current.has(car.id));
+  for(const car of queue)preloadAttempted.current.add(car.id);
+  if(!queue.length)return;
+  let cancelled=false;
+  const jobs=queue.slice();
+  async function worker(){
+   while(!cancelled){
+    const car=jobs.shift();
+    if(!car)return;
+    try{
+     const item=await call("photo",car.id);
+     const response=await fetch(item.url,{cache:"no-store"});
+     if(!response.ok)continue;
+     const blob=await response.blob();
+     const file=await imageForShare(new File([blob],"carwash-photo.jpg",{type:blob.type||"image/jpeg"}));
+     if(!cancelled)setFiles(prev=>({...prev,[car.id]:file}));
+    }catch{/* The branded image is a safe local fallback. */}
+   }
+  }
+  for(let i=0;i<Math.min(3,jobs.length);i++)void worker();
+  return()=>{cancelled=true;};
+ },[open,cars,call]);
+
  async function action(car:Car,op:"ready"|"delivered"){
   if(busy)return;
   if(op==="delivered"&&!confirm("تأكيد تسليم السيارة؟"))return;
@@ -111,70 +164,40 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
   }catch(e){setError(e instanceof Error?e.message:"فشل الصورة");}
   finally{setBusy("");}
  }
- async function prepareStoredPhoto(car:Car){
-  if(busy)return;
-  setBusy(car.id);setError("");setNotice("");
-  try{
-   const item=await call("photo",car.id);
-   const response=await fetch(item.url,{cache:"no-store"});
-   if(!response.ok)throw Error("تعذر تحميل الصورة المحفوظة");
-   const original=new File([await response.blob()],"ready-saved.jpg",{type:"image/jpeg"});
-   const prepared=await imageForShare(original);
-   setFiles(prev=>({...prev,[car.id]:prepared}));
-   setNotice("صورة السيارة أصبحت جاهزة. اضغط «مشاركة الجاهزية» لفتح قائمة مشاركة الجهاز.");
-  }catch(e){setError(e instanceof Error?e.message:"لم تتجهز الصورة للمشاركة");}
-  finally{setBusy("");}
- }
  async function share(car:Car){
-  if(car.status!=="ready")return;
+  if(car.status!=="ready"||busy)return;
   const msg=readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.";
-  const file=files[car.id];
-  if(car.photoAvailable&&!file){
-   setError("الصورة محفوظة لكن لم تُجهّز على هذا الجهاز؛ اضغط «تجهيز الصورة للمشاركة» أولًا.");
-   return;
-  }
-  const canShare=typeof navigator.share==="function";
+  const file=files[car.id]||brandedImage;
+  const phone=car.phone?.replace(/^\+/,"")||"";
   setError("");setNotice("");
   try{
-   if(canShare){
-    const payload:ShareData={text:msg,title:"مغسلة سيارتك اللامعة"};
-    if(file&&(!navigator.canShare||navigator.canShare({files:[file]})))
-     payload.files=[file];
-    // Invocation is synchronous with the user's click to retain iOS activation.
-    await navigator.share(payload);
-    await call("share_opened",car.id).catch(()=>{});
-    setNotice("فُتحت مشاركة الجهاز. هذا لا يثبت إرسال الرسالة أو وصولها.");
-    if(file&&!payload.files)setNotice("المشاركة النصية تمت دون الصورة؛ أرفق الصورة من واتساب يدويًا.");
-    return;
-   }
-   if(car.phone){
-    const phone=car.phone.replace(/^\+/,"");
-    const address="https://wa.me/"+phone+"?text="+encodeURIComponent(msg);
-    const w=window.open(address,"_blank","noopener,noreferrer");
-    if(!w){window.location.href=address;}
+   if(typeof navigator.share==="function"&&file&&
+       (!navigator.canShare||navigator.canShare({files:[file]}))){
+    // Must invoke share synchronously from this one button click on iPhone.
+    await navigator.share({title:"مغسلة سيارتك اللامعة",text:msg,files:[file]});
     void call("share_opened",car.id).catch(()=>{});
-    setNotice(file
-     ?"تم فتح محادثة واتساب للنص. أرفق الصورة من المعرض يدويًا."
-     :"تم فتح محادثة واتساب. الإرسال يظل بقرار المستخدم.");
+    setNotice("اختر واتساب ثم محادثة العميل وأكمل الإرسال. لا يمكن للموقع اختيار المستلم تلقائيًا عند مشاركة الصورة.");
     return;
    }
-   if(navigator.clipboard?.writeText){
-    await navigator.clipboard.writeText(msg);
-    setNotice("نُسخت رسالة الجاهزية؛ افتح واتساب والصقها للمستلم.");
-   }else setError("المشاركة غير مدعومة. انسخ نص الجاهزية يدويًا.");
+   // The WhatsApp deep link targets the customer's exact number, but
+   // official click-to-chat links cannot attach a local image.
+   if(phone){
+    const address="https://wa.me/"+phone+"?text="+encodeURIComponent(msg);
+    const opened=window.open(address,"_blank","noopener,noreferrer");
+    if(!opened)window.location.assign(address);
+    void call("share_opened",car.id).catch(()=>{});
+    setNotice("فُتحت محادثة العميل مع الرسالة. هذا المتصفح لا يدعم إرفاق الصورة عبر رابط واتساب.");
+    return;
+   }
+   if(typeof navigator.share==="function"){
+    await navigator.share({title:"مغسلة سيارتك اللامعة",text:msg});
+    void call("share_opened",car.id).catch(()=>{});
+    setNotice("اختر العميل من قائمة المشاركة وأكمل الإرسال.");
+   }else setError("أدخل رقم العميل أو افتح المشاركة من جوال يدعم واتساب.");
   }catch(e){
    if(e instanceof Error&&e.name==="AbortError")return;
-   setError("تعذرت المشاركة؛ يمكنك فتح محادثة العميل بالنص، وإرفاق الصورة يدويًا.");
+   setError("تعذر فتح المشاركة؛ تأكد من صلاحيات المشاركة وتطبيق واتساب.");
   }
- }
- async function openWhatsApp(car:Car){
-  if(!car.phone)return;
-  const address="https://wa.me/"+car.phone.replace(/^\+/,"")+
-   "?text="+encodeURIComponent(readyMessage);
-  const opened=window.open(address,"_blank","noopener,noreferrer");
-  if(!opened)window.location.href=address;
-  void call("share_opened",car.id).catch(()=>{});
-  setNotice("تم فتح رابط واتساب، وليس تأكيد إرسال رسالة.");
  }
  return <section className="card space-y-3" dir="rtl">
   <button type="button" className="w-full flex items-center justify-between text-start gap-2"
@@ -200,49 +223,31 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
        {statusText[car.status]}</span>
      </div>
      <div className="grid grid-cols-2 gap-2">
-      {car.status==="washing"&&<button type="button" className="btn-primary"
+      {car.status==="washing"&&<button type="button" className="btn-primary col-span-2"
        disabled={busy===car.id} onClick={()=>void action(car,"ready")}>
        إبلاغ بالجاهزية</button>}
-      {car.status==="ready"&&<button type="button" className="btn-secondary"
-       disabled={busy===car.id} onClick={()=>void action(car,"delivered")}>
-       تم التسليم</button>}
-      {car.status!=="delivered"&&<>
-       <label className="btn-secondary text-center cursor-pointer">
-        📷 تصوير السيارة
-        <input type="file" className="sr-only" accept="image/*" capture="environment"
-         disabled={!!busy} onChange={e=>{
-          const photo=e.currentTarget.files?.[0];
-          if(photo)void upload(car,photo);e.currentTarget.value="";
-         }}/>
-       </label>
-       <label className="btn-secondary text-center cursor-pointer">
-        اختيار صورة من المعرض
-        <input type="file" className="sr-only" accept="image/*"
-         disabled={!!busy} onChange={e=>{
-          const photo=e.currentTarget.files?.[0];
-          if(photo)void upload(car,photo);e.currentTarget.value="";
-         }}/>
-       </label>
+      {car.status==="ready"&&<>
+       <button type="button" className="btn-primary col-span-2 py-3"
+        disabled={!!busy} onClick={()=>void share(car)}>مشاركة الجاهزية</button>
+       <button type="button" className="btn-secondary col-span-2"
+        disabled={busy===car.id} onClick={()=>void action(car,"delivered")}>تم التسليم</button>
       </>}
      </div>
-     {car.status==="ready"&&<>
-      {car.photoAvailable&&!files[car.id]&&<button type="button" className="btn-secondary w-full"
-       disabled={!!busy} onClick={()=>void prepareStoredPhoto(car)}>
-       {busy===car.id?"جارٍ تجهيز الصورة...":"تجهيز الصورة المحفوظة للمشاركة"}
-      </button>}
-      {files[car.id]&&<p className="txt-cash text-xs">✓ الصورة جاهزة للمشاركة مع الرسالة</p>}
-      <button type="button" className="btn-primary w-full"
-       onClick={()=>void share(car)}>مشاركة الجاهزية عبر واتساب</button>
-      {car.phone&&<button type="button" className="btn-secondary w-full"
-       onClick={()=>void openWhatsApp(car)}>فتح محادثة العميل بالنص</button>}
-      {car.photoAvailable&&<button type="button" className="text-sm link-inline"
-       onClick={async()=>{try{const d=await call("photo",car.id);
-        window.open(d.url,"_blank","noopener,noreferrer");
-       }catch(e){setError(e instanceof Error?e.message:"تعذر فتح الصورة");}}}>
-       فتح الصورة المحفوظة (رابط مؤقت)</button>}
-     </>}
+     {car.status==="ready"&&<details className="rounded-lg border p-2 text-sm" style={{borderColor:"var(--border)"}}>
+      <summary className="cursor-pointer txt-muted">صورة السيارة الفعلية (اختياري)</summary>
+      <label className="btn-secondary block mt-2 text-center cursor-pointer">
+       📷 تصوير السيارة
+       <input type="file" className="sr-only" accept="image/*" capture="environment"
+        disabled={!!busy} onChange={e=>{
+         const photo=e.currentTarget.files?.[0];
+         if(photo)void upload(car,photo);
+         e.currentTarget.value="";
+        }}/>
+      </label>
+      <p className="txt-muted text-xs mt-2">عند عدم وجود صورة سيارة، تُشارك بطاقة جاهزية المغسلة المصممة تلقائيًا.</p>
+     </details>}
     </div>)}</div>}
-   <p className="txt-muted text-xs">مشاركة الجهاز لا تضمن اختيار واتساب أو إرسال المرفق. لا نسجل «تم الإرسال» أو «وصلت الرسالة» دون إثبات.</p>
+   <p className="txt-muted text-xs">زر واحد يجهز الصورة والرسالة للمشاركة. اختر واتساب والمستلم عند ظهور قائمة الجهاز؛ المشاركة لا تؤكد التسليم.</p>
   </>}
  </section>;
 }
