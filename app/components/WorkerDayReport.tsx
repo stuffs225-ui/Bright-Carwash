@@ -1,6 +1,7 @@
 "use client";
 import {useState,useRef} from "react";
-type Props={date:string;token:string;queued:number;onSent:()=>void};
+import {supabase} from "@/lib/supabaseClient";
+type Props={date:string;token?:string;manager?:boolean;queued:number;onSent:()=>void};
 async function compress(file:File):Promise<Blob>{
  if(file.size<=2.5*1024*1024&&["image/jpeg","image/png","image/webp"].includes(file.type))return file;
  const url=URL.createObjectURL(file);
@@ -16,7 +17,7 @@ async function compress(file:File):Promise<Blob>{
   return blob;
  }finally{URL.revokeObjectURL(url);}
 }
-export function WorkerDayReport({date,token,queued,onSent}:Props){
+export function WorkerDayReport({date,token,manager=false,queued,onSent}:Props){
  const [cash,setCash]=useState(""),[card,setCard]=useState(""),[terminal,setTerminal]=useState("");
  const [photo,setPhoto]=useState<File|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const locked=useRef(false);
@@ -28,10 +29,16 @@ export function WorkerDayReport({date,token,queued,onSent}:Props){
   locked.current=true;setBusy(true);setError("");
   try{
    const blob=await compress(photo);
-   const form=new FormData();form.append("token",token);form.append("date",date);
+   const form=new FormData();if(token)form.append("token",token);form.append("date",date);
    form.append("cash",cash);form.append("card",card);form.append("terminal",terminal);
    form.append("photo",blob,"report.jpg");
-   const res=await fetch("/api/worker-links/day-report",{method:"POST",body:form,cache:"no-store"});
+   const headers:Record<string,string>={};
+   if(manager){
+    const {data:{session}}=await supabase.auth.getSession();
+    if(!session)throw Error("جلسة المدير غير متاحة");
+    headers.authorization="Bearer "+session.access_token;
+   }
+   const res=await fetch("/api/worker-links/day-report",{method:"POST",headers,body:form,cache:"no-store"});
    const json=await res.json().catch(()=>({}));
    if(!res.ok||!json.ok)throw Error(json.error||"لم يتأكد وصول الموازنة، أعد المحاولة");
    onSent();
@@ -40,13 +47,15 @@ export function WorkerDayReport({date,token,queued,onSent}:Props){
  }
  return <form className="card mt-3 space-y-3" onSubmit={submit}>
   <h3 className="font-bold">موازنة نهاية يوم {date}</h3>
-  <p className="txt-muted text-sm">أرسل المبالغ الفعلية وصورة تقرير الجهاز للمدير. سيظل اليوم ظاهرًا إلى أن يعتمده.</p>
+  <p className="txt-muted text-sm">{manager
+   ?"نفس نموذج العامل: أدخل مبالغ الكاش والشبكة وصوّر تقرير الشبكة. يُرسل للمراجعة ثم يُعتمد من صفحة الموازنة."
+   :"أرسل المبالغ الفعلية وصورة تقرير الجهاز للمدير. سيظل اليوم ظاهرًا إلى أن يعتمده."}</p>
   <label className="form-label">الكاش الموجود معك (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={cash} onChange={e=>setCash(e.target.value)}/></label>
   <label className="form-label">مبلغ الشبكة (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={card} onChange={e=>setCard(e.target.value)}/></label>
   <label className="form-label">المبلغ الظاهر في تقرير موازنة جهاز الشبكة (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={terminal} onChange={e=>setTerminal(e.target.value)}/></label>
   <label className="form-label">صوّر تقرير جهاز الشبكة<input type="file" accept="image/*" capture="environment" required onChange={e=>setPhoto(e.target.files?.[0]||null)}/></label>
   {queued>0&&<p className="txt-warning text-sm">زامن السيارات المحفوظة أولًا قبل إرسال الموازنة.</p>}
   {error&&<p className="txt-danger" role="alert">{error}</p>}
-  <button type="submit" className="btn-primary w-full" disabled={busy||queued>0||!photo}>{busy?"جارٍ رفع الموازنة...":"إرسال الموازنة للمدير"}</button>
+  <button type="submit" className="btn-primary w-full" disabled={busy||queued>0||!photo}>{busy?"جارٍ رفع الموازنة...":"إرسال الموازنة للمراجعة"}</button>
  </form>;
 }
