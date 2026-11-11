@@ -10,13 +10,33 @@ import {MetricCard} from "./MetricCard";
 import type {Entry} from "@/lib/types";
 
 type WorkerReport={business_date:string;actual_cash:number;actual_card:number;terminal_total:number;report_object_path:string;imageUrl:string;submitted_at:string};
-type Day={business_date:string;status:"open"|"awaiting_owner"|"approved";approved_at:string|null;approved_by:string|null};
+type Day={business_date:string;status:"open"|"awaiting_owner"|"approved";approved_at:string|null;approved_by:string|null;reported?:boolean};
 type Device={device_id:string;sealed_at:string|null;last_seen_at:string};
 type Settlement={business_date:string;recorded_cash:number;recorded_card:number;
  actual_cash:number;terminal_card:number;cash_difference:number;card_difference:number;
  cars:number;collective_tens:number;report_object_path:string;difference_reason:string|null;
  expected_cash?:number|null;cash_expenses?:number|null;cash_worker_payments?:number|null;cash_movements_net?:number|null};
 function toMoney(v:number){return Math.round(v*100)/100;}
+function DifferenceCard({title,system,reported,systemLabel="النظام",reportedLabel="العامل"}:{
+ title:string;system:number;reported:number;systemLabel?:string;reportedLabel?:string;
+}){
+ const difference=toMoney(reported-system);
+ const mismatch=Math.abs(difference)>=0.01;
+ return <div className="rounded-xl border-2 p-3 space-y-2"
+  role={mismatch?"alert":undefined}
+  style={{borderColor:mismatch?"#d92d20":"var(--border)",
+   background:mismatch?"var(--tone-red-bg)":"var(--surface-2)"}}>
+  <div className="flex justify-between items-center gap-2">
+   <strong>{title}</strong><span className={mismatch?"txt-danger":"txt-cash"}>{mismatch?"⚠️ اختلاف":"✓ مطابق"}</span>
+  </div>
+  <div className="grid grid-cols-2 gap-2 text-sm">
+   <p>{systemLabel}: <strong>{formatCurrency(system)}</strong></p>
+   <p>{reportedLabel}: <strong>{formatCurrency(reported)}</strong></p>
+  </div>
+  {mismatch&&<p className="font-bold txt-danger">الفرق: {formatCurrency(difference)} ({difference>0?"زيادة":"نقص"})</p>}
+ </div>;
+}
+
 
 export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolean}){
  const [now,setNow]=useState(new Date());
@@ -54,7 +74,12 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const expectedCash=toMoney(totals.cash-cashExpenses-cashWorkerPayouts+movementNet);
  const cashDiff=cashActual.trim()?toMoney(Number(cashActual)-expectedCash):null;
  const cardDiff=posActual.trim()?toMoney(Number(posActual)-totals.card):null;
- const hasVariance=cashDiff!==null&&cardDiff!==null&&(cashDiff!==0||cardDiff!==0||!!reportForDay&&Number(reportForDay.actual_card)!==Number(reportForDay.terminal_total));
+ const workerCardDiff=reportForDay?toMoney(Number(reportForDay.actual_card)-totals.card):null;
+ const terminalWorkerDiff=reportForDay?toMoney(Number(reportForDay.terminal_total)-Number(reportForDay.actual_card)):null;
+ const networkMismatch=cardDiff!==null&&cardDiff!==0||
+  workerCardDiff!==null&&workerCardDiff!==0||terminalWorkerDiff!==null&&terminalWorkerDiff!==0;
+ const cashMismatch=cashDiff!==null&&cashDiff!==0;
+ const hasVariance=cashDiff!==null&&cardDiff!==null&&(cashMismatch||networkMismatch);
  const filtered=rows.filter(e=>filter==="all"||filter==="crew"||
   (filter==="cash"&&Number(e.cash_paid)>0)||(filter==="card"&&Number(e.card_paid)>0));
  const incomplete=devices.filter(d=>!d.sealed_at);
@@ -65,7 +90,15 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    .select("business_date,status,approved_at,approved_by")
    .order("business_date",{ascending:false}).limit(90);
   if(error){setError("تعذر قراءة الأيام: "+error.message);return;}
-  const list=(data||[]) as Day[];
+  const {data:{session}}=await supabase.auth.getSession();
+  if(!session){setError("جلسة المدير غير متاحة");return;}
+  const response=await fetch("/api/worker-links/day-report?list=1",{
+   headers:{authorization:"Bearer "+session.access_token},cache:"no-store"
+  });
+  if(!response.ok){setError("تعذر قراءة حالات موازنة العمال");return;}
+  const json=await response.json().catch(()=>({}));
+  const reportDates=new Set<string>(Array.isArray(json.reportedDates)?json.reportedDates:[]);
+  const list=((data||[]) as Day[]).map(day=>({...day,reported:reportDates.has(day.business_date)}));
   setDays(list);
   setSelected(old=>{
    if(old&&list.some(d=>d.business_date===old))return old;
@@ -205,8 +238,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <div className="flex flex-wrap gap-2">
      {days.map(d=><button type="button" key={d.business_date}
        className={selected===d.business_date?"btn-primary":"btn-secondary"}
+       style={d.status!=="approved"&&(d.reported||d.status==="awaiting_owner")?
+        {borderColor:"#c27c14",borderWidth:2}:undefined}
        onClick={()=>{setSelected(d.business_date);setWorkerReport(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
-       {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.status==="awaiting_owner"?"بانتظار المدير":"غير معتمد"}
+       {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}
       </button>)}
     </div>}
   </section>
@@ -215,8 +250,16 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <h3 className="section-title">حسابات {selected}</h3>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
      <MetricCard tone="blue" label="السيارات" value={totals.cars} onClick={()=>setFilter("all")} />
-     <MetricCard tone="green" label="كاش" value={formatCurrency(totals.cash)} onClick={()=>setFilter("cash")} />
-     <MetricCard tone="purple" label="شبكة" value={formatCurrency(totals.card)} onClick={()=>setFilter("card")} />
+     <div className={cashMismatch?"rounded-xl border-2 p-1":""}
+      style={cashMismatch?{borderColor:"#d92d20",background:"var(--tone-red-bg)"}:undefined}>
+      <MetricCard tone={cashMismatch?"red":"green"} label={cashMismatch?"⚠️ كاش — يوجد فرق":"كاش"}
+       value={formatCurrency(totals.cash)} onClick={()=>setFilter("cash")} />
+     </div>
+     <div className={networkMismatch?"rounded-xl border-2 p-1":""}
+      style={networkMismatch?{borderColor:"#d92d20",background:"var(--tone-red-bg)"}:undefined}>
+      <MetricCard tone={networkMismatch?"red":"purple"} label={networkMismatch?"⚠️ شبكة — يوجد فرق":"شبكة"}
+       value={formatCurrency(totals.card)} onClick={()=>setFilter("card")} />
+     </div>
      <MetricCard tone="emerald" label="مخصص الفريق الجماعي" value={formatCurrency(totals.collectiveTens)} onClick={()=>setFilter("crew")} />
     </div>
     <div className="mt-3 space-y-2">{rows.map(e=>
@@ -230,7 +273,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      <MetricCard tone="green" label="الكاش المحصل" value={formatCurrency(totals.cash)} onClick={()=>setFilter("cash")}/>
      <MetricCard tone="red" label="مصروفات مدفوعة كاش" value={formatCurrency(cashExpenses)}/>
      <MetricCard tone="amber" label="دفعات عمال من الكاش" value={formatCurrency(cashWorkerPayouts)}/>
-     <MetricCard tone="blue" label="الكاش المتوقع في الصندوق" value={formatCurrency(expectedCash)}/>
+     <div className={cashMismatch?"rounded-xl border-2 p-1":""}
+      style={cashMismatch?{borderColor:"#d92d20",background:"var(--tone-red-bg)"}:undefined}>
+      <MetricCard tone={cashMismatch?"red":"blue"} label={cashMismatch?"⚠️ الكاش المتوقع":"الكاش المتوقع في الصندوق"}
+       value={formatCurrency(expectedCash)}/>
+     </div>
     </div>
     <p className="txt-muted text-sm">التحصيل الكاش − المصروفات الكاش − دفعات العمال الكاش + صافي الإيداعات والسحوبات المسجلة = رصيد الصندوق المتوقع. البيانات القديمة مجهولة مصدر الدفع لا تُخصم تلقائيًا.</p>
     <div className="space-y-2">
@@ -271,9 +318,22 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      <h3 className="section-title">اعتماد موازنة {selected}</h3>
      {!reportForDay&&<p className="txt-warning font-bold">بانتظار العامل: يجب أن يرسل الكاش والشبكة وصورة التقرير بعد انتهاء اليوم.</p>}
      {reportForDay&&<div className="space-y-2"><p className="txt-cash font-bold">وصل تقرير العامل والصورة</p><p>الشبكة حسب العامل: {formatCurrency(Number(reportForDay.actual_card))}</p><a href={reportForDay.imageUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary block text-center">فتح صورة تقرير جهاز الشبكة</a><img src={reportForDay.imageUrl} alt="صورة موازنة العامل" className="w-full max-h-96 object-contain rounded-lg border"/></div>}
+     {reportForDay&&<section className="space-y-2" aria-label="تحديد فروقات الموازنة">
+      <h4 className="font-bold">مقارنة الموازنة — المربعات الحمراء تحدد مصدر الاختلاف</h4>
+      <DifferenceCard title="مراجعة الكاش" system={expectedCash}
+       reported={Number(reportForDay.actual_cash)}
+       systemLabel="الكاش المتوقع بعد المصروفات" reportedLabel="الكاش مع العامل"/>
+      <DifferenceCard title="مراجعة الشبكة مع النظام" system={totals.card}
+       reported={Number(reportForDay.actual_card)}
+       systemLabel="الشبكة المسجلة" reportedLabel="الشبكة التي أدخلها العامل"/>
+      <DifferenceCard title="مراجعة تقرير جهاز الشبكة"
+       system={Number(reportForDay.actual_card)}
+       reported={Number(reportForDay.terminal_total)}
+       systemLabel="الشبكة حسب العامل" reportedLabel="الإجمالي في صورة الجهاز"/>
+     </section>}
      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} readOnly /></label>
-      <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} readOnly /></label>
+      <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} readOnly className={cashMismatch?"border-2 border-red-600":""} /></label>
+      <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} readOnly className={networkMismatch?"border-2 border-red-600":""} /></label>
      </div>
      <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
       <p>الكاش المسجل: {formatCurrency(totals.cash)}</p>
@@ -293,7 +353,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      </button>
     </section>:<section className="card"><p className="txt-muted">يوم {selected} لم ينتهِ بعد. يمكن مراجعته ولكن لا يعتمد قبل 12 صباحًا بتوقيت الرياض.</p></section>):
     <section className="card space-y-3">
-     <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"فرق مالي ينتظر اعتماد المدير"}</h3>
+     <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"بانتظار الاعتماد — مراجعة الفرق المالي"}</h3>
      {reportForDay&&<div className="space-y-2"><p>الشبكة حسب العامل: {formatCurrency(Number(reportForDay.actual_card))}</p><a className="btn-secondary block text-center" href={reportForDay.imageUrl} target="_blank" rel="noopener noreferrer">عرض صورة موازنة العامل</a></div>}
      {settlement?<><p>الكاش المسجل: {formatCurrency(settlement.recorded_cash)} · الكاش الفعلي: {formatCurrency(settlement.actual_cash)}</p>
       <p>الشبكة المسجلة: {formatCurrency(settlement.recorded_card)} · تقرير الشبكة: {formatCurrency(settlement.terminal_card)}</p>
