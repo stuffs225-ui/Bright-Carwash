@@ -404,8 +404,9 @@ function ExpenseRow({
         <td data-label="المبلغ" className="txt-expense">{formatCurrency(expense.amount)}</td>
         <td data-label="ملاحظات">{expense.notes || ""}</td>
         <td className="flex gap-1.5">
+          {expense.crew_business_date?<span className="txt-muted text-xs">تلقائي — حسب السيارات</span>:<>
           <button type="button" className="action-button edit-button" onClick={onEdit}>تعديل</button>
-          <button type="button" className="action-button delete-button" onClick={onDelete}>حذف</button>
+          <button type="button" className="action-button delete-button" onClick={onDelete}>حذف</button></>}
         </td>
       </tr>
     );
