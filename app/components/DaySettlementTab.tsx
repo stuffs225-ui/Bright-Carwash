@@ -154,10 +154,8 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   if(hasVariance&&reason.trim().length<5){setError("اكتب سبب الفروقات؛ سيراجعه المدير.");return;}
   if(!confirm("اعتماد موازنة "+selected+" فقط؟ لن تُحذف أو تُعدّل تسجيلات اليوم التالي."))return;
   setBusy(true);setError("");
-  const path=reportForDay.report_object_path;
-  const {data,error}=await supabase.rpc("submit_carwash_day_settlement",{
-   p_date:selected,p_actual_cash:Number(cashActual),p_terminal_card:Number(posActual),
-   p_report_path:path,p_reason:reason.trim()||null,
+  const {data,error}=await supabase.rpc("carwash_approve_worker_report",{
+   p_date:selected,p_reason:reason.trim()||null,
   });
   setBusy(false);
   if(error){setError("فشل الاعتماد: "+error.message);return;}
