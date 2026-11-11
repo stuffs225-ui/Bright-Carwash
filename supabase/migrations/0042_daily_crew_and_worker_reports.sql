@@ -107,3 +107,19 @@ do $$ declare d date;begin
  for d in select business_date from public.carwash_days where status='open'
  loop perform private.sync_daily_crew_expense(d);end loop;
 end $$;
+
+-- Manager approval uses the stored worker figures and attachment, not a new file.
+create or replace function public.carwash_approve_worker_report(p_date date,p_reason text default null)
+ returns text language plpgsql security definer set search_path='' as $$
+declare r public.carwash_worker_day_reports%rowtype;
+begin
+ if private.current_app_role() not in ('manager','owner') then
+  raise exception 'Manager authorization required';end if;
+ select * into r from public.carwash_worker_day_reports where business_date=p_date;
+ if not found then raise exception 'Worker report required';end if;
+ if r.actual_card<>r.terminal_total and length(trim(coalesce(p_reason,'')))<5 then
+  raise exception 'Reported network difference requires reason';end if;
+ return public.submit_carwash_day_settlement(p_date,r.actual_cash,r.terminal_total,r.report_object_path,p_reason);
+end $$;
+revoke all on function public.carwash_approve_worker_report(date,text) from public,anon;
+grant execute on function public.carwash_approve_worker_report(date,text) to authenticated;
