@@ -61,8 +61,8 @@ export async function POST(request:Request){
   const report=await admin.rpc("carwash_submit_worker_day_report",{p_date:date,p_cash:cash,p_card:card,p_terminal:terminal,p_path:path,p_link:link.id});
   if(report.error||report.data!==true){
    // Only remove this request's own unreferenced upload.
+   if(report.error)return deny(409,"لم يتأكد حفظ التقرير؛ أعد المحاولة للتحقق من وصوله");
    await bucket.remove([path]);
-   if(report.error)return deny(409,"تعذر حفظ التقرير؛ تحقق من حالة اليوم");
    return NextResponse.json({ok:true,alreadySubmitted:true},{headers:NO_STORE});
   }
   return NextResponse.json({ok:true},{headers:NO_STORE});
