@@ -74,7 +74,9 @@ export function AnalysisTab() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [allEntries, setAllEntries] = useState<Entry[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [historyReady,setHistoryReady]=useState(false);
+  const [historyError,setHistoryError]=useState(false);
   const [pendingReviewCount, setPendingReviewCount] = useState<number | null>(null);
   const [showDaily, setShowDaily] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -149,15 +151,17 @@ export function AnalysisTab() {
       ]);
       setAllEntries(e);
       setAllExpenses(x);
+      setHistoryReady(true);setHistoryError(false);
     } catch (err) {
-      showToast("خطأ في تحميل السجل الكامل: " + (describeError(err)), "error");
+      setHistoryError(true);showToast("خطأ في تحميل السجل الكامل: " + (describeError(err)), "error");
     }
   }, []);
 
   useEffect(() => {
     // بالتتابع لا بالتوازي — نطلب كل السجلات التاريخية (7+ صفحات لكل جدول)
     // مرتين بنفس اللحظة كان يزاحم الشبكة على الجوال ويسبب فشل لحظي.
-    load(startDate, endDate, carTypeFilter, serviceTypeFilter).then(loadHistory);
+    void load(startDate, endDate, carTypeFilter, serviceTypeFilter);
+    void loadHistory();
     loadPresets().then(setPresets);
 
     supabase
