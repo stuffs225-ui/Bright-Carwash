@@ -7,7 +7,7 @@ import {riyadhDayKey} from "@/lib/carwashCalendarDay";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 const deny=(status:number,error:string)=>NextResponse.json({error},{status,headers:NO_STORE});
-type Day={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number};
+type Day={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number;submitted?:boolean};
 const cents=(v:unknown)=>Math.round((Number(v)||0)*100);
 export async function POST(request:Request){
  try{
@@ -56,7 +56,7 @@ export async function POST(request:Request){
    const batch=dates.slice(start,start+40);
    for(let from=0;;from+=500){
     const {data,error}=await admin.from("entries")
-     .select("id,business_date,cash_paid,card_paid")
+     .select("id,business_date,cash_paid,card_paid,car_type")
      .is("deleted_at",null).in("business_date",batch)
      .order("id",{ascending:true}).range(from,from+499);
     if(error)return deny(503,"تعذر تلخيص التسجيلات");
@@ -64,6 +64,7 @@ export async function POST(request:Request){
      const day=byDay.get(row.business_date);
      if(!day)continue;
      day.cars++;
+     if(row.car_type==='سيارة صغيرة'||row.car_type==='سيارة كبيرة')day.crew+=10;
      day.cash+=cents(row.cash_paid);
      day.card+=cents(row.card_paid);
     }
@@ -74,8 +75,12 @@ export async function POST(request:Request){
   for(const day of days){
    day.cash=Math.round(day.cash)/100;
    day.card=Math.round(day.card)/100;
-   day.crew=day.cars*10;
+
   }
+  const reports=dates.length?await admin.from('carwash_worker_day_reports').select('business_date').in('business_date',dates):{data:[],error:null};
+  if(reports.error)return deny(503,'تعذر قراءة حالة الموازنات');
+  const submitted=new Set((reports.data||[]).map(r=>r.business_date));
+  for(const day of days)day.submitted=submitted.has(day.date);
   return NextResponse.json({
    ok:true,days:days.sort((a,b)=>b.date.localeCompare(a.date)),
    today,crewRatePerCar:10,sharedTeam:true,
