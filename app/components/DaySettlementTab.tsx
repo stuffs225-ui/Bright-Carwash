@@ -9,6 +9,7 @@ import {arabicDate} from "./ArabicDateField";
 import {MetricCard} from "./MetricCard";
 import type {Entry} from "@/lib/types";
 
+type WorkerReport={business_date:string;actual_cash:number;actual_card:number;terminal_total:number;report_object_path:string;imageUrl:string;submitted_at:string};
 type Day={business_date:string;status:"open"|"awaiting_owner"|"approved";approved_at:string|null;approved_by:string|null};
 type Device={device_id:string;sealed_at:string|null;last_seen_at:string};
 type Settlement={business_date:string;recorded_cash:number;recorded_card:number;
@@ -37,7 +38,8 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [filter,setFilter]=useState<"all"|"cash"|"card"|"crew"|null>(null);
  const [cashActual,setCashActual]=useState("");
  const [posActual,setPosActual]=useState("");
- const [posStatement,setPosStatement]=useState<File|null>(null);
+ const [workerReport,setWorkerReport]=useState<WorkerReport|null>(null);
+ const reportForDay=workerReport?.business_date===selected?workerReport:null;
  const [reason,setReason]=useState("");
  const [confirmedWorkerSync,setConfirmedWorkerSync]=useState(false);
  const [editing,setEditing]=useState<Entry|null>(null);
@@ -52,7 +54,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const expectedCash=toMoney(totals.cash-cashExpenses-cashWorkerPayouts+movementNet);
  const cashDiff=cashActual.trim()?toMoney(Number(cashActual)-expectedCash):null;
  const cardDiff=posActual.trim()?toMoney(Number(posActual)-totals.card):null;
- const hasVariance=cashDiff!==null&&cardDiff!==null&&(cashDiff!==0||cardDiff!==0);
+ const hasVariance=cashDiff!==null&&cardDiff!==null&&(cashDiff!==0||cardDiff!==0||!!reportForDay&&Number(reportForDay.actual_card)!==Number(reportForDay.terminal_total));
  const filtered=rows.filter(e=>filter==="all"||filter==="crew"||
   (filter==="cash"&&Number(e.cash_paid)>0)||(filter==="card"&&Number(e.card_paid)>0));
  const incomplete=devices.filter(d=>!d.sealed_at);
@@ -99,7 +101,15 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    setCashExpenseRows((expenses.data||[]) as typeof cashExpenseRows);
    setCashPayoutRows((payouts.data||[]) as typeof cashPayoutRows);
    setMovements((cashMoves.data||[]) as typeof movements);
-   setSettlement((proof.data as Settlement)||null);setError("");
+   setSettlement((proof.data as Settlement)||null);
+   const {data:{session}}=await supabase.auth.getSession();
+   if(!session)throw Error("جلسة المدير غير متاحة");
+   const response=await fetch("/api/worker-links/day-report?date="+encodeURIComponent(selected),{headers:{authorization:"Bearer "+session.access_token},cache:"no-store"});
+   const json=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(json.error||"تعذر تحميل تقرير العامل");
+   setWorkerReport(json.report||null);
+   if(json.report){setCashActual(String(json.report.actual_cash));setPosActual(String(json.report.terminal_total));}
+   setError("");
   }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
  },[selected]);
 
@@ -140,28 +150,18 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    Number(cashActual)<0||Number(posActual)<0){
    setError("أدخل الكاش الفعلي والإجمالي الصحيح لتقرير الشبكة.");return;
   }
-  if(!posStatement){setError("ارفق صورة أو PDF لتقرير جهاز الشبكة.");return;}
+  if(!reportForDay){setError("انتظر إرسال الموازنة وصورة جهاز الشبكة من العامل.");return;}
   if(hasVariance&&reason.trim().length<5){setError("اكتب سبب الفروقات؛ سيراجعه المدير.");return;}
-  if(posStatement.size>10*1024*1024||
-     !["image/jpeg","image/png","image/webp","application/pdf"].includes(posStatement.type)){
-   setError("مرفق POS يجب أن يكون JPG/PNG/WebP/PDF وبحجم أقل من 10MB.");return;
-  }
   if(!confirm("اعتماد موازنة "+selected+" فقط؟ لن تُحذف أو تُعدّل تسجيلات اليوم التالي."))return;
   setBusy(true);setError("");
-  const suffix=posStatement.type==="application/pdf"?".pdf":posStatement.type==="image/png"?".png":
-   posStatement.type==="image/webp"?".webp":".jpg";
-  const path="day/"+selected+"/"+crypto.randomUUID()+suffix;
-  const upload=await supabase.storage.from("carwash-pos-evidence").upload(path,posStatement,{
-   contentType:posStatement.type,upsert:false,
-  });
-  if(upload.error){setBusy(false);setError("فشل رفع صورة الشبكة: "+upload.error.message);return;}
+  const path=reportForDay.report_object_path;
   const {data,error}=await supabase.rpc("submit_carwash_day_settlement",{
    p_date:selected,p_actual_cash:Number(cashActual),p_terminal_card:Number(posActual),
    p_report_path:path,p_reason:reason.trim()||null,
   });
   setBusy(false);
   if(error){setError("فشل الاعتماد: "+error.message);return;}
-  setCashActual("");setPosActual("");setPosStatement(null);setReason("");setConfirmedWorkerSync(false);
+  setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);
   alert(data==="approved"
    ?"تم اعتماد يوم "+selected+"؛ اختفت تسجيلاته من حساب العمال وبقي الأرشيف محفوظًا.":"فرق الموازنة محفوظ ويحتاج موافقة المدير؛ اليوم لا يزال ظاهرًا للعامل.");
   await reloadDays();await reloadDay();
@@ -207,7 +207,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <div className="flex flex-wrap gap-2">
      {days.map(d=><button type="button" key={d.business_date}
        className={selected===d.business_date?"btn-primary":"btn-secondary"}
-       onClick={()=>{setSelected(d.business_date);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
+       onClick={()=>{setSelected(d.business_date);setWorkerReport(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
        {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.status==="awaiting_owner"?"بانتظار المدير":"غير معتمد"}
       </button>)}
     </div>}
@@ -271,9 +271,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    {current.status==="open"?(dayIsFinished(selected,now)?
     <section className="card space-y-3">
      <h3 className="section-title">اعتماد موازنة {selected}</h3>
+     {!reportForDay&&<p className="txt-warning font-bold">بانتظار العامل: يجب أن يرسل الكاش والشبكة وصورة التقرير بعد انتهاء اليوم.</p>}
+     {reportForDay&&<div className="space-y-2"><p className="txt-cash font-bold">وصل تقرير العامل والصورة</p><p>الشبكة حسب العامل: {formatCurrency(Number(reportForDay.actual_card))}</p><a href={reportForDay.imageUrl} target="_blank" rel="noopener noreferrer" className="btn-secondary block text-center">فتح صورة تقرير جهاز الشبكة</a><img src={reportForDay.imageUrl} alt="صورة موازنة العامل" className="w-full max-h-96 object-contain rounded-lg border"/></div>}
      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} onChange={e=>setCashActual(e.target.value)} /></label>
-      <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} onChange={e=>setPosActual(e.target.value)} /></label>
+      <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} readOnly /></label>
+      <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} readOnly /></label>
      </div>
      <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
       <p>الكاش المسجل: {formatCurrency(totals.cash)}</p>
@@ -283,23 +285,23 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <p>فرق الكاش: {cashDiff===null?"—":formatCurrency(cashDiff)} · فرق الشبكة: {cardDiff===null?"—":formatCurrency(cardDiff)}</p>
       {cashActual.trim()!==""&&posActual.trim()!==""&&<p className="mt-1">الموازنة الفعلية (كاش + شبكة): {formatCurrency(Number(cashActual)+Number(posActual))}</p>}
      </div>
-     <label className="form-label">صورة / PDF تقرير الشبكة<input type="file" accept="image/*,application/pdf" onChange={e=>setPosStatement(e.target.files?.[0]||null)} /></label>
      {hasVariance&&<label className="form-label">سبب الفرق<textarea rows={3} value={reason} onChange={e=>setReason(e.target.value)} /></label>}
      <label className="flex items-start gap-3 rounded-xl border p-3 text-sm leading-relaxed" style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
       <input type="checkbox" className="mt-1" checked={confirmedWorkerSync} onChange={e=>setConfirmedWorkerSync(e.target.checked)}/>
       <span>تأكدت من العمال أن سيارات هذا اليوم أُرسلت إلى النظام، ولا توجد تسجيلات معلّقة على أجهزتهم. رابط العامل لا يكشف العمليات المحفوظة دون إنترنت.</span>
      </label>
-     <button type="button" className="btn-primary w-full" disabled={busy||incomplete.length>0||!confirmedWorkerSync} onClick={()=>void closeDay()}>
+     <button type="button" className="btn-primary w-full" disabled={busy||incomplete.length>0||!confirmedWorkerSync||!reportForDay} onClick={()=>void closeDay()}>
       {busy?"جارٍ الاعتماد":"اعتماد هذا اليوم فقط"}
      </button>
     </section>:<section className="card"><p className="txt-muted">يوم {selected} لم ينتهِ بعد. يمكن مراجعته ولكن لا يعتمد قبل 12 صباحًا بتوقيت الرياض.</p></section>):
     <section className="card space-y-3">
      <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"فرق مالي ينتظر اعتماد المدير"}</h3>
+     {reportForDay&&<div className="space-y-2"><p>الشبكة حسب العامل: {formatCurrency(Number(reportForDay.actual_card))}</p><a className="btn-secondary block text-center" href={reportForDay.imageUrl} target="_blank" rel="noopener noreferrer">عرض صورة موازنة العامل</a></div>}
      {settlement?<><p>الكاش المسجل: {formatCurrency(settlement.recorded_cash)} · الكاش الفعلي: {formatCurrency(settlement.actual_cash)}</p>
       <p>الشبكة المسجلة: {formatCurrency(settlement.recorded_card)} · تقرير الشبكة: {formatCurrency(settlement.terminal_card)}</p>
       <p>فرق الكاش: {formatCurrency(settlement.cash_difference)} · فرق الشبكة: {formatCurrency(settlement.card_difference)}</p>
       {settlement.difference_reason&&<p>سبب الفرق: {settlement.difference_reason}</p>}
-      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالمدير والمدير.</p></>:null}
+      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالإدارة.</p></>:null}
      {current.status==="awaiting_owner"&&canApproveVariance&&
       <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void managerApproveDifference()}>اعتماد فرق اليوم كمدير</button>}
     </section>}
