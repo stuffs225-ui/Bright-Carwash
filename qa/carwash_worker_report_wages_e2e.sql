@@ -28,6 +28,17 @@ begin
  insert into storage.objects(bucket_id,name) values('carwash-pos-evidence',p);
  if not public.carwash_submit_worker_day_report(d,25,0,0,p,l) then raise exception 'Report not stored';end if;
  if public.carwash_submit_worker_day_report(d,25,0,0,p,l) then raise exception 'Duplicate report accepted';end if;
+ -- Synthetic registered devices must be sealed before final approval.
+ -- Preserve the production guard; confirm it rejects an unsealed device.
+ if exists(select 1 from public.carwash_day_devices where business_date=d and sealed_at is null) then
+  begin
+   perform public.carwash_approve_worker_report(d,null);
+   raise exception 'Unsealed devices were incorrectly approved';
+  exception when others then
+   if sqlerrm not like '%sync and seal%' then raise;end if;
+  end;
+  update public.carwash_day_devices set sealed_at=now() where business_date=d and sealed_at is null;
+ end if;
  result:=public.carwash_approve_worker_report(d,null);
  if result<>'approved' then raise exception 'Worker report not approved: %',result;end if;
  if not exists(select 1 from public.carwash_day_settlements where business_date=d and report_object_path=p) then
