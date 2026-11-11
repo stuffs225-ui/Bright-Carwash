@@ -30,9 +30,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [manualMode,setManualMode]=useState(false);
  const [manualService,setManualService]=useState("");
  const [manualPrice,setManualPrice]=useState("");
- const [manualAddons,setManualAddons]=useState<{name:string;price:number}[]>([]);
- const [manualAddonName,setManualAddonName]=useState("");
- const [manualAddonPrice,setManualAddonPrice]=useState("");
  const [priceReason,setPriceReason]=useState("");
 
  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
@@ -44,7 +41,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [cash,setCash]=useState("");
  const [card,setCard]=useState("");
  const [customerPhone,setCustomerPhone]=useState("");
- const [consent,setConsent]=useState(false);
  const [notes,setNotes]=useState("");
  const [status,setStatus]=useState("");
  const [summaryVersion,setSummaryVersion]=useState(0);
@@ -171,12 +167,11 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   return [...grouped.values()].flat().slice(0,6);
  },[catalog]);
  const manualServiceAllowed=manager||catalog?.manualServiceEnabled!==false;
- const manualAddonAllowed=manager||catalog?.manualAddonEnabled!==false;
- const useException=manualMode||manualAddons.length>0;
+ const useException=manualMode;
  const totalAddons=useMemo(()=>(catalog?.addons||[])
   .filter(a=>selectedAddons.includes(a.id)).reduce((v,a)=>v+Number(a.price),0),
  [catalog,selectedAddons]);
- const manualExtras=manualAddons.reduce((a,b)=>a+b.price,0);
+ const manualExtras=0;
  const discountNumber=Number(discount)||0;
  const basePrice=manualMode?Number(manualPrice||0):Number(preset?.amount||0);
  const price=rounded(basePrice+totalAddons+manualExtras-discountNumber);
@@ -194,7 +189,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   e.preventDefault();setError("");setStatus("");
   if(!catalog||busy||savingNow.current||(!preset&&!manualMode))return;
   if(manualMode&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
-  if(manualAddons.length&&!manualAddonAllowed){setError("الإضافات المخصصة معطلة في الإعدادات");return;}
   if(useException&&priceReason.trim().length<3){setError("اكتب سبب الخدمة أو السعر الاستثنائي");return;}
   if(manualMode&&(manualService.trim().length<2||!Number.isFinite(basePrice)||basePrice<=0||basePrice>5000)){
    setError("اسم الخدمة أو سعرها الاستثنائي غير صحيح");return;
@@ -207,13 +201,12 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   }
   const phone=customerPhone.trim()?normalizeSaudiMobile(customerPhone):null;
   if(customerPhone.trim()&&!phone){setError("رقم جوال العميل غير صحيح. يمكنك تركه فارغًا.");return;}
-  if(phone&&!consent){setError("يجب تأكيد موافقة العميل قبل استخدام جواله لواتساب، أو اترك الرقم فارغًا.");return;}
   const basis={
    presetId,addons:[...selectedAddons],cash:c,card:d,discount:discountValue,
-   notes,customerPhone:phone,whatsappConsent:!!phone&&consent,
+   notes,customerPhone:phone,whatsappConsent:!!phone,
    ...(useException?{oneTime:{enabled:true as const,carType:carType||preset?.car_type||"",
     service:manualMode?manualService.trim():preset?.service_type||"",
-    price:rounded(basePrice),addons:[...manualAddons],reason:priceReason.trim()}}:{})
+    price:rounded(basePrice),addons:[],reason:priceReason.trim()}}:{})
   };
   const id=crypto.randomUUID(); // Each car always receives its own immutable idempotency key.
   const payload:WorkerSubmission=directPending.current??{...basis,mutationId:id,recordedAt:new Date().toISOString()};
@@ -252,8 +245,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
      throw Error("لم يتأكد استلام التسجيل؛ أعد المحاولة من نفس الصفحة.");
     directPending.current=null;
     setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
-    setManualMode(false);setManualAddons([]);setPriceReason("");
-    setCustomerPhone("");setConsent(false);
+    setManualMode(false);setPriceReason("");
+    setCustomerPhone("");
     setStatus("تم تسجيل السيارة مباشرة في السيرفر. التخزين المحلي غير متاح على هذا الجهاز.");
     setSummaryVersion(v=>v+1);
     window.scrollTo({top:0,behavior:"smooth"});
@@ -262,8 +255,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    setQueued((await listWorkerRecords(outboxKey)).length);
    setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
-   setManualMode(false);setManualAddons([]);setPriceReason("");
-   setCustomerPhone("");setConsent(false);
+   setManualMode(false);setPriceReason("");
+   setCustomerPhone("");
    if(navigator.onLine){
     const result=await replay().catch((e:unknown)=>{
      setError(e instanceof Error?e.message:"تعذرت المزامنة؛ العملية محفوظة على الجهاز.");
@@ -302,7 +295,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
        aria-pressed={!manualMode&&presetId===p.id}
        onClick={()=>{
         setCarType(p.car_type);setPresetId(p.id);setShowMoreServices(false);
-        setManualMode(false);setManualAddons([]);setSelectedAddons([]);setPriceReason("");
+        setManualMode(false);setSelectedAddons([]);setPriceReason("");
         try{
          localStorage.setItem("carwash_last_car_type_v1",p.car_type);
          localStorage.setItem("carwash_last_preset_v1",p.id);
@@ -326,7 +319,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
         setCarType(name);setShowMoreServices(false);
         const first=catalog?.presets.find(p=>p.car_type===name);
         if(first)setPresetId(first.id);
-        setManualMode(false);setManualAddons([]);setSelectedAddons([]);
+        setManualMode(false);setSelectedAddons([]);
         try{localStorage.setItem("carwash_last_car_type_v1",name);}catch{}
        }}>{name}</button>)}
     </div>
@@ -378,32 +371,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
      <span>{sar(Number(a.price))}</span>
     </label>)}
    </div>}
-   {manualAddonAllowed&&<details className="border rounded-xl p-3" style={{borderColor:"var(--border)"}}>
-    <summary className="cursor-pointer font-bold">إضافة خاصة لمرة واحدة (اختياري)</summary>
-    <div className="space-y-3 pt-3">
-     {manualAddons.map((a,i)=><div key={i} className="flex justify-between items-center gap-2 border-b pb-2">
-      <span>{a.name} — {sar(a.price)}</span>
-      <button type="button" className="btn-secondary" onClick={()=>setManualAddons(items=>items.filter((_,j)=>i!==j))}>إزالة</button>
-     </div>)}
-     <label className="form-label">اسم الإضافة
-      <input value={manualAddonName} maxLength={80}
-       onChange={e=>setManualAddonName(e.target.value)} placeholder="مثل تنظيف داخلي خاص"/>
-     </label>
-     <label className="form-label">سعر الإضافة (ر.س)
-      <input type="number" min=".01" max="5000" inputMode="decimal" step=".01"
-       value={manualAddonPrice} onChange={e=>setManualAddonPrice(e.target.value)}/>
-     </label>
-     <button type="button" className="btn-secondary w-full" onClick={()=>{
-      const v=Number(manualAddonPrice);
-      if(manualAddonName.trim().length<2||!Number.isFinite(v)||v<=0||v>5000||
-       Math.abs(rounded(v)-v)>0.000001||manualAddons.length>=8){
-       setError("أدخل اسمًا وسعرًا صحيحًا للإضافة");return;
-      }
-      setManualAddons(all=>[...all,{name:manualAddonName.trim(),price:v}]);
-      setManualAddonName("");setManualAddonPrice("");setError("");
-     }}>إضافة لهذا التسجيل فقط</button>
-    </div>
-   </details>}
+
    {useException&&<label className="form-label">سبب السعر أو الخدمة الاستثنائية
     <input type="text" maxLength={300} required value={priceReason}
      onChange={e=>setPriceReason(e.target.value)}
@@ -450,14 +418,11 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
       <input type="text" maxLength={500} value={notes} onChange={e=>setNotes(e.target.value)}
        placeholder="ملاحظات عن السيارة"/>
      </label>
-     <label className="form-label">رقم جوال العميل (اختياري — للجاهزية فقط)
+     <label className="form-label">رقم جوال العميل (اختياري — لإشعار الجاهزية فقط)
       <input type="tel" inputMode="tel" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)}
        placeholder="05XXXXXXXX"/>
      </label>
-     {customerPhone&&<label className="flex items-start gap-2 text-sm">
-      <input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)}/>
-      <span>وافق العميل على استخدام رقمه لاستلام إشعار جاهزية واتساب.</span>
-     </label>}
+
     </div>
    </details>
    <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||(!preset&&!manualMode)||price<=0}>
