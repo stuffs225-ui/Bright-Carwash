@@ -12,7 +12,13 @@ export type WorkerCatalog={
  discountLimit?:number;manualServiceEnabled?:boolean;manualAddonEnabled?:boolean;
 };
 export type QueuedWorkerRecord={id:string;payload:WorkerSubmission;createdAt:string};
+export type WorkerDraft={
+ presetId:string;carType:string;manualMode:boolean;manualService:string;manualPrice:string;priceReason:string;
+ selectedAddons:string[];method:"cash"|"card"|"mixed";discount:string;showDiscount:boolean;
+ cash:string;card:string;customerPhone:string;notes:string;
+};
 type Stored={id:string;linkHash:string;iv:number[];cipher:number[];createdAt:string};
+type StoredDraft={hash:string;iv:number[];cipher:number[];savedAt:number};
 const DATABASE="bright-carwash-worker-encrypted-outbox-v1";
 const LIMIT=100;
 
@@ -33,12 +39,13 @@ function open():Promise<IDBDatabase>{
  if(typeof indexedDB==="undefined"||typeof crypto==="undefined"||!crypto.subtle)
   return Promise.reject(Error("Secure local storage unavailable"));
  return new Promise((resolve,reject)=>{
-  const request=indexedDB.open(DATABASE,1);
+  const request=indexedDB.open(DATABASE,2);
   request.onupgradeneeded=()=>{
    const db=request.result;
-   db.createObjectStore("keys",{keyPath:"id"});
-   db.createObjectStore("records",{keyPath:"id"});
-   db.createObjectStore("catalogs",{keyPath:"hash"});
+   if(!db.objectStoreNames.contains("keys"))db.createObjectStore("keys",{keyPath:"id"});
+   if(!db.objectStoreNames.contains("records"))db.createObjectStore("records",{keyPath:"id"});
+   if(!db.objectStoreNames.contains("catalogs"))db.createObjectStore("catalogs",{keyPath:"hash"});
+   if(!db.objectStoreNames.contains("drafts"))db.createObjectStore("drafts",{keyPath:"hash"});
   };
   request.onsuccess=()=>resolve(request.result);
   request.onerror=()=>reject(request.error||Error("Unable to open encrypted outbox"));
@@ -115,6 +122,42 @@ export async function deleteWorkerRecord(id:string):Promise<void>{
  try{
   const tx=db.transaction("records","readwrite"),done=complete(tx);
   tx.objectStore("records").delete(id);
+  await done;
+ }finally{db.close();}
+}
+
+/** Preserve only an in-progress form with the device's non-extractable AES-GCM key.
+ * Customer phone and notes must never be written to localStorage. */
+export async function storeWorkerDraft(token:string,draft:WorkerDraft):Promise<void>{
+ const hash=await fingerprint(token),db=await open();
+ try{
+  const key=await deviceKey(db);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const bytes=new TextEncoder().encode(JSON.stringify(draft));
+  const cipher=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},key,bytes));
+  const tx=db.transaction("drafts","readwrite"),done=complete(tx);
+  tx.objectStore("drafts").put({hash,iv:Array.from(iv),cipher:Array.from(cipher),
+   savedAt:Date.now()} satisfies StoredDraft);
+  await done;
+ }finally{db.close();}
+}
+export async function loadWorkerDraft(token:string):Promise<WorkerDraft|null>{
+ const hash=await fingerprint(token),db=await open();
+ try{
+  const row=await result(db.transaction("drafts","readonly").objectStore("drafts")
+   .get(hash) as IDBRequest<StoredDraft|undefined>);
+  if(!row)return null;
+  const key=await deviceKey(db);
+  const bytes=await crypto.subtle.decrypt({name:"AES-GCM",iv:new Uint8Array(row.iv)},
+   key,new Uint8Array(row.cipher));
+  return JSON.parse(new TextDecoder().decode(bytes)) as WorkerDraft;
+ }finally{db.close();}
+}
+export async function deleteWorkerDraft(token:string):Promise<void>{
+ const hash=await fingerprint(token),db=await open();
+ try{
+  const tx=db.transaction("drafts","readwrite"),done=complete(tx);
+  tx.objectStore("drafts").delete(hash);
   await done;
  }finally{db.close();}
 }

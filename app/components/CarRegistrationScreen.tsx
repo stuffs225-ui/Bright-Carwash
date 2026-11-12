@@ -1,7 +1,7 @@
 "use client";
 
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
-import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,type WorkerSubmission} from "@/lib/workerOfflineQueue";
+import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,storeWorkerDraft,loadWorkerDraft,deleteWorkerDraft,type WorkerSubmission,type WorkerDraft} from "@/lib/workerOfflineQueue";
 import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
 import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
@@ -24,6 +24,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [invalid,setInvalid]=useState("");
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
+ const [draftReady,setDraftReady]=useState(false);
  const [presetId,setPresetId]=useState("");
  const [carType,setCarType]=useState("");
  const [showMoreServices,setShowMoreServices]=useState(false);
@@ -47,6 +48,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [error,setError]=useState("");
  const syncActive=useRef(false);
  const savingNow=useRef(false);
+ const skipRestoredPayment=useRef(false);
  // Keep the same idempotency key if online direct submission has an uncertain outcome.
  const directPending=useRef<WorkerSubmission|null>(null);
  const safeToken=manager||/^[a-f0-9]{64}$/.test(token);
@@ -152,6 +154,52 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   return()=>{active=false;window.removeEventListener("online",onOnline);};
  },[outboxKey,replay]);
 
+ // Restore draft once the active price catalog is loaded, before a blank save can occur.
+ useEffect(()=>{
+  let active=true;
+  setDraftReady(false);
+  if(!catalog)return()=>{active=false;};
+  if(!outboxKey){setDraftReady(true);return()=>{active=false;};}
+  void loadWorkerDraft(outboxKey).then(draft=>{
+   if(!active)return;
+   if(draft){
+    if(catalog.presets.some(p=>p.id===draft.presetId)){
+     setPresetId(draft.presetId);setCarType(draft.carType);
+    }
+    const manualAllowed=manager||catalog.manualServiceEnabled!==false;
+    setManualMode(Boolean(draft.manualMode&&manualAllowed));
+    setManualService(String(draft.manualService||"").slice(0,80));
+    setManualPrice(String(draft.manualPrice||"").slice(0,20));
+    setPriceReason(String(draft.priceReason||"").slice(0,300));
+    setSelectedAddons((Array.isArray(draft.selectedAddons)?draft.selectedAddons:[])
+     .filter(id=>catalog.addons.some(a=>a.id===id)));
+    setDiscount(String(draft.discount??"0").slice(0,20));
+    setShowDiscount(Boolean(draft.showDiscount));
+    if(draft.method==="cash"||draft.method==="card"||draft.method==="mixed")
+     setMethod(draft.method);
+    setCash(String(draft.cash||"").slice(0,20));
+    setCard(String(draft.card||"").slice(0,20));
+    setCustomerPhone(String(draft.customerPhone||"").slice(0,24));
+    setNotes(String(draft.notes||"").slice(0,500));
+    skipRestoredPayment.current=true;
+   }
+   setDraftReady(true);
+  }).catch(()=>{if(active)setDraftReady(true);});
+  return()=>{active=false;};
+ },[catalog,outboxKey,manager]);
+ useEffect(()=>{
+  if(!catalog||!draftReady||busy||!outboxKey)return;
+  const meaningful=Boolean(customerPhone.trim()||notes.trim()||manualMode||
+   selectedAddons.length||showDiscount||method==="mixed");
+  const draft:WorkerDraft={presetId,carType,manualMode,manualService,manualPrice,
+   priceReason,selectedAddons,method,discount,showDiscount,cash,card,customerPhone,notes};
+  const timer=window.setTimeout(()=>{
+   void (meaningful?storeWorkerDraft(outboxKey,draft):deleteWorkerDraft(outboxKey)).catch(()=>{});
+  },350);
+  return()=>window.clearTimeout(timer);
+ },[catalog,draftReady,busy,outboxKey,presetId,carType,manualMode,manualService,
+  manualPrice,priceReason,selectedAddons,method,discount,showDiscount,cash,card,customerPhone,notes]);
+
  const preset=catalog?.presets.find(p=>p.id===presetId);
  const allCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)));
  const filteredPresets=(catalog?.presets||[]).filter(p=>p.car_type===(carType||preset?.car_type));
@@ -177,18 +225,20 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const price=rounded(basePrice+totalAddons+manualExtras-discountNumber);
  useEffect(()=>{
   if(!preset&&!manualMode)return;
+  if(!draftReady)return;
+  if(skipRestoredPayment.current){skipRestoredPayment.current=false;return;}
   if(method==="cash"){setCash(String(price));setCard("0");}
   else if(method==="card"){setCash("0");setCard(String(price));}
   else{
    const half=rounded(price/2);
    setCash(String(half));setCard(String(rounded(price-half)));
   }
- },[price,method,presetId]);
+ },[price,method,presetId,draftReady]);
 
  const paymentMismatch=method==="mixed"&&(!Number.isFinite(Number(cash))||!Number.isFinite(Number(card))||Number(cash)<0||Number(card)<0||rounded(Number(cash)+Number(card))!==price);
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
-  if(!catalog||busy||savingNow.current||(!preset&&!manualMode))return;
+  if(!catalog||!draftReady||busy||savingNow.current||(!preset&&!manualMode))return;
   if(manualMode&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
   if(useException&&priceReason.trim().length<3){setError("اكتب سبب الخدمة أو السعر الاستثنائي");return;}
   if(manualMode&&(manualService.trim().length<2||!Number.isFinite(basePrice)||basePrice<=0||basePrice>5000)){
@@ -245,6 +295,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     if(result.ok!==true||!result.id)
      throw Error("لم يتأكد استلام التسجيل؛ أعد المحاولة من نفس الصفحة.");
     directPending.current=null;
+    await deleteWorkerDraft(outboxKey).catch(()=>{});
     setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
     setManualMode(false);setPriceReason("");
     setCustomerPhone("");
@@ -254,6 +305,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     return;
    }
    setQueued((await listWorkerRecords(outboxKey)).length);
+   await deleteWorkerDraft(outboxKey).catch(()=>{});
    setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
    setManualMode(false);setPriceReason("");
@@ -286,6 +338,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    invalid?<section className="card"><p className="txt-danger">{invalid}</p>
     <p className="txt-muted text-sm mt-2">اطلب رابطًا جديدًا من مدير المغسلة.</p></section>:
   <form onSubmit={submit} className="card space-y-4">
+   {!draftReady&&<p role="status">جارٍ استعادة المسودة المحلية الآمنة...</p>}
    {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{status}</p>}
    {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
    {quickPresets.length>0&&<div className="space-y-2">
@@ -427,7 +480,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
 
     </div>
    </details>
-   <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||(!preset&&!manualMode)||price<=0}>
+   <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={!draftReady||busy||(!preset&&!manualMode)||price<=0}>
     {busy?"جارٍ الحفظ الآمن...":"تسجيل السيارة"}
    </button>
    <p className="txt-muted text-xs text-center">عند توفر التخزين الآمن تُحفظ العمليات مشفرة حتى تتزامن. إذا تعذر التخزين المحلي والإنترنت متصل، يُرسل التسجيل مباشرة مع منع التكرار. لا يُرحّل تسجيل اليوم السابق تلقائيًا.</p>
