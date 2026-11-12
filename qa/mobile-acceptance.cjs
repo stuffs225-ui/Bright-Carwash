@@ -1,8 +1,9 @@
 // Local browser regression with synthetic API fixtures; never targets production.
-const {chromium,devices}=require('playwright');
+const {chromium,webkit,devices}=require('playwright');
 const assert=require('node:assert/strict');
 (async()=>{
- const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ const engine=process.env.BROWSER==='webkit'?webkit:chromium;
+ const browser=await engine.launch({headless:true});
  const context=await browser.newContext({...devices['iPhone 13'],serviceWorkers:'block'});
  const page=await context.newPage();
  const recorded=new Map();let writes=0;const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh'}).format(new Date());
@@ -42,6 +43,6 @@ const assert=require('node:assert/strict');
  let destination='';await page.route('https://wa.me/**',async route=>{destination=route.request().url();await route.fulfill({body:'synthetic WhatsApp destination'});});
  await page.getByRole('button',{name:'مشاركة الجاهزية',exact:true}).click();
  await page.waitForURL('https://wa.me/**');assert.match(destination,/966500000000/);assert.ok(new URL(destination).searchParams.get('text').includes('جاهزة'));checks.push('One tap opens exact WhatsApp recipient and prepared message without photo');
- console.log(JSON.stringify({browser:'Chromium iPhone 13 emulation',checks,uniqueOperations:recorded.size,recordRequests:writes},null,2));
+ console.log(JSON.stringify({browser:(process.env.BROWSER||'chromium')+' iPhone 13 emulation',checks,uniqueOperations:recorded.size,recordRequests:writes},null,2));
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

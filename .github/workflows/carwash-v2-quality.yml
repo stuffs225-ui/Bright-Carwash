@@ -47,6 +47,23 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
+      - name: Install mobile browser engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: Mobile registration and offline replay (synthetic API only)
+        run: |
+          set -euo pipefail
+          npm run start > /tmp/carwash-next.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" || true' EXIT
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://localhost:3000 > /dev/null; then break; fi
+            sleep 1
+          done
+          BROWSER=chromium node qa/mobile-acceptance.cjs
+          BROWSER=webkit node qa/mobile-acceptance.cjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
       - name: Package exact tested source for QA
         if: success()
         run: |
