@@ -6,8 +6,15 @@ async function check(path,expected,{method="GET",body}={}){
  const response=await fetch(base+path,{method,headers:{"content-type":"application/json",
   ...(method!=="GET"?{origin:base}:{})},body:body?JSON.stringify(body):undefined,
   redirect:"manual",signal:AbortSignal.timeout(15000),cache:"no-store"});
- if(response.status!==expected)throw Error(path+": expected "+expected+", got "+response.status);
  const text=await response.text();
+ if(response.status!==expected){
+  let diagnostic="";
+  if(path==="/api/health"){
+   const data=JSON.parse(text);
+   diagnostic=" checks="+JSON.stringify(data.checks||{})+" status="+String(data.ok);
+  }
+  throw Error(path+": expected "+expected+", got "+response.status+diagnostic);
+ }
  if(path==="/api/health"){
   const data=JSON.parse(text);
   if(data.ok!==true||!data.checks?.auth||!data.checks?.database||!data.checks?.privateBackupStorage)
