@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {managerAccess,NO_STORE} from "@/lib/carwashCapability";
 import {riyadhDayKey} from "@/lib/carwashCalendarDay";
+import {pendingNetworkDifference} from "@/lib/carwashPendingVariances";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
  try{
@@ -9,7 +10,7 @@ export async function GET(request:Request){
   const {admin}=access;
   const [days,reports,variances,items]=await Promise.all([
    admin.from("carwash_days").select("business_date,status").order("business_date",{ascending:false}).limit(1000),
-   admin.from("carwash_worker_day_reports").select("business_date").order("business_date",{ascending:false}).limit(1000),
+   admin.from("carwash_worker_day_reports").select("business_date,actual_card,terminal_total").order("business_date",{ascending:false}).limit(1000),
    admin.from("carwash_day_settlements").select("business_date,cash_difference,card_difference").order("business_date",{ascending:false}).limit(1000),
    admin.from("carwash_inventory_items").select("id,name,stock_qty,min_qty").eq("active",true).gt("min_qty",0).order("id").limit(1000)
   ]);
@@ -21,6 +22,12 @@ export async function GET(request:Request){
   for(const d of days.data||[]){
    if(d.status!=="approved"&&(submitted.has(d.business_date)||d.status==="awaiting_owner"))
     alerts.push({id:"pending:"+d.business_date,kind:"pending",label:"موازنة بانتظار الاعتماد: "+d.business_date,href:dayHref(d.business_date)});
+  }
+  const settled=new Set((variances.data||[]).map(v=>v.business_date));
+  for(const r of reports.data||[]){
+   if(!unresolved.has(r.business_date)||settled.has(r.business_date))continue;
+   const gap=pendingNetworkDifference(r.actual_card,r.terminal_total);
+   if(gap!==0)alerts.push({id:"pending-network:"+r.business_date,kind:"variance",label:`فرق الشبكة في تقرير العامل المعلق ${r.business_date}: ${gap.toFixed(2)} ر.س (قيمة التقرير مقابل جهاز الشبكة)`,href:dayHref(r.business_date)});
   }
   for(const v of variances.data||[]){
    if(unresolved.has(v.business_date)&&(Number(v.cash_difference)!==0||Number(v.card_difference)!==0))
