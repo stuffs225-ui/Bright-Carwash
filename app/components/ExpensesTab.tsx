@@ -35,6 +35,7 @@ export function ExpensesTab(){
  const [customLabel,setCustomLabel]=useState("");
  const [showOtherType,setShowOtherType]=useState(false);
  const [submitting,setSubmitting]=useState(false);
+ const [loaded,setLoaded]=useState(false);
  const [editingId,setEditingId]=useState<string|null>(null);
  const [search,setSearch]=useState("");
  const [visibleCount,setVisibleCount]=useState(20);
@@ -46,7 +47,7 @@ export function ExpensesTab(){
   const data=await fetchAllRows<Expense>((from,to)=>
    supabase.from("expenses").select("*").is("deleted_at",null)
     .order("occurred_at",{ascending:false}).range(from,to));
-  setExpenses(data);
+  setExpenses(data);setLoaded(true);
  },[]);
  useEffect(()=>{
   void loadTypes();void loadExpenses();
@@ -101,7 +102,7 @@ export function ExpensesTab(){
   if(isWage(expenseType)){
    showToast("الرواتب والدفعات من صفحة العمال والرواتب لمنع التكرار.","warning");return;
   }
-  if(!Number.isFinite(value)||value<=0||Math.round(value*100)!==value*100){
+  if(!Number.isFinite(value)||value<=0||Math.abs(Math.round(value*100)/100-value)>0.000001){
    showToast("أدخل مبلغًا صحيحًا.","warning");return;
   }
   if(lateExpenseMonth(expenseDate)&&notes.trim().length<5){
@@ -157,7 +158,7 @@ export function ExpensesTab(){
    showToast("القيود المرتبطة بالأجور تعدّل من حسابات العمال فقط.","warning");return;
   }
   if(!Number.isFinite(patch.amount)||patch.amount<=0||
-    Math.round(patch.amount*100)!==patch.amount*100){
+    Math.abs(Math.round(patch.amount*100)/100-patch.amount)>0.000001){
    showToast("المبلغ غير صحيح.","warning");return;
   }
   const {error}=await supabase.from("expenses")
@@ -237,7 +238,7 @@ export function ExpensesTab(){
       <option key={k} value={k}>{summary.get(k)?.name||k}</option>)}
     </select>
    </div>
-   <div className="grid grid-cols-2 gap-2">
+   {!loaded?<p className="txt-muted">جارٍ تحميل المصروفات...</p>:<div className="grid grid-cols-2 gap-2">
     <div className="rounded-xl tone-red p-3">
      <span className="text-xs block">الإجمالي</span>
      <strong className="text-xl" dir="ltr">{formatCurrency(current?.total||0)}</strong>
@@ -246,7 +247,7 @@ export function ExpensesTab(){
      <span className="text-xs block">عدد المصروفات</span>
      <strong className="text-xl">{current?.entries.length||0}</strong>
     </div>
-   </div>
+   </div>}
    <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
     <summary className="font-semibold cursor-pointer">توزيع المصروفات حسب النوع</summary>
     <div className="space-y-2 mt-3">

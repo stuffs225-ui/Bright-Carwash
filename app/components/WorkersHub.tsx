@@ -17,5 +17,10 @@ export function WorkersHub(){
   </nav>
   <div hidden={view!=="workers"}><WorkersTab/></div>
   {view==="bonuses"&&<CrewBonusesTab/>}
+  <details className="rounded-xl border p-3 text-sm" style={{borderColor:"var(--border)"}}>
+   <summary className="cursor-pointer txt-muted">كيف تُحسب عشرات الغسيل؟</summary>
+   <p className="mt-2">يُحسب 10 ر.س للفريق ككل لكل سيارة مؤهلة، ويظهر كمصروف تلقائي.
+    لا تُضاف العشرات لرصيد عامل فردي ولا تُعد دفعة نقدية قبل تسجيل الصرف.</p>
+  </details>
  </div>;
 }

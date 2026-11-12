@@ -17,12 +17,13 @@ export function WorkersTab(){
  const [newHourlyRate,setNewHourlyRate]=useState("0");
  const [adding,setAdding]=useState(false);
  const [loading,setLoading]=useState(true);
+ const [loaded,setLoaded]=useState(false);
  const [filter,setFilter]=useState("");
  const reload=useCallback(async()=>{
   try{
    const [w,l]=await Promise.all([loadWorkers(),loadLedger()]);
    setWorkers(w);setLedger(l);
-  }finally{setLoading(false);}
+  }finally{setLoading(false);setLoaded(true);}
  },[]);
  useEffect(()=>{
   void reload();
@@ -63,7 +64,7 @@ export function WorkersTab(){
     <h2 className="section-title mb-0">العمال والرواتب</h2>
     <span className="txt-muted text-sm">{workers.length} عامل / فريق</span>
    </div>
-   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+   {!loaded?<p className="txt-muted">جارٍ تحميل الحسابات...</p>:<div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
     <div className="rounded-xl p-3 tone-amber">
      <span className="block text-xs">المستحق للعاملين</span>
      <strong className="block text-lg" dir="ltr">{formatCurrency(totals.due)}</strong>
@@ -76,11 +77,11 @@ export function WorkersTab(){
      <span className="block text-xs">المدفوع للعمال</span>
      <strong className="block text-lg" dir="ltr">{formatCurrency(totals.paid)}</strong>
     </div>
-   </div>
+   </div>}
    {workers.length>5&&<input type="search" aria-label="البحث عن عامل"
     placeholder="ابحث عن عامل" value={filter} onChange={e=>setFilter(e.target.value)}/>}
    <div className="space-y-2">
-    {loading&&workers.length===0?<p className="txt-muted">جارٍ تحميل العمال...</p>:
+    {loading&&!loaded?<p className="txt-muted">جارٍ تحميل العمال...</p>:
      list.length===0?<p className="txt-muted">{filter?"لا يوجد عامل بهذا الاسم.":"لا يوجد عمال مسجلون."}</p>:
      list.map(b=><button type="button" key={b.worker.id}
       className="w-full rounded-xl border px-3 py-3 flex items-center justify-between gap-3 text-start"
@@ -139,7 +140,7 @@ function WorkerAccountModal({worker,rows,onClose,onChanged}:{
   e.preventDefault();
   if(saving||!action)return;
   const value=Number(amount);
-  if(!Number.isFinite(value)||value<=0||Math.round(value*100)!==value*100){
+  if(!Number.isFinite(value)||value<=0||Math.abs(Math.round(value*100)/100-value)>0.000001){
    showToast("أدخل مبلغًا صحيحًا.","warning");return;
   }
   setSaving(true);

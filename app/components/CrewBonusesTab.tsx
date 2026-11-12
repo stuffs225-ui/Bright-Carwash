@@ -51,8 +51,7 @@ export function CrewBonusesTab() {
   }
   return <div className="space-y-6">
     <section className="card">
-      <h2 className="section-title">مكافأة إضافية لفريق الوردية</h2>
-      <p className="txt-muted text-sm">مخصص العمال الأساسي 10 ريالات إجمالًا لكل سيارة صغيرة أو كبيرة مؤهلة. وهذه المكافأة الإضافية منفصلة وتُضاف إلى مستحقات الفريق، ولا تعني صرفها نقدًا. مكافأة ريالين القديمة مجمّدة.</p>
+      <h2 className="section-title">مكافأة للفريق</h2>
       <form className="space-y-4 mt-4" onSubmit={add}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <label className="form-label">تاريخ الوردية
@@ -68,8 +67,8 @@ export function CrewBonusesTab() {
         <button className="btn-primary w-full" disabled={loading} type="submit">إضافة مكافأة الوردية</button>
       </form>
     </section>
-    <section className="card">
-      <h2 className="section-title">سجل المكافآت الإضافية</h2>
+    <details className="card">
+      <summary className="font-bold cursor-pointer">سجل المكافآت الإضافية ({items.filter(x=>!x.deleted_at).length})</summary>
       {error&&<p className="txt-danger text-sm">{error}</p>}
       {items.filter(x=>!x.deleted_at).length===0
         ? <p className="txt-muted">لا توجد مكافآت مسجلة.</p>
@@ -77,6 +76,6 @@ export function CrewBonusesTab() {
           <span>{arabicDate(x.shift_date)} — {formatCurrency(x.amount)} — {x.reason}</span>
           <button type="button" className="btn-secondary" onClick={()=>void voidBonus(x.id)}>إلغاء مع حفظ الأثر</button>
         </div>)}</div>}
-    </section>
+    </details>
   </div>;
 }
