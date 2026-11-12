@@ -34,6 +34,10 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   document.documentElement.dir=workerDirection(saved);
   document.documentElement.removeAttribute("data-worker-lang-pending");
  },[manager]);
+ useEffect(()=>{
+  if(manager)return;
+  document.title=workerText(locale,"reg.title");
+ },[locale,manager]);
  function selectLanguage(lang:WorkerLocale){
   if(manager)return;
   setLanguage(lang);persistWorkerLocale(lang);
@@ -333,7 +337,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  return <main className="worker-screen min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4"
   dir={workerDirection(locale)} lang={locale}>
   <header className="card flex flex-wrap items-center justify-between gap-3">
-   <h1 className="section-title mb-0">{tt("reg.title")}</h1>
+   <h1 className="section-title mb-0">{manager?"🚗 تسجيل السيارات — الإدارة":tt("reg.title")}</h1>
    {!manager&&<div className="flex gap-1 rounded-xl border p-1 text-xs" dir="ltr"
     role="group" aria-label="Language">
     {(["ha-NG","en","ar"] as const).map(choice=><button key={choice} type="button"

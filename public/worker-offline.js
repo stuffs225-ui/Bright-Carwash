@@ -46,6 +46,7 @@
   const oldCash=$("cash")?.value,oldCard=$("card")?.value;
   document.documentElement.lang=lang;
   document.documentElement.dir=lang==="ar"?"rtl":"ltr";
+  if(workerMode)document.title=t("reg.title")+" — "+t("offline.subtitle");
   for(const el of document.querySelectorAll("[data-i18n]")){
    const key=el.getAttribute("data-i18n");
    if(key==="offline.discountMaximum")el.textContent=t(key,{n:discountLimit});

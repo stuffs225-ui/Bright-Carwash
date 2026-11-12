@@ -80,6 +80,9 @@ const fs=require("node:fs");
  assert.equal(writes[0].oneTime,undefined);
  await fresh.getByRole("button",{name:/Motocin yau da halinsu/}).click();
  await fresh.getByText("Ta shirya a karɓa").waitFor();
+ const visible=(await fresh.locator(".worker-screen").innerText()).replace("العربية","");
+ assert.doesNotMatch(visible,/[\u0600-\u06FF]/,
+  "Hausa worker page must have no hardcoded Arabic text except the Arabic language name");
  // Customer WhatsApp message remains Arabic, independent of worker's Hausa UI.
  let whatsapp="";
  await fresh.route("https://wa.me/**",async route=>{
