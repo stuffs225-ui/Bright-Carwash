@@ -5,6 +5,9 @@ const assert=require('node:assert/strict');
  const engine=process.env.BROWSER==='webkit'?webkit:chromium;
  const browser=await engine.launch({headless:true});
  const context=await browser.newContext({...devices['iPhone 13'],serviceWorkers:'block'});
+ // Legacy cash/offline test intentionally runs in Arabic; a separate fixture
+ // verifies that untouched devices start in Hausa and remembers last choice.
+ await context.addInitScript(()=>localStorage.setItem('bright_carwash_worker_lang_v1','ar'));
  const page=await context.newPage();
  const recorded=new Map();let writes=0;const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh'}).format(new Date());
  const preset={id:'11111111-1111-4111-8111-111111111111',car_type:'سيارة صغيرة',service_type:'غسيل كامل',amount:25};
