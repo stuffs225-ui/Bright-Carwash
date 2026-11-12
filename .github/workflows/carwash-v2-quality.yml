@@ -62,6 +62,8 @@ jobs:
           done
           BROWSER=chromium node qa/mobile-acceptance.cjs
           BROWSER=webkit node qa/mobile-acceptance.cjs
+          BROWSER=webkit node qa/worker-language-acceptance.cjs
+          BROWSER=chromium node qa/worker-language-acceptance.cjs
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
@@ -154,8 +156,8 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
-      - name: Install Safari-like engine
-        run: npx playwright install --with-deps webkit
+      - name: Install focused mobile browser engines
+        run: npx playwright install --with-deps webkit chromium
       - name: Worker registration, encrypted drafts and offline acceptance
         run: |
           set -euo pipefail
