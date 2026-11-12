@@ -383,6 +383,17 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       {corrections.map(c=><p key={c.id} className="text-xs txt-muted mt-2">تصحيح {c.version}: {c.reason}</p>)}
      </details>}
     </section>:<section className="card"><p className="txt-muted">يوم {selected} لم ينتهِ بعد. يمكن مراجعته ولكن لا يعتمد قبل 12 صباحًا بتوقيت الرياض.</p></section>):
+    <section className="card space-y-3">
+     <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"بانتظار الاعتماد — مراجعة الفرق المالي"}</h3>
+     {reportForDay&&<div className="space-y-2"><p>الشبكة حسب العامل: {formatCurrency(Number(reportForDay.actual_card))}</p><a className="btn-secondary block text-center" href={reportForDay.imageUrl} target="_blank" rel="noopener noreferrer">عرض صورة موازنة العامل</a></div>}
+     {settlement?<><p>الكاش المسجل: {formatCurrency(settlement.recorded_cash)} · الكاش الفعلي: {formatCurrency(settlement.actual_cash)}</p>
+      <p>الشبكة المسجلة: {formatCurrency(settlement.recorded_card)} · تقرير الشبكة: {formatCurrency(settlement.terminal_card)}</p>
+      <p>فرق الكاش: {formatCurrency(settlement.cash_difference)} · فرق الشبكة: {formatCurrency(settlement.card_difference)}</p>
+      {settlement.difference_reason&&<p>سبب الفرق: {settlement.difference_reason}</p>}
+      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالإدارة.</p></>:null}
+     {current.status==="awaiting_owner"&&canApproveVariance&&
+      <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void managerApproveDifference()}>اعتماد فرق اليوم كمدير</button>}
+    </section>}
    <details className="card space-y-3">
     <summary className="cursor-pointer font-bold">حركة الصندوق والمصروفات</summary>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -427,17 +438,6 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <strong className={d.sealed_at?"txt-cash":"txt-warning"}>{d.sealed_at?"تمت المزامنة":"لم يؤكد بعد"}</strong>
      </div>)}
    </details>
-    <section className="card space-y-3">
-     <h3 className="section-title">{current.status==="approved"?"أرشيف اليوم المعتمد":"بانتظار الاعتماد — مراجعة الفرق المالي"}</h3>
-     {reportForDay&&<div className="space-y-2"><p>الشبكة حسب العامل: {formatCurrency(Number(reportForDay.actual_card))}</p><a className="btn-secondary block text-center" href={reportForDay.imageUrl} target="_blank" rel="noopener noreferrer">عرض صورة موازنة العامل</a></div>}
-     {settlement?<><p>الكاش المسجل: {formatCurrency(settlement.recorded_cash)} · الكاش الفعلي: {formatCurrency(settlement.actual_cash)}</p>
-      <p>الشبكة المسجلة: {formatCurrency(settlement.recorded_card)} · تقرير الشبكة: {formatCurrency(settlement.terminal_card)}</p>
-      <p>فرق الكاش: {formatCurrency(settlement.cash_difference)} · فرق الشبكة: {formatCurrency(settlement.card_difference)}</p>
-      {settlement.difference_reason&&<p>سبب الفرق: {settlement.difference_reason}</p>}
-      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالإدارة.</p></>:null}
-     {current.status==="awaiting_owner"&&canApproveVariance&&
-      <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void managerApproveDifference()}>اعتماد فرق اليوم كمدير</button>}
-    </section>}
   </>}
   {error&&<div className="card"><p role="alert" className="txt-danger">{error}</p></div>}
   {filter&&<Modal title="تفاصيل القيود اليومية" onClose={()=>setFilter(null)}>
