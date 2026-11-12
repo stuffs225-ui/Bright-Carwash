@@ -30,7 +30,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var d=document.documentElement;var t=localStorage.getItem("carwash_theme_v1");if(t==="light"||t==="dark"){d.setAttribute("data-theme",t)}/* Manager uses standard controls; worker link toggles touch-mode itself. */
-if(/^\\/w\\/[a-f0-9]{64}(?:\\/|$)/i.test(location.pathname)){
+if(location.pathname==="/worker"||/^\\/w\\/[a-f0-9]{64}(?:\\/|$)/i.test(location.pathname)){
  d.setAttribute("data-worker-lang-pending","1");
  var v=localStorage.getItem("bright_carwash_worker_lang_v1");
  if(v!=="ha-NG"&&v!=="en"&&v!=="ar"){
