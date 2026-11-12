@@ -42,6 +42,8 @@
   if(err)err.textContent=error?t(key,vars):"";
  };
  function redrawLabels(){
+  // Changing language must never reset a manually split cash/POS payment.
+  const oldCash=$("cash")?.value,oldCard=$("card")?.value;
   document.documentElement.lang=lang;
   document.documentElement.dir=lang==="ar"?"rtl":"ltr";
   for(const el of document.querySelectorAll("[data-i18n]")){
@@ -56,6 +58,9 @@
   if($("discount-toggle"))$("discount-toggle").textContent=t(discountEnabled?"reg.discountCancel":"reg.discountAdd");
   if(lastNotice)notify(lastNotice.key,lastNotice.error,lastNotice.vars);
   drawPresets();drawAddons();update();
+  if(method==="mixed"&&oldCash!==undefined&&oldCard!==undefined){
+   $("cash").value=oldCash;$("card").value=oldCard;
+  }
   if($("count"))void refresh().catch(()=>{});
  }
  async function changeLang(next,save=true){
@@ -241,7 +246,11 @@
   if(navigator.onLine)location.reload();
   else notify("offline.noNet");
  });
- window.addEventListener("online",()=>notify("offline.online"));
+ window.addEventListener("online",()=>{
+  notify("offline.online");
+  // Re-open the original capability link so the encrypted queue replays automatically.
+  setTimeout(()=>{if(navigator.onLine)location.reload();},250);
+ });
  $("form").addEventListener("submit",async event=>{
   event.preventDefault();
   const base=manualMode?manualPrice():Number(selectedPreset()?.amount||0);
@@ -301,5 +310,9 @@
 })().catch(()=>{
  document.documentElement.removeAttribute("data-worker-locale-pending");
  const err=document.getElementById("error");
- if(err)err.textContent="Unable to load offline registration. Reopen the worker link online.";
+ if(err)err.textContent=document.documentElement.lang==="ar"
+  ?"تعذر فتح التسجيل دون إنترنت. افتح رابط العامل عند عودة الشبكة."
+  :document.documentElement.lang==="en"
+   ?"Offline registration unavailable. Reopen the link online."
+   :"Ba a iya buɗe rajistar offline ba. Sake buɗe hanyar idan intanet ta dawo.";
 });
