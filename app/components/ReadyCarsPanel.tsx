@@ -115,7 +115,7 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
   setBusy(car.id);setError("");setNotice("");
   try{
    await call(op,car.id);
-   setNotice(op==="ready"?"تم حفظ حالة جاهزية السيارة.":"تم توثيق التسليم.");
+   setNotice(op==="ready"?"تم تحديث حالة السيارة.":"تم توثيق التسليم.");
    await load();
   }catch(e){setError(e instanceof Error?e.message:"فشل تحديث حالة السيارة");}
   finally{setBusy("");}
@@ -136,7 +136,7 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
    const json=await result.json().catch(()=>({}));
    if(!result.ok)throw Error(json.error||"تعذر حفظ الصورة");
    setFiles(v=>({...v,[car.id]:file}));
-   setNotice("تم حفظ الصورة في التخزين الخاص؛ يمكنك مشاركتها الآن.");
+   setNotice("تم حفظ الصورة.");
    await load();
   }catch(e){setError(e instanceof Error?e.message:"فشل الصورة");}
   finally{setBusy("");}
@@ -160,7 +160,7 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
     setError("مشاركة الصور غير متاحة في هذا المتصفح؛ افتح الصفحة من جوال يدعم مشاركة الملفات.");return;
    }
    await navigator.share({files:[file]});
-   setNotice("أُغلقت نافذة مشاركة الصورة؛ لا يمكن التحقق من إرسالها إلى العميل.");
+   setNotice("أُغلقت المشاركة. لا يمكن تأكيد إرسالها.");
   }catch(e){if(!(e instanceof Error&&e.name==="AbortError"))setError("تعذرت مشاركة الصورة.");}
  }
  return <section className="card space-y-3" dir={workerDirection(locale)} lang={locale}>

@@ -658,7 +658,7 @@ const STRINGS={
 export type WorkerKey=keyof typeof STRINGS;
 export function workerText(lang:WorkerLocale,key:WorkerKey,vars?:Record<string,string|number>):string{
  const template:string=STRINGS[key][lang];
- return vars?template.replace(/\\{(\\w+)\\}/g,(_,k:string)=>String(vars[k]??"")):template;
+ return vars?template.replace(/\{(\w+)\}/g,(_,k:string)=>String(vars[k]??"")):template;
 }
 export function workerDirection(lang:WorkerLocale):"ltr"|"rtl"{return lang==="ar"?"rtl":"ltr";}
 export function readWorkerLocale():WorkerLocale{

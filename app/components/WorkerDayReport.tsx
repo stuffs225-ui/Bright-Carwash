@@ -26,7 +26,7 @@ export function WorkerDayReport({date,token,manager=false,locale="ar",queued,onS
  async function submit(e:React.FormEvent){
   e.preventDefault();if(locked.current||queued>0||!photo)return;
   if([cash,card,terminal].some(v=>!v.trim()||!Number.isFinite(Number(v))||Number(v)<0)){
-   setError("أدخل المبالغ الثلاثة");return;
+   setError("أدخل المبالغ الثلاثة.");return;
   }
   locked.current=true;setBusy(true);setError("");
   try{
