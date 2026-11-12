@@ -51,7 +51,7 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0,queued=0}:P
   {error&&<p role="status" className="txt-warning text-sm">{error} — تظهر آخر بيانات تم تحميلها.</p>}
   {days.length===0&&!loading?<p className="txt-muted text-sm">لا توجد أيام مفتوحة أو تسجيلات جديدة حاليًا.</p>:null}
   {days.some(d=>dayIsFinished(d.date)&&d.status==="open"&&!d.submitted)&&<p className="txt-warning font-bold">مطلوب إرسال موازنة اليوم المنتهي والصورة قبل اعتماد المدير.</p>}
-  {days.map((day,i)=><details key={day.date} open={i===0||(dayIsFinished(day.date)&&!day.submitted)} className="border rounded-xl p-3"
+  {days.map(day=><details key={day.date} data-testid="worker-day" className="border rounded-xl p-3"
    style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
    <summary className="cursor-pointer font-bold flex items-center justify-between gap-2">
     <span>{dateLabel(day.date)} — {day.status==="awaiting_owner"||day.submitted?"بانتظار الاعتماد":"غير معتمد"}</span>

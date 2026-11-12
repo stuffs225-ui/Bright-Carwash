@@ -42,6 +42,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [now,setNow]=useState(new Date());
  const [days,setDays]=useState<Day[]>([]);
  const [selected,setSelected]=useState("");
+ const initialDeepLinkHandled=useRef(false);
  const [rows,setRows]=useState<Entry[]>([]);
  const [cashExpenseRows,setCashExpenseRows]=useState<{id:string;amount:number;expense_type:string;notes:string|null}[]>([]);
  const [cashPayoutRows,setCashPayoutRows]=useState<{id:string;amount:number;notes:string|null}[]>([]);
@@ -106,11 +107,14 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   const reportDates=new Set<string>(Array.isArray(json.reportedDates)?json.reportedDates:[]);
   const list=((data||[]) as Day[]).map(day=>({...day,reported:reportDates.has(day.business_date)}));
   setDays(list);
+  // Deep links select a day once; routine refreshes must not reopen a closed day.
+  const requested=!initialDeepLinkHandled.current
+   ?new URLSearchParams(window.location.search).get("day"):null;
+  initialDeepLinkHandled.current=true;
   setSelected(old=>{
-   const requested=new URLSearchParams(window.location.search).get("day");
-   if(!old&&requested&&list.some(d=>d.business_date===requested))return requested;
+   if(requested&&list.some(d=>d.business_date===requested))return requested;
    if(old&&list.some(d=>d.business_date===old))return old;
-   return list.find(d=>d.status!=="approved")?.business_date||list[0]?.business_date||"";
+   return "";
   });
  },[]);
 
@@ -261,10 +265,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <div className="flex flex-wrap gap-2">
      {days.map(d=><button type="button" key={d.business_date}
        className={selected===d.business_date?"btn-primary":"btn-secondary"}
+       aria-expanded={selected===d.business_date}
        style={d.status!=="approved"&&(d.reported||d.status==="awaiting_owner")?
         {borderColor:"#c27c14",borderWidth:2}:undefined}
        disabled={busy||reportCorrection}
-       onClick={()=>{setSelected(d.business_date);setWorkerReport(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
+       onClick={()=>{setSelected(old=>old===d.business_date?"":d.business_date);setWorkerReport(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
        {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}
       </button>)}
     </div>}
