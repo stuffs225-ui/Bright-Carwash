@@ -211,7 +211,7 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
       {files[car.id]&&<button type="button" className="btn-secondary w-full mt-2" disabled={!!busy} onClick={()=>void sharePhoto(car)}>مشاركة الصورة منفصلًا</button>}
      </details>}
     </div>)}</div>}
-   <p className="txt-muted text-xs">مشاركة الجاهزية تفتح محادثة العميل برسالة جاهزة. فتح المحادثة لا يؤكد إرسال الرسالة.</p>
+
   </>}
  </section>;
 }

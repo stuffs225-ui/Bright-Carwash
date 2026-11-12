@@ -65,7 +65,7 @@ export function WorkerDailySummary({token,manager=false,refreshKey=0,queued=0}:P
      <strong className="metric-value">{sar(day.crew)}</strong></div>
    </div>
 
-   {(manager||!!token)&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&<WorkerDayReport date={day.date} token={token} manager={manager} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
+   {!manager&&!!token&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&<WorkerDayReport date={day.date} token={token} manager={manager} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
    {day.submitted&&<p className="txt-cash font-bold mt-3">تم إرسال الموازنة والصورة — بانتظار الاعتماد.</p>}
   </details>)}
 
