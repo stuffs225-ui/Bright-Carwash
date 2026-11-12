@@ -352,9 +352,9 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    invalid?<section className="card"><p className="txt-danger">{workerMessage(locale,invalid,"error.invalidLink")}</p>
     <p className="txt-muted text-sm mt-2">{tt("reg.invalid")}</p></section>:
   <form onSubmit={submit} className="card space-y-4">
-   {!draftReady&&<p role="status">{tt("reg.draft")}</p>
+   {!draftReady&&<p role="status">{tt("reg.draft")}</p>}
    {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{workerMessage(locale,status,"reg.success")}</p>}
-   {error&&<p className="txt-danger text-sm" role="alert">{workerMessage(locale,error)}</p>
+   {error&&<p className="txt-danger text-sm" role="alert">{workerMessage(locale,error)}</p>}
    <div className="space-y-3">
     <h2 className="form-label">{tt("reg.vehicle")}</h2>
     <div className="grid grid-cols-3 gap-2" data-testid="car-type-choices">
