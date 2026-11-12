@@ -397,7 +397,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     <summary className="cursor-pointer text-sm">سبب تغيير السعر</summary>
     <input type="text" className="w-full mt-2" maxLength={300} required value={priceReason}
      onChange={e=>setPriceReason(e.target.value)} placeholder="سبب السعر اليدوي"/>
-   </details>
+   </details>}
    <div className="space-y-2">
     <button type="button" className="btn-secondary w-full" onClick={()=>{setShowDiscount(v=>!v);setDiscount("0");}}>{showDiscount?"إلغاء الخصم":"إضافة خصم (اختياري)"}</button>
     {showDiscount&&<label className="form-label">الخصم (حتى {sar(Number(catalog?.discountLimit??10))})

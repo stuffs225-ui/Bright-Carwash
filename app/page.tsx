@@ -78,7 +78,7 @@ function CarwashApp({identity}:{identity:AppIdentity}){
     {restored&&(tab==="expenses"||preloaded>=2)&&<div hidden={tab!=="expenses"}><ExpensesHub/></div>}
     {restored&&(tab==="workers"||preloaded>=3)&&<div hidden={tab!=="workers"}><WorkersHub/></div>}
     {restored&&(tab==="settlement"||preloaded>=4)&&<div hidden={tab!=="settlement"}><SettlementHub/></div>}
-    {restored&&(tab==="settings"||preloaded>=5)&&<div hidden={tab!=="settings"}><SettingsHub/></div>
+    {restored&&(tab==="settings"||preloaded>=5)&&<div hidden={tab!=="settings"}><SettingsHub/></div>}
    </main>
    <div id="toast-container"/>
    <OfflineStatusBadge/>
