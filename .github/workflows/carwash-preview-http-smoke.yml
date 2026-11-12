@@ -1,4 +1,4 @@
-name: Carwash deployed-preview live HTTP smoke
+name: Carwash Vercel live HTTP smoke
 on:
   push:
     branches: [chatgpt/carwash-approved-optimization-20261112]
@@ -16,7 +16,13 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Test previously built identical application against live Preview
+      - name: Preview must serve frontend but fail closed without production admin key
         env:
-          PREVIEW_BASE_URL: https://bright-carwash-v2-preview-hm0lulza8-ft-operations.vercel.app
+          PREVIEW_BASE_URL: https://bright-carwash-v2-preview-8olckm2c9-ft-operations.vercel.app
+          EXPECT_BACKEND: preview-no-service-key
+        run: node qa/live-preview-smoke.mjs
+      - name: Production baseline health and unauthenticated access checks
+        env:
+          PREVIEW_BASE_URL: https://bright-carwash-v2-preview.vercel.app
+          EXPECT_BACKEND: ready
         run: node qa/live-preview-smoke.mjs

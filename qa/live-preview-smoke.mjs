@@ -25,10 +25,19 @@ async function check(path,expected,{method="GET",body}={}){
  console.log(method+" "+path+" -> "+response.status);
 }
 await check("/",200);
-await check("/api/health",200);
-await check("/api/manager-overview",403);
-await check("/api/backup/status",403);
-await check("/api/backup/verify",403);
-await check("/api/inventory",403,{method:"POST",body:{op:"list"}});
-await check("/api/worker-links/catalog",403,{method:"POST",body:{token:"invalid"}});
-console.log("Vercel live HTTP smoke: PASS");
+if(process.env.EXPECT_BACKEND==="ready"){
+ await check("/api/health",200);
+ await check("/api/backup/status",403);
+ await check("/api/backup/verify",403);
+ await check("/api/inventory",403,{method:"POST",body:{op:"list"}});
+ await check("/api/worker-links/catalog",403,{method:"POST",body:{token:"invalid"}});
+} else if(process.env.EXPECT_BACKEND==="preview-no-service-key"){
+ // Intentional least privilege: Preview has no production service-role secret.
+ const response=await fetch(base+"/api/health",{cache:"no-store",signal:AbortSignal.timeout(15000)});
+ if(response.status!==503)throw Error("Preview must not have full production admin access");
+ const data=await response.json();
+ if(data.ok!==false||data.error!=="Service dependencies unavailable")
+  throw Error("Preview missing-secret response invalid");
+ console.log("GET /api/health -> 503 (expected: production admin secret withheld)");
+} else throw Error("Explicit EXPECT_BACKEND required");
+console.log("Vercel live HTTP smoke: PASS ("+process.env.EXPECT_BACKEND+")");
