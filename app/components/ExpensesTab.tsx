@@ -87,7 +87,9 @@ export function ExpensesTab(){
   setNotes(choice.note);
   setCustomLabel("");
   setShowOtherType(false);
-  const last=expenses.find(e=>e.expense_type===choice.category&&
+  const last=expenses.find(e=>
+   (e.expense_type===choice.category||
+    canonicalExpenseType(e.expense_type)===canonicalExpenseType(choice.category))&&
    (!choice.note||String(e.notes||"").includes(choice.note)));
   setAmount(last?String(last.amount):"");
  }
@@ -138,6 +140,7 @@ export function ExpensesTab(){
     showToast("تعذر حفظ المصروف: "+error.message,"error");return;
    }
    showToast("تم تسجيل المصروف.");
+   setSelectedMonth(expenseDate.slice(0,7));
    resetForm();
    window.dispatchEvent(new Event("carwash:data-changed"));
    void loadExpenses();
