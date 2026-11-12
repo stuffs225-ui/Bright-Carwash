@@ -6,6 +6,7 @@ import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
 import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
 import {ReadyCarsPanel} from "./ReadyCarsPanel";
+import {workerText,workerCarName,workerServiceName,workerAddonName,workerMessage,workerMoney,readWorkerLocale,persistWorkerLocale,workerDirection,type WorkerLocale,type WorkerKey} from "@/lib/workerI18n";
 
 type Preset={id:string;car_type:string;service_type:string;amount:number;sort_order?:number};
 type Addon={id:string;name:string;price:number};
@@ -21,6 +22,24 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   ? (/^[0-9a-f-]{36}$/i.test(managerUserId)?managerUserId.toLowerCase().replace(/-/g,"").padEnd(64,"0"):"")
   :token;
  const [catalog,setCatalog]=useState<Catalog|null>(null);
+ const [language,setLanguage]=useState<WorkerLocale>("ha-NG");
+ const locale:WorkerLocale=manager?"ar":language;
+ const tt=(key:WorkerKey,vars?:Record<string,string|number>)=>workerText(locale,key,vars);
+ const money=(value:number)=>manager?sar(value):workerMoney(value);
+ useEffect(()=>{
+  if(manager)return;
+  const saved=readWorkerLocale();
+  setLanguage(saved);
+  document.documentElement.lang=saved;
+  document.documentElement.dir=workerDirection(saved);
+  document.documentElement.removeAttribute("data-worker-lang-pending");
+ },[manager]);
+ function selectLanguage(lang:WorkerLocale){
+  if(manager)return;
+  setLanguage(lang);persistWorkerLocale(lang);
+  document.documentElement.lang=lang;
+  document.documentElement.dir=workerDirection(lang);
+ }
  const [invalid,setInvalid]=useState("");
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
@@ -301,7 +320,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    }
    setQueued((await listWorkerRecords(outboxKey)).length);
    await deleteWorkerDraft(outboxKey).catch(()=>{});
-   setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
+   setStatus("العملية محفوظة على هذا الجهاز؛ ستُرسل عند توفر الإنترنت.");
    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
    setManualMode(false);setPriceReason("");setCarType("");setPresetId("");
    setManualService("");setManualPrice("");setCustomerPhone("");
@@ -311,23 +330,31 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    setError(e instanceof Error?e.message:"تعذر الحفظ الآمن؛ لم تُسجل السيارة.");
   }finally{savingNow.current=false;setBusy(false);}
  }
- return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
-  <header className="card text-center space-y-2">
-   <h1 className="section-title">🚗 تسجيل السيارات {manager?"— الإدارة":""}</h1>
-
+ return <main className="worker-screen min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4"
+  dir={workerDirection(locale)} lang={locale}>
+  <header className="card flex flex-wrap items-center justify-between gap-3">
+   <h1 className="section-title mb-0">{tt("reg.title")}</h1>
+   {!manager&&<div className="flex gap-1 rounded-xl border p-1 text-xs" dir="ltr"
+    role="group" aria-label="Language">
+    {(["ha-NG","en","ar"] as const).map(choice=><button key={choice} type="button"
+     className={locale===choice?"btn-primary px-2 py-2":"btn-secondary px-2 py-2"}
+     aria-pressed={locale===choice} onClick={()=>selectLanguage(choice)}>
+     {choice==="ha-NG"?"Hausa":choice==="en"?"English":"العربية"}
+    </button>)}
+   </div>}
   </header>
   {queued>0&&<section className="card space-y-2" role="status">
-    <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
+    <p className="font-bold">{tt("reg.pending",{n:queued})}</p>
 
-    <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?"جارٍ المزامنة":"إعادة المزامنة الآن"}</button>
+    <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?tt("reg.syncing"):tt("reg.retry")}</button>
    </section>}
-  {loading?<section className="card text-center">جارٍ فتح نموذج تسجيل السيارات...</section>:
-   invalid?<section className="card"><p className="txt-danger">{invalid}</p>
-    <p className="txt-muted text-sm mt-2">اطلب رابطًا جديدًا من مدير المغسلة.</p></section>:
+  {loading?<section className="card text-center">{tt("reg.loading")}</section>:
+   invalid?<section className="card"><p className="txt-danger">{workerMessage(locale,invalid,"error.invalidLink")}</p>
+    <p className="txt-muted text-sm mt-2">{tt("reg.invalid")}</p></section>:
   <form onSubmit={submit} className="card space-y-4">
-   {!draftReady&&<p role="status">جارٍ استعادة المسودة المحلية الآمنة...</p>}
-   {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{status}</p>}
-   {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
+   {!draftReady&&<p role="status">{tt("reg.draft")}</p>
+   {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{workerMessage(locale,status,"reg.success")}</p>}
+   {error&&<p className="txt-danger text-sm" role="alert">{workerMessage(locale,error)}</p>
    <div className="space-y-3">
     <h2 className="form-label">نوع السيارة</h2>
     <div className="grid grid-cols-3 gap-2" data-testid="car-type-choices">
@@ -453,7 +480,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
 
   </form>}
   {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token}
-   manager={manager} refreshKey={summaryVersion} queued={queued}/>}
-  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
+   manager={manager} locale={locale} refreshKey={summaryVersion} queued={queued}/>}
+  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} locale={locale} refreshKey={summaryVersion}/>}
  </main>;
 }
