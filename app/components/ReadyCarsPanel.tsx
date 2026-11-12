@@ -2,13 +2,12 @@
 import {useCallback,useEffect,useRef,useState} from "react";
 import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
+import {workerText,workerMessage,workerCarName,workerServiceName,workerDirection,workerTime,type WorkerLocale} from "@/lib/workerI18n";
 type Car={id:string;carType:string;serviceType:string;date:string;occurredAt:string;
  cash:number;card:number;discount:number;phone:string|null;consent:boolean;
  status:"washing"|"ready"|"delivered";photoAvailable:boolean;readyAt:string|null;
  deliveredAt:string|null;shareRequestedAt:string|null};
-const statusText={washing:"قيد الغسيل",ready:"جاهزة للاستلام",delivered:"تم التسليم"};
-const time=(s:string)=>new Date(s).toLocaleTimeString("ar-SA-u-nu-latn",{
- timeZone:"Asia/Riyadh",hour:"2-digit",minute:"2-digit"});
+const STATUS_KEYS={washing:"ready.washing",ready:"ready.ready",delivered:"ready.delivered"} as const;
 async function imageForShare(raw:File):Promise<File>{
  if(raw.size<100)throw Error("الصورة فارغة");
  if(!raw.type.startsWith("image/"))throw Error("اختر ملف صورة");
@@ -34,9 +33,10 @@ async function imageForShare(raw:File):Promise<File>{
  }finally{URL.revokeObjectURL(url);}
 }
 
-export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
- token?:string;manager?:boolean;refreshKey?:number
+export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
+ token?:string;manager?:boolean;locale?:WorkerLocale;refreshKey?:number
 }){
+ const tt=(key:Parameters<typeof workerText>[1],vars?:Record<string,string|number>)=>workerText(locale,key,vars);
  const [open,setOpen]=useState(false);
  const [cars,setCars]=useState<Car[]>([]);
  const [readyMessage,setReadyMessage]=useState("");
@@ -111,7 +111,7 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
 
  async function action(car:Car,op:"ready"|"delivered"){
   if(busy)return;
-  if(op==="delivered"&&!confirm("تأكيد تسليم السيارة؟"))return;
+  if(op==="delivered"&&!confirm(tt("ready.confirmDelivery")))return;
   setBusy(car.id);setError("");setNotice("");
   try{
    await call(op,car.id);
@@ -163,44 +163,44 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
    setNotice("أُغلقت نافذة مشاركة الصورة؛ لا يمكن التحقق من إرسالها إلى العميل.");
   }catch(e){if(!(e instanceof Error&&e.name==="AbortError"))setError("تعذرت مشاركة الصورة.");}
  }
- return <section className="card space-y-3" dir="rtl">
+ return <section className="card space-y-3" dir={workerDirection(locale)} lang={locale}>
   <button type="button" className="w-full flex items-center justify-between text-start gap-2"
    aria-expanded={open} onClick={()=>setOpen(v=>!v)}>
-   <span className="section-title mb-0">🚘 سيارات اليوم وحالة الجاهزية</span>
-   <span className="txt-muted">{open?"إخفاء ▲":"عرض ▼"}</span>
+   <span className="section-title mb-0">{tt("ready.title")}</span>
+   <span className="txt-muted">{open?tt("ready.hide"):tt("ready.show")}</span>
   </button>
   {open&&<>
-   <p className="txt-muted text-sm">السيارات في الأيام غير المعتمدة فقط. بعد اعتماد الموازنة تُحفظ في أرشيف المدير.</p>
-   {truncated&&<p className="txt-warning text-sm">القائمة تعرض آخر 250 سيارة فقط؛ راجع أرشيف المدير عند الحاجة.</p>}
-   {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
-   {notice&&<p className="txt-cash text-sm" role="status">{notice}</p>}
+   <p className="txt-muted text-sm">{tt("ready.archived")}</p>
+   {truncated&&<p className="txt-warning text-sm">{tt("ready.truncated")}</p>}
+   {error&&<p className="txt-danger text-sm" role="alert">{workerMessage(locale,error,"error.cars")}</p>}
+   {notice&&<p className="txt-cash text-sm" role="status">{workerMessage(locale,notice,"ready.savedReady")}</p>}
 
-   {cars.length===0?<p className="txt-muted text-sm">لا توجد سيارات نشطة الآن.</p>:
+   {cars.length===0?<p className="txt-muted text-sm">{tt("ready.none")}</p>:
     <div className="space-y-3">{cars.map(car=><div key={car.id}
       className="rounded-xl p-3 border space-y-3" style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
      <div className="flex flex-wrap justify-between gap-2">
       <div className="min-w-0">
-       <strong>{car.carType} — {car.serviceType}</strong>
-       <p className="txt-muted text-xs">تاريخ {car.date} · الساعة {time(car.occurredAt)}</p>
+       <strong>{workerCarName(locale,car.carType)} — {workerServiceName(locale,car.serviceType)}</strong>
+       <p className="txt-muted text-xs">{tt("ready.date")} <bdi dir="ltr">{car.date}</bdi> · {tt("ready.time")} <bdi dir="ltr">{workerTime(car.occurredAt,locale)}</bdi></p>
       </div>
       <span className={car.status==="ready"?"txt-cash":car.status==="washing"?"txt-warning":"txt-muted"}>
-       {statusText[car.status]}</span>
+       {tt(STATUS_KEYS[car.status])}</span>
      </div>
      <div className="grid grid-cols-2 gap-2">
       {car.status==="washing"&&<button type="button" className="btn-primary col-span-2"
        disabled={busy===car.id} onClick={()=>void action(car,"ready")}>
-       إبلاغ بالجاهزية</button>}
+       {tt("ready.markReady")}</button>}
       {car.status==="ready"&&<>
        <button type="button" className="btn-primary col-span-2 py-3"
-        disabled={!!busy} onClick={()=>void share(car)}>مشاركة الجاهزية</button>
+        disabled={!!busy} onClick={()=>void share(car)}>{tt("ready.share")}</button>
        <button type="button" className="btn-secondary col-span-2"
-        disabled={busy===car.id} onClick={()=>void action(car,"delivered")}>تم التسليم</button>
+        disabled={busy===car.id} onClick={()=>void action(car,"delivered")}>{tt("ready.markDelivered")}</button>
       </>}
      </div>
      {car.status==="ready"&&<details className="rounded-lg border p-2 text-sm" style={{borderColor:"var(--border)"}}>
-      <summary className="cursor-pointer txt-muted">صورة السيارة الفعلية (اختياري)</summary>
+      <summary className="cursor-pointer txt-muted">{tt("ready.photoOptional")}</summary>
       <label className="btn-secondary block mt-2 text-center cursor-pointer">
-       📷 تصوير السيارة
+       {tt("ready.capture")}
        <input type="file" className="sr-only" accept="image/*" capture="environment"
         disabled={!!busy} onChange={e=>{
          const photo=e.currentTarget.files?.[0];
@@ -208,7 +208,7 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
          e.currentTarget.value="";
         }}/>
       </label>
-      {files[car.id]&&<button type="button" className="btn-secondary w-full mt-2" disabled={!!busy} onClick={()=>void sharePhoto(car)}>مشاركة الصورة منفصلًا</button>}
+      {files[car.id]&&<button type="button" className="btn-secondary w-full mt-2" disabled={!!busy} onClick={()=>void sharePhoto(car)}>{tt("ready.sharePhoto")}</button>}
      </details>}
     </div>)}</div>}
 
