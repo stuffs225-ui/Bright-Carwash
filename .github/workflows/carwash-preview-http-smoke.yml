@@ -1,0 +1,22 @@
+name: Carwash deployed-preview live HTTP smoke
+on:
+  push:
+    branches: [chatgpt/carwash-approved-optimization-20261112]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preview-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Test previously built identical application against live Preview
+        env:
+          PREVIEW_BASE_URL: https://bright-carwash-v2-preview-hm0lulza8-ft-operations.vercel.app
+        run: node qa/live-preview-smoke.mjs
