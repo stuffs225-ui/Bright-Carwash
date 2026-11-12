@@ -403,7 +403,10 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
      }}>{manualMode&&preset?tt("reg.official"):tt("reg.manual")}</button>}
     {manualMode&&<div className="rounded-xl border p-3 space-y-3" style={{borderColor:"var(--border)"}}>
      <label className="form-label">{tt("reg.service")}
-      <input maxLength={80} value={manualService} onChange={e=>setManualService(e.target.value)}/>
+      <input maxLength={80}
+       value={!manager&&preset?.service_type===manualService
+        ?workerServiceName(locale,manualService):manualService}
+       onChange={e=>setManualService(e.target.value)}/>
      </label>
      <label className="form-label">{manager?"السعر لهذه السيارة (ر.س)":tt("reg.manualPrice")}
       <input type="number" inputMode="decimal" min=".01" max="5000" step=".01"
@@ -422,7 +425,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
 
    {useException&&<details className="border rounded-lg p-3">
     <summary className="cursor-pointer text-sm">{tt("reg.reason")}</summary>
-    <input type="text" className="w-full mt-2" maxLength={300} required value={priceReason}
+    <input type="text" className="w-full mt-2" maxLength={300} required value={!manager&&["تعديل السعر يدويًا","تسعير يدوي للخدمة"].includes(priceReason)?tt("reg.manual"):priceReason}
      onChange={e=>setPriceReason(e.target.value)} placeholder={tt("reg.reasonHint")}/>
    </details>}
    <div className="space-y-2">

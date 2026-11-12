@@ -1,9 +1,21 @@
+"use client";
+import {useEffect,useState} from "react";
+import {workerText,workerDirection,readWorkerLocale,persistWorkerLocale,type WorkerLocale} from "@/lib/workerI18n";
 export default function WorkerLanding(){
- return <main className="min-h-screen flex items-center justify-center p-5" dir="rtl">
-  <section className="card max-w-md space-y-4 text-center">
-   <h1 className="section-title">🚗 تسجيل السيارات</h1>
-   <p>العامل لا يحتاج إنشاء حساب، أو تسجيل الدخول، أو إدخال رقم هاتف.</p>
-   <p className="txt-muted text-sm">اطلب من مدير المغسلة رابط تسجيل السيارات الخاص بك عبر واتساب، وافتحه مباشرة.</p>
+ const [lang,setLang]=useState<WorkerLocale>("ha-NG");
+ useEffect(()=>{setLang(readWorkerLocale());},[]);
+ return <main dir={workerDirection(lang)} lang={lang}
+  className="worker-screen min-h-screen flex items-center justify-center p-5">
+  <section className="card max-w-md w-full space-y-4 text-center">
+   <div className="flex gap-2 justify-center" dir="ltr" role="group" aria-label="Language">
+    {(["ha-NG","en","ar"] as const).map(x=><button key={x} type="button"
+     className={lang===x?"btn-primary px-3 py-2":"btn-secondary px-3 py-2"}
+     onClick={()=>{setLang(x);persistWorkerLocale(x);}}>
+     {x==="ha-NG"?"Hausa":x==="en"?"English":"العربية"}
+    </button>)}
+   </div>
+   <h1 className="section-title">{workerText(lang,"reg.title")}</h1>
+   <p className="txt-muted">{workerText(lang,"reg.invalid")}</p>
   </section>
  </main>;
 }

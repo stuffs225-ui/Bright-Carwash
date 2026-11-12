@@ -54,6 +54,7 @@ export function workerMoney(value:number):string{
  return new Intl.NumberFormat("en-US",{maximumFractionDigits:2,minimumFractionDigits:2}).format(value)+" SAR";
 }
 export function workerDate(date:string,lang:WorkerLocale):string{
+ if(lang==="ha-NG")return date; // Gregorian ISO, Latin digits; no English month names
  const locale=lang==="ar"?"ar-SA-u-ca-gregory-nu-latn":"en-GB";
  return new Date(date+"T12:00:00+03:00").toLocaleDateString(locale,
   {timeZone:"Asia/Riyadh",year:"numeric",month:"short",day:"numeric"});
@@ -61,7 +62,7 @@ export function workerDate(date:string,lang:WorkerLocale):string{
 export function workerTime(date:string,lang:WorkerLocale):string{
  const locale=lang==="ar"?"ar-SA-u-ca-gregory-nu-latn":"en-GB";
  return new Date(date).toLocaleTimeString(locale,
-  {timeZone:"Asia/Riyadh",hour:"2-digit",minute:"2-digit"});
+  {timeZone:"Asia/Riyadh",hour:"2-digit",minute:"2-digit",hourCycle:"h23"});
 }
 // Backend messages may be Arabic, and are untrusted display data. Never expose
 // untranslated server output or database internals to Hausa/English users.
