@@ -314,11 +314,11 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
   <header className="card text-center space-y-2">
    <h1 className="section-title">🚗 تسجيل السيارات {manager?"— الإدارة":""}</h1>
-   {manager&&<p className="txt-muted text-sm">الإدارة</p>}
+
   </header>
   {queued>0&&<section className="card space-y-2" role="status">
     <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
-    <p className="txt-muted text-sm">المزامنة تلقائية عند توفر الاتصال.</p>
+
     <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?"جارٍ المزامنة":"إعادة المزامنة الآن"}</button>
    </section>}
   {loading?<section className="card text-center">جارٍ فتح نموذج تسجيل السيارات...</section>:
@@ -368,7 +368,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     </div>}
     {filteredPresets.length>6&&<button type="button" className="btn-secondary w-full"
      onClick={()=>setShowMoreServices(v=>!v)}>{showMoreServices?"إخفاء الخدمات":"المزيد من الخدمات"}</button>}
-    {manualServiceAllowed&&(preset||manualMode)&&<button type="button" className="btn-secondary w-full"
+    {manualServiceAllowed&&preset&&<button type="button" className="btn-secondary w-full"
      aria-expanded={manualMode} onClick={()=>{
       if(manualMode){setManualMode(false);setManualService("");setManualPrice("");}
       else{setManualMode(true);setManualService(preset?.service_type||"");

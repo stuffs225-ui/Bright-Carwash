@@ -47,9 +47,7 @@ export function WorkerDayReport({date,token,manager=false,queued,onSent}:Props){
  }
  return <form className="card mt-3 space-y-3" onSubmit={submit}>
   <h3 className="font-bold">موازنة نهاية يوم {date}</h3>
-  <p className="txt-muted text-sm">{manager
-   ?"نفس نموذج العامل: أدخل مبالغ الكاش والشبكة وصوّر تقرير الشبكة. يُرسل للمراجعة ثم يُعتمد من صفحة الموازنة."
-   :"أرسل المبالغ الفعلية وصورة تقرير الجهاز للمدير. سيظل اليوم ظاهرًا إلى أن يعتمده."}</p>
+
   <label className="form-label">الكاش الموجود معك (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={cash} onChange={e=>setCash(e.target.value)}/></label>
   <label className="form-label">مبلغ الشبكة (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={card} onChange={e=>setCard(e.target.value)}/></label>
   <label className="form-label">المبلغ الظاهر في تقرير موازنة جهاز الشبكة (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={terminal} onChange={e=>setTerminal(e.target.value)}/></label>

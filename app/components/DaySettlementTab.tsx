@@ -390,7 +390,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <p>الشبكة المسجلة: {formatCurrency(settlement.recorded_card)} · تقرير الشبكة: {formatCurrency(settlement.terminal_card)}</p>
       <p>فرق الكاش: {formatCurrency(settlement.cash_difference)} · فرق الشبكة: {formatCurrency(settlement.card_difference)}</p>
       {settlement.difference_reason&&<p>سبب الفرق: {settlement.difference_reason}</p>}
-      <p className="txt-muted text-sm">الأصل المالي محفوظ وغير قابل للتعديل بعد الاعتماد. مرفق الجهاز خاص بالإدارة.</p></>:null}
+</>:null}
      {current.status==="awaiting_owner"&&canApproveVariance&&
       <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void managerApproveDifference()}>اعتماد فرق اليوم كمدير</button>}
     </section>}
