@@ -14,7 +14,7 @@ type Day={business_date:string;status:"open"|"awaiting_owner"|"approved";approve
 type Device={device_id:string;sealed_at:string|null;last_seen_at:string};
 type Settlement={business_date:string;recorded_cash:number;recorded_card:number;
  actual_cash:number;terminal_card:number;cash_difference:number;card_difference:number;
- cars:number;collective_tens:number;report_object_path:string;difference_reason:string|null;
+ cars:number;collective_tens:number;report_object_path:string|null;difference_reason:string|null;
  expected_cash?:number|null;cash_expenses?:number|null;cash_worker_payments?:number|null;cash_movements_net?:number|null};
 function toMoney(v:number){return Math.round(v*100)/100;}
 function DifferenceCard({title,system,reported,systemLabel="النظام",reportedLabel="العامل"}:{
@@ -59,6 +59,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [filter,setFilter]=useState<"all"|"cash"|"card"|"crew"|null>(null);
  const [cashActual,setCashActual]=useState("");
  const [posActual,setPosActual]=useState("");
+ const [managerProof,setManagerProof]=useState<File|null>(null);
  const [workerReport,setWorkerReport]=useState<WorkerReport|null>(null);
  const reportForDay=workerReport?.business_date===selected?workerReport:null;
  const [reportCorrection,setReportCorrection]=useState(false);
@@ -154,7 +155,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    const json=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(json.error||"تعذر تحميل تقرير العامل");
    setWorkerReport(json.report||null);setCorrections(json.corrections||[]);setCorrectionsReady(json.correctionsReady===true);
-   if(json.report){setCashActual(String(json.report.actual_cash));setPosActual(String(json.report.terminal_total));}
+   if(json.report){
+    setCashActual(old=>old||String(json.report.actual_cash));
+    setPosActual(old=>old||String(json.report.terminal_total));
+   }
    setError("");
   }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
  },[selected,reportCorrection]);
@@ -202,27 +206,44 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   finally{setBusy(false);}
  }
  async function closeDay(){
-  if(!current||current.status!=="open"||!dayIsFinished(selected,now))return;
-  if(incomplete.length){setError("يوجد أجهزة لم تؤكد نهاية مزامنة هذا اليوم.");return;}
-  if(!confirmedWorkerSync){setError("يرجى تأكيد مراجعة التسجيلات المعلقة على أجهزة العمال قبل اعتماد الموازنة.");return;}
-  if(cashActual.trim()===""||posActual.trim()===""||
-   !Number.isFinite(Number(cashActual))||!Number.isFinite(Number(posActual))||
-   Number(cashActual)<0||Number(posActual)<0){
-   setError("أدخل الكاش الفعلي والإجمالي الصحيح لتقرير الشبكة.");return;
+  if(!current||current.status!=="open"||!dayIsFinished(selected,now)||busy)return;
+  if(incomplete.length&&!confirmedWorkerSync){setError("أكد مراجعة الأجهزة التي لم تُنهِ المزامنة.");return;}
+  const actual=Number(cashActual),network=Number(posActual);
+  if(!cashActual.trim()||!posActual.trim()||
+    !Number.isFinite(actual)||!Number.isFinite(network)||actual<0||network<0||
+    toMoney(actual)!==actual||toMoney(network)!==network){
+   setError("أدخل الكاش الفعلي وإجمالي الشبكة بأرقام صحيحة.");return;
   }
-  if(!reportForDay){setError("انتظر إرسال الموازنة وصورة جهاز الشبكة من العامل.");return;}
-  if(hasVariance&&reason.trim().length<5){setError("اكتب سبب الفروقات؛ سيراجعه المدير.");return;}
-  if(!confirm("اعتماد موازنة "+selected+" فقط؟ لن تُحذف أو تُعدّل تسجيلات اليوم التالي."))return;
+  if((cashDiff!==0||cardDiff!==0||incomplete.length>0)&&reason.trim().length<5){
+   setError("اكتب سبب فرق الموازنة أو تجاوز مزامنة الأجهزة.");return;
+  }
+  if(!confirm("اعتماد وإقفال يوم "+selected+"؟"))return;
   setBusy(true);setError("");
-  const {data,error}=await supabase.rpc("carwash_approve_worker_report",{
-   p_date:selected,p_reason:reason.trim()||null,
-  });
-  setBusy(false);
-  if(error){setError("فشل الاعتماد: "+error.message);return;}
-  setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);
-  alert(data==="approved"
-   ?"تم اعتماد يوم "+selected+"؛ اختفت تسجيلاته من حساب العمال وبقي الأرشيف محفوظًا.":"فرق الموازنة محفوظ ويحتاج موافقة المدير؛ اليوم لا يزال ظاهرًا للعامل.");
-  await reloadDays();await reloadDay();
+  try{
+   let path=managerProof?null:reportForDay?.report_object_path||null;
+   if(managerProof){
+    if(!["image/jpeg","image/png","image/webp","application/pdf"].includes(managerProof.type)
+     ||managerProof.size<=0||managerProof.size>10*1024*1024)
+     throw Error("المرفق يجب أن يكون صورة أو PDF بحجم أقل من 10MB.");
+    const ext=managerProof.type==="application/pdf"?"pdf":
+     managerProof.type==="image/png"?"png":managerProof.type==="image/webp"?"webp":"jpg";
+    path="day/"+selected+"/"+crypto.randomUUID()+"."+ext;
+    const {error:uploadError}=await supabase.storage.from("carwash-pos-evidence")
+     .upload(path,managerProof,{contentType:managerProof.type,upsert:false});
+    if(uploadError)throw Error("تعذر رفع الصورة: "+uploadError.message);
+   }
+   const {data,error}=await supabase.rpc("carwash_manager_close_day",{
+    p_date:selected,p_actual_cash:actual,p_terminal_card:network,
+    p_photo_path:path,p_reason:reason.trim()||null,
+    p_confirm_unsynced:incomplete.length>0&&confirmedWorkerSync
+   });
+   if(error)throw Error(error.message);
+   if(data!=="approved")throw Error("لم يتأكد إقفال اليوم");
+   setManagerProof(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);
+   setSelected("");window.dispatchEvent(new Event("carwash:data-changed"));
+   await reloadDays();
+  }catch(e){setError(e instanceof Error?e.message:"فشل اعتماد الموازنة.");}
+  finally{setBusy(false);}
  }
  async function managerApproveDifference(){
   if(!canApproveVariance||current?.status!=="awaiting_owner")return;
@@ -269,7 +290,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
        style={d.status!=="approved"&&(d.reported||d.status==="awaiting_owner")?
         {borderColor:"#c27c14",borderWidth:2}:undefined}
        disabled={busy||reportCorrection}
-       onClick={()=>{setSelected(old=>old===d.business_date?"":d.business_date);setWorkerReport(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
+       onClick={()=>{setSelected(old=>old===d.business_date?"":d.business_date);setWorkerReport(null);setManagerProof(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
        {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}
       </button>)}
     </div>}
