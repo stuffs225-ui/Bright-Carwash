@@ -152,7 +152,7 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - name: Only touched-feature tests
-        run: npx vitest run lib/expenseCategories.test.ts lib/carwashPendingVariances.test.ts
+        run: npx vitest run lib/expenseCategories.test.ts lib/expenseDates.test.ts lib/workers.test.ts
       - name: Type-check and compile changed pages
         run: npx tsc --noEmit && npm run build
         env:
