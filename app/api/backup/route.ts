@@ -4,6 +4,7 @@ import {createHash} from "node:crypto";
 import {createAdminClient} from "@/lib/supabaseAdmin";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
 import {encryptBackup,decryptBackup,parseBackupKey} from "@/lib/backupCrypto";
+import {mapConcurrent} from "@/lib/backupConcurrency";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -130,8 +131,11 @@ export async function GET(request:Request){
   const offsiteConfigured=!!(email&&/^\S+@\S+\.\S+$/.test(email)&&from&&resendKey);
   const admin=createAdminClient();
   // Daily immutable filenames avoid duplicate archives and extra storage usage.
-  const tables:Record<string,unknown[]>={};
-  for(const table of TABLES)tables[table]=await readAll(admin,table);
+  // Bound concurrent table fetches: sequential 40+ Supabase queries can exceed
+  // the 60s serverless runtime; retaining order keeps archive determinism.
+  const pairs=await mapConcurrent(TABLES,4,async table=>
+   [table,await readAll(admin,table)] as const);
+  const tables:Record<string,unknown[]>=Object.fromEntries(pairs);
   const correctionSchema=await admin.from("carwash_report_corrections").select("id").limit(1);
   if(!correctionSchema.error)tables.carwash_report_corrections=await readAll(admin,"carwash_report_corrections");
   else if(!["42P01","PGRST205"].includes(correctionSchema.error.code))throw Error("Unable to inspect correction archive");
