@@ -25,6 +25,7 @@ const valid=(v:string|null):v is Tab=>pages.some(x=>x.key===v);
 function CarwashApp({identity}:{identity:AppIdentity}){
  const [tab,setTab]=useState<Tab>("car");
  const [restored,setRestored]=useState(false);
+ const [preloaded,setPreloaded]=useState(0);
  useEffect(()=>{
   try{
    const url=new URL(window.location.href);
@@ -41,6 +42,12 @@ function CarwashApp({identity}:{identity:AppIdentity}){
   window.addEventListener("popstate",pop);
   return()=>window.removeEventListener("popstate",pop);
  },[]);
+ useEffect(()=>{
+  if(!restored)return;
+  const jobs=[1300,2600,3900,5100,6300].map((ms,i)=>
+   window.setTimeout(()=>setPreloaded(i+1),ms));
+  return()=>jobs.forEach(window.clearTimeout);
+ },[restored]);
  const navigate=useCallback((next:Tab)=>{
   setTab(next);
   try{
@@ -55,7 +62,7 @@ function CarwashApp({identity}:{identity:AppIdentity}){
   <div className="app-shell" dir="rtl">
    <header className="app-header carwash-compact-header">
     <h1 className="text-2xl sm:text-3xl font-extrabold">مغسلة سيارتك اللامعة</h1>
-    <p className="text-sm opacity-90 mt-1">إدارة المغسلة</p>
+
    </header>
    <nav className="carwash-main-tabs" aria-label="الصفحات الرئيسية">
     {pages.map(p=><button type="button" key={p.key}
@@ -67,11 +74,11 @@ function CarwashApp({identity}:{identity:AppIdentity}){
    </nav>
    <main className="content-section-wrapper">
     {restored&&tab==="car"&&<CarRegistrationScreen manager managerUserId={identity.userId}/>}
-    {restored&&<div hidden={tab!=="dashboard"}><AnalysisTab/></div>}
-    {restored&&tab==="expenses"&&<ExpensesHub/>}
-    {restored&&tab==="workers"&&<WorkersHub/>}
-    {restored&&tab==="settlement"&&<SettlementHub/>}
-    {restored&&tab==="settings"&&<SettingsHub/>}
+    {restored&&(tab==="dashboard"||preloaded>=1)&&<div hidden={tab!=="dashboard"}><AnalysisTab/></div>}
+    {restored&&(tab==="expenses"||preloaded>=2)&&<div hidden={tab!=="expenses"}><ExpensesHub/></div>}
+    {restored&&(tab==="workers"||preloaded>=3)&&<div hidden={tab!=="workers"}><WorkersHub/></div>}
+    {restored&&(tab==="settlement"||preloaded>=4)&&<div hidden={tab!=="settlement"}><SettlementHub/></div>}
+    {restored&&(tab==="settings"||preloaded>=5)&&<div hidden={tab!=="settings"}><SettingsHub/></div>
    </main>
    <div id="toast-container"/>
    <OfflineStatusBadge/>

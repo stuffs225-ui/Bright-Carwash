@@ -106,11 +106,7 @@ export function ExpensesTab() {
 
   const currentMonth = selectedMonth ? summary.get(selectedMonth) : undefined;
 
-  const suggestedAmount=useMemo(()=>{
-    const match=expenses.find(e=>e.expense_type===expenseType &&
-      (!notes||!EXPENSE_QUICK_CHOICES.some(q=>q.note===notes)||String(e.notes||"").includes(notes)));
-    return match?Number(match.amount):null;
-  },[expenses,expenseType,notes]);
+
   const chartData = useMemo(() => {
     if (!currentMonth) return null;
     const labels = Object.keys(currentMonth.types);
@@ -234,7 +230,13 @@ export function ExpensesTab() {
            <div className="carwash-quick-choices">
             {EXPENSE_QUICK_CHOICES.map(choice=><button type="button" key={choice.name}
              className={expenseType===choice.category&&notes===choice.note?"active":""}
-             onClick={()=>{setExpenseType(choice.category);setNotes(choice.note);setCustomExpenseLabel("");}}>
+             onClick={()=>{
+              setExpenseType(choice.category);setNotes(choice.note);setCustomExpenseLabel("");
+              const last=expenses.find(e=>
+               canonicalExpenseType(e.expense_type,e.notes)===canonicalExpenseType(choice.category)&&
+               (!choice.note||String(e.notes||"").includes(choice.note)));
+              setAmount(last?String(last.amount):"");
+             }}>
              {choice.name}
             </button>)}
            </div>
@@ -259,10 +261,7 @@ export function ExpensesTab() {
           <div>
             <label className="form-label">المبلغ (ر.س)</label>
             <input type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-            {suggestedAmount!==null&&<button type="button" className="btn-secondary mt-2 text-sm"
-             onClick={()=>setAmount(String(suggestedAmount))}>
-             استخدام مبلغ آخر عملية مشابهة: {formatCurrency(suggestedAmount)}
-            </button>}
+
 
           </div>
           <label className="form-label">مصدر دفع المصروف

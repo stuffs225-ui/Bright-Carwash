@@ -163,12 +163,15 @@ export function AnalysisTab() {
       .order("sort_order")
       .then(({ data }) => setServiceTypeOptions((data || []).map((s) => s.name)));
 
+    const afterCar=()=>{void loadHistory();};
+    window.addEventListener("carwash:data-changed",afterCar);
     const channel = supabase
       .channel("analysis-history-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => loadHistory())
       .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => loadHistory())
       .subscribe();
     return () => {
+      window.removeEventListener("carwash:data-changed",afterCar);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -427,7 +430,7 @@ export function AnalysisTab() {
   return (
     <div className="space-y-6">
       <AlertsTab isOwner summary={ownerSummary}/>
-      <p className="txt-muted text-xs" role="status">{historyError?"تعذر التحديث؛ المعروض آخر بيانات ناجحة. ":""}{updatedAt?"آخر تحديث: "+new Date(updatedAt).toLocaleString("ar-SA",{timeZone:"Asia/Riyadh"}):""}</p>
+      {historyError&&<p className="txt-warning text-xs" role="status">تعذر التحديث؛ المعروض آخر بيانات ناجحة.</p>}
       {historyError&&<button className="btn-secondary" onClick={()=>void loadHistory()}>إعادة التحديث</button>}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <QuickCard label="إيرادات اليوم" net={quickGlance.today.revenue} sub={`${quickGlance.today.cars} سيارة`} tone="blue" onClick={() => setActivePeriod("today")} />
@@ -435,7 +438,7 @@ export function AnalysisTab() {
         <QuickCard label="إيرادات الشهر" net={quickGlance.month.revenue} sub={`${quickGlance.month.cars} سيارة`} tone="purple" onClick={() => setActivePeriod("month")} />
         <QuickCard label="إيرادات السنة" net={quickGlance.year.revenue} sub={`${quickGlance.year.cars} سيارة`} tone="indigo" onClick={() => setActivePeriod("year")} />
       </section>
-      <p className="txt-muted text-xs leading-relaxed -mt-2">{OPERATING_RESULT_NOTE}</p>
+
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="metric-card tone-cyan">
           <span className="metric-label">هامش النتيجة المسجلة — سنوي</span>
@@ -454,7 +457,7 @@ export function AnalysisTab() {
         <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-5">
           <div>
             <h2 className="section-title mb-1">تحليل البيانات</h2>
-            <p className="txt-muted">تحليل الإيرادات والمصروفات والنتيجة المسجلة، مع بيان السيارات والخدمات.</p>
+  
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full xl:w-auto">
             <div>
