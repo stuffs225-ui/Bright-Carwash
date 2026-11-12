@@ -174,7 +174,7 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
    {truncated&&<p className="txt-warning text-sm">القائمة تعرض آخر 250 سيارة فقط؛ راجع أرشيف المدير عند الحاجة.</p>}
    {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
    {notice&&<p className="txt-cash text-sm" role="status">{notice}</p>}
-   <button type="button" className="btn-secondary" onClick={()=>void load()}>تحديث القائمة</button>
+
    {cars.length===0?<p className="txt-muted text-sm">لا توجد سيارات نشطة الآن.</p>:
     <div className="space-y-3">{cars.map(car=><div key={car.id}
       className="rounded-xl p-3 border space-y-3" style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
