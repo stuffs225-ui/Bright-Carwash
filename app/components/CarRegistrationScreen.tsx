@@ -185,6 +185,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   }
  },[price,method,presetId]);
 
+ const paymentMismatch=method==="mixed"&&(!Number.isFinite(Number(cash))||!Number.isFinite(Number(card))||Number(cash)<0||Number(card)<0||rounded(Number(cash)+Number(card))!==price);
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
   if(!catalog||busy||savingNow.current||(!preset&&!manualMode))return;
@@ -397,14 +398,15 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    </div>
    {method==="mixed"&&<div className="grid grid-cols-2 gap-3">
     <label className="form-label">المبلغ كاش
-     <input type="number" inputMode="decimal" min="0" step=".01" value={cash}
+     <input aria-invalid={paymentMismatch} aria-describedby={paymentMismatch?"payment-error":undefined} style={paymentMismatch?{borderColor:"#d92d20",borderWidth:2}:undefined} type="number" inputMode="decimal" min="0" step=".01" value={cash}
       onChange={e=>setCash(e.target.value)}/>
     </label>
     <label className="form-label">المبلغ شبكة
-     <input type="number" inputMode="decimal" min="0" step=".01" value={card}
+     <input aria-invalid={paymentMismatch} aria-describedby={paymentMismatch?"payment-error":undefined} style={paymentMismatch?{borderColor:"#d92d20",borderWidth:2}:undefined} type="number" inputMode="decimal" min="0" step=".01" value={card}
       onChange={e=>setCard(e.target.value)}/>
     </label>
    </div>}
+   {paymentMismatch&&<p id="payment-error" className="txt-danger text-sm" role="alert">مجموع الكاش والشبكة يجب أن يساوي {sar(price)}. راجع الخانتين المحددتين.</p>}
    <div className="rounded-xl p-3 space-y-1" style={{background:"var(--surface-3)",color:"var(--text)"}}>
     <div className="flex justify-between gap-2 text-sm"><span>الخدمة الأساسية</span><strong>{sar(basePrice)}</strong></div>
     {(totalAddons+manualExtras)>0&&<div className="flex justify-between gap-2 text-sm"><span>الإضافات</span><strong>{sar(totalAddons+manualExtras)}</strong></div>}

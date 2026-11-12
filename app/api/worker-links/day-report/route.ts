@@ -28,7 +28,11 @@ export async function GET(request:Request){
   if(!data)return NextResponse.json({report:null},{headers:NO_STORE});
   const signed=await access.admin.storage.from("carwash-pos-evidence").createSignedUrl(data.report_object_path,300);
   if(signed.error)return deny(503,"تعذر فتح صورة التقرير");
-  return NextResponse.json({report:{...data,imageUrl:signed.data.signedUrl}},{headers:NO_STORE});
+  const corrections=await access.admin.from("carwash_report_corrections").select("id,version,actual_cash,actual_card,terminal_total,reason,before_values,created_at,created_by").eq("business_date",date).order("version",{ascending:false}).limit(100);
+  // Feature detection allows the preview to read the unchanged production schema.
+  if(corrections.error&&!['42P01','PGRST205'].includes(corrections.error.code))return deny(503,"تعذر قراءة التصحيحات");
+  const latest=corrections.data?.[0];
+  return NextResponse.json({report:{...data,...(latest?{actual_cash:latest.actual_cash,actual_card:latest.actual_card,terminal_total:latest.terminal_total}:{}),imageUrl:signed.data.signedUrl},originalReport:{cash:data.actual_cash,card:data.actual_card,terminal:data.terminal_total},corrections:corrections.data||[],correctionsReady:!corrections.error},{headers:NO_STORE});
  }catch{return deny(503,"تعذر تحميل التقرير");}
 }
 export async function POST(request:Request){
@@ -91,4 +95,20 @@ export async function POST(request:Request){
   }
   return NextResponse.json({ok:true},{headers:NO_STORE});
  }catch{return deny(503,"تعذر إرسال الموازنة");}
+}
+
+export async function PATCH(request:Request){
+ try{
+  if(!requestIsSameOrigin(request))return deny(403,"طلب غير مسموح");
+  const access=await managerAccess(request);if(!access)return deny(403,"صلاحية المدير مطلوبة");
+  if(Number(request.headers.get("content-length")||0)>4096)return deny(413,"الطلب كبير");
+  const b=await request.json();
+  if(!validDate(b.date)||!dayIsFinished(b.date)||typeof b.reason!=="string"||b.reason.trim().length<5||b.reason.length>500||
+   !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(b.requestId||"")||
+   [b.cash,b.card,b.terminal].some(n=>typeof n!=="number"||!Number.isFinite(n)||n<0||n>10000000||Math.abs(n*100-Math.round(n*100))>1e-6))
+   return deny(400,"راجع قيم التصحيح وسببه");
+  const result=await access.admin.rpc("carwash_correct_pending_report",{p_manager:access.user.id,p_day:b.date,p_cash:b.cash,p_card:b.card,p_terminal:b.terminal,p_reason:b.reason.trim(),p_request:b.requestId});
+  if(result.error)return deny(409,"لم يتأكد التصحيح؛ قد تكون الموازنة معتمدة أو تحتاج قاعدة البيانات إلى تحديث");
+  return NextResponse.json(result.data,{headers:NO_STORE});
+ }catch{return deny(503,"تعذر حفظ التصحيح");}
 }

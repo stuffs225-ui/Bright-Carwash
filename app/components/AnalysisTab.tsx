@@ -14,10 +14,11 @@ import { computeDiagnostics } from "@/lib/diagnostics";
 import { loadPresets } from "@/lib/presets";
 import type { Entry, EntryPreset, Expense } from "@/lib/types";
 import { MetricCard, type Tone } from "./MetricCard";
+import {AlertsTab} from "./AlertsTab";
 import { Modal } from "./Modal";
 import {canonicalExpenseType} from "@/lib/expenseCategories";
 import {arabicDate} from "./ArabicDateField";
-import {operatingResult,expenseReturnPercent,displaySar,displayPercent,OPERATING_RESULT_NOTE} from "@/lib/financialPresentation";
+import {operatingResult,netProfitMarginPercent,displaySar,displayPercent,OPERATING_RESULT_NOTE} from "@/lib/financialPresentation";
 import {ArabicDateField} from "./ArabicDateField";
 
 const PALETTE = ["#2563eb", "#7c3aed", "#059669", "#dc2626", "#d97706", "#0891b2", "#db2777", "#4f46e5", "#65a30d", "#9333ea"];
@@ -78,7 +79,7 @@ export function AnalysisTab() {
   const [loading, setLoading] = useState(true);
   const [historyReady,setHistoryReady]=useState(false);
   const [historyError,setHistoryError]=useState(false);
-  const [pendingReviewCount, setPendingReviewCount] = useState<number | null>(null);
+  const [updatedAt,setUpdatedAt]=useState<string|null>(null);
   const [showDaily, setShowDaily] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [kpiDetails, setKpiDetails] = useState<"cars"|"revenue"|"expenses"|"net"|"cash"|"card"|"avgTicket"|"avgCars"|null>(null);
@@ -87,18 +88,6 @@ export function AnalysisTab() {
   const [activePeriodDay,setActivePeriodDay]=useState<string|null>(null);
   const [expandedEntry,setExpandedEntry]=useState<string|null>(null);
   const [presets, setPresets] = useState<EntryPreset[]>([]);
-
-  useEffect(() => {
-    let disposed = false;
-    // Archive differences from 2025 are preserved in the audit page; they are
-    // not a new operational reconciliation alarm and should not block the dashboard.
-    supabase.from("legacy_import_issues")
-      .select("id",{count:"exact",head:true}).eq("status","pending")
-      .then(({error,count})=>{
-       if(!disposed)setPendingReviewCount(error?null:(count??0));
-      });
-    return () => {disposed=true;};
-  }, []);
 
   // Fetch the complete history once, then reuse that in-memory snapshot for
   // every report and filter. The manager never waits for a second query when
@@ -136,9 +125,9 @@ export function AnalysisTab() {
         try{
           const [e,x]=await Promise.all([
             fetchHistory<Entry>("entries","id,car_type,service_type,cash_paid,card_paid,gross,payment_method,notes,occurred_at,worker_name,discount_amount,list_price"),
-            fetchHistory<Expense>("expenses","id,expense_type,amount,notes,occurred_at,crew_business_date"),
+            fetchHistory<Expense>("expenses","id,expense_type,amount,notes,occurred_at,crew_business_date,recognition_kind"),
           ]);
-          setAllEntries(e);setAllExpenses(x);setHistoryReady(true);setHistoryError(false);setLoading(false);
+          setAllEntries(e);setAllExpenses(x);setUpdatedAt(new Date().toISOString());setHistoryReady(true);setHistoryError(false);setLoading(false);
         }catch(err){
           setHistoryError(true);setLoading(false);
           showToast("خطأ في تحميل السجل الكامل: "+describeError(err),"error");
@@ -268,8 +257,8 @@ export function AnalysisTab() {
   }, [allEntries, allExpenses]);
 
   const roi = useMemo(() => {
-    const yearly = expenseReturnPercent(quickGlance.year.revenue,quickGlance.year.expenses);
-    const monthly = expenseReturnPercent(quickGlance.month.revenue,quickGlance.month.expenses);
+    const yearly = netProfitMarginPercent(quickGlance.year.revenue,quickGlance.year.expenses);
+    const monthly = netProfitMarginPercent(quickGlance.month.revenue,quickGlance.month.expenses);
     return { yearly, monthly };
   }, [quickGlance]);
 
@@ -427,32 +416,36 @@ export function AnalysisTab() {
    }
    return [...map.values()].sort((a,b)=>b.date.localeCompare(a.date));
   },[periodEntries,periodExpenses]);
+  const summaryDate=riyadhDayKey(new Date());
+  const summaryEntries=allEntries.filter(e=>riyadhDayKey(new Date(e.occurred_at))===summaryDate);
+  const summaryExpenses=allExpenses.filter(e=>riyadhDayKey(new Date(e.occurred_at))===summaryDate);
+  const ownerSummary={date:summaryDate,cars:summaryEntries.length,
+   cash:summaryEntries.reduce((n,e)=>n+Number(e.cash_paid),0),card:summaryEntries.reduce((n,e)=>n+Number(e.card_paid),0),
+   revenue:summaryEntries.reduce((n,e)=>n+Number(e.gross),0),expenses:summaryExpenses.reduce((n,e)=>n+Number(e.amount),0),
+   crew:summaryExpenses.filter(e=>e.crew_business_date===summaryDate||e.recognition_kind==="salary_accrual").reduce((n,e)=>n+Number(e.amount),0)};
   if(!historyReady||loading)return <section className="card text-center py-6" role="status"><p>{historyError?"تعذر تحميل الأرقام المالية.":"جارٍ تجهيز الأرقام المالية..."}</p>{historyError&&<button type="button" className="btn-secondary mt-3" onClick={()=>{setLoading(true);setHistoryError(false);void loadHistory();}}>إعادة المحاولة</button>}</section>;
   return (
     <div className="space-y-6">
-      {pendingReviewCount !== null && pendingReviewCount > 0 ? (
-        <section className="card" role="status">
-          <h2 className="section-title">مراجعة بيانات ترحيل معلقة</h2>
-          <p className="txt-warning">يوجد {pendingReviewCount} بند ترحيل يحتاج توثيقًا. اختلافات الإجمالي التاريخية محفوظة في صفحة تدقيق الأرشيف دون تغيير أي مبلغ.</p>
-        </section>
-      ) : null}
+      <AlertsTab isOwner summary={ownerSummary}/>
+      <p className="txt-muted text-xs" role="status">{historyError?"تعذر التحديث؛ المعروض آخر بيانات ناجحة. ":""}{updatedAt?"آخر تحديث: "+new Date(updatedAt).toLocaleString("ar-SA",{timeZone:"Asia/Riyadh"}):""}</p>
+      {historyError&&<button className="btn-secondary" onClick={()=>void loadHistory()}>إعادة التحديث</button>}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
         <QuickCard label="إيرادات اليوم" net={quickGlance.today.revenue} sub={`${quickGlance.today.cars} سيارة`} tone="blue" onClick={() => setActivePeriod("today")} />
-        <QuickCard label="نتيجة الأسبوع" net={quickGlance.week.net} sub={`الإيرادات: ${displaySar(quickGlance.week.revenue)}`} tone="emerald" result onClick={() => setActivePeriod("week")} />
-        <QuickCard label="نتيجة الشهر" net={quickGlance.month.net} sub={`الإيرادات: ${displaySar(quickGlance.month.revenue)}`} tone="purple" result onClick={() => setActivePeriod("month")} />
-        <QuickCard label="نتيجة السنة" net={quickGlance.year.net} sub={`الإيرادات: ${displaySar(quickGlance.year.revenue)}`} tone="indigo" result onClick={() => setActivePeriod("year")} />
+        <QuickCard label="إيرادات الأسبوع" net={quickGlance.week.revenue} sub={`${quickGlance.week.cars} سيارة`} tone="emerald" onClick={() => setActivePeriod("week")} />
+        <QuickCard label="إيرادات الشهر" net={quickGlance.month.revenue} sub={`${quickGlance.month.cars} سيارة`} tone="purple" onClick={() => setActivePeriod("month")} />
+        <QuickCard label="إيرادات السنة" net={quickGlance.year.revenue} sub={`${quickGlance.year.cars} سيارة`} tone="indigo" onClick={() => setActivePeriod("year")} />
       </section>
       <p className="txt-muted text-xs leading-relaxed -mt-2">{OPERATING_RESULT_NOTE}</p>
       <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="metric-card tone-cyan">
-          <span className="metric-label">العائد على المصروفات — سنوي</span>
+          <span className="metric-label">هامش النتيجة المسجلة — سنوي</span>
           <strong dir="ltr" className={`metric-value ${roi.yearly!==null&&roi.yearly<0?"txt-expense":""}`}>{displayPercent(roi.yearly)}</strong>
-          <span className="text-xs txt-muted mt-1">النتيجة المسجلة ÷ المصروفات</span>
+          <span className="text-xs txt-muted mt-1">النتيجة المسجلة ÷ الإيرادات × 100</span>
         </div>
         <div className="metric-card tone-amber">
-          <span className="metric-label">العائد على المصروفات — شهري</span>
+          <span className="metric-label">هامش النتيجة المسجلة — شهري</span>
           <strong dir="ltr" className={`metric-value ${roi.monthly!==null&&roi.monthly<0?"txt-expense":""}`}>{displayPercent(roi.monthly)}</strong>
-          <span className="text-xs txt-muted mt-1">النتيجة المسجلة ÷ المصروفات</span>
+          <span className="text-xs txt-muted mt-1">النتيجة المسجلة ÷ الإيرادات × 100</span>
         </div>
       </section>
 
@@ -520,9 +513,9 @@ export function AnalysisTab() {
           <MetricCard label="الإيرادات" value={formatCurrency(m.revenue)} tone="emerald" onClick={()=>setKpiDetails("revenue")} hint="تفاصيل الإيرادات" />
           <MetricCard label="المصروفات" value={formatCurrency(m.expenses)} tone="red" onClick={()=>setKpiDetails("expenses")} hint="تفاصيل المصروفات" />
           <MetricCard label="النتيجة المالية المسجلة" value={`${operatingResult(m.revenue,m.expenses).label} ${displaySar(m.net)}`} tone={m.net<0?"red":"indigo"} onClick={()=>setKpiDetails("net")} hint="تفاصيل الإيرادات والمصروفات" />
-          <MetricCard label="الكاش" value={formatCurrency(m.cash)} tone="cyan" onClick={()=>setKpiDetails("cash")} hint="تفاصيل النقد المقبوض" />
-          <MetricCard label="البطاقة" value={formatCurrency(m.card)} tone="purple" onClick={()=>setKpiDetails("card")} hint="تفاصيل الشبكة" />
-          <MetricCard label="متوسط الفاتورة" value={formatCurrency(m.avgTicket)} tone="amber" onClick={()=>setKpiDetails("avgTicket")} hint="حساب المتوسط ومصدره" />
+          <MetricCard label="الكاش المحصل" value={formatCurrency(m.cash)} tone="cyan" onClick={()=>setKpiDetails("cash")} hint="تفاصيل النقد المقبوض" />
+          <MetricCard label="الشبكة المحصلة" value={formatCurrency(m.card)} tone="purple" onClick={()=>setKpiDetails("card")} hint="تفاصيل الشبكة" />
+          <MetricCard label="متوسط الإيراد للسيارة" value={formatCurrency(m.avgTicket)} tone="amber" onClick={()=>setKpiDetails("avgTicket")} hint="حساب المتوسط ومصدره" />
           <MetricCard label="متوسط السيارات / يوم عمل" value={m.avgCarsPerActiveDay.toFixed(2)} tone="slate" onClick={()=>setKpiDetails("avgCars")} hint="تفاصيل أيام العمل" />
         </section>
 

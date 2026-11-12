@@ -4,7 +4,7 @@ import {ExpensesTab} from "./ExpensesTab";
 import {InventoryTab} from "./InventoryTab";
 type Section="expenses"|"inventory";
 export function ExpensesHub(){
- const [tab,setTab]=useState<Section>("expenses");
+ const [tab,setTab]=useState<Section>(()=>typeof window!=="undefined"&&new URLSearchParams(window.location.search).get("section")==="inventory"?"inventory":"expenses");
  return <div className="space-y-4" dir="rtl">
   <nav className="carwash-inner-tabs" aria-label="المصروفات والمخزون">
    <button type="button" className={tab==="expenses"?"active":""}

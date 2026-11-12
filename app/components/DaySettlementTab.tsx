@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useMemo,useState} from "react";
+import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 import {fetchAllRows} from "@/lib/fetchAll";
 import {formatCurrency} from "@/lib/business";
@@ -60,6 +60,12 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [posActual,setPosActual]=useState("");
  const [workerReport,setWorkerReport]=useState<WorkerReport|null>(null);
  const reportForDay=workerReport?.business_date===selected?workerReport:null;
+ const [reportCorrection,setReportCorrection]=useState(false);
+ const [correctionsReady,setCorrectionsReady]=useState(false);
+ const [corrections,setCorrections]=useState<Array<{id:string;version:number;reason:string;actual_cash:number;actual_card:number;terminal_total:number}>>([]);
+ const [correctedCard,setCorrectedCard]=useState("");
+ const [correctionReason,setCorrectionReason]=useState("");
+ const correctionPending=useRef<Record<string,unknown>|null>(null);
  const [reason,setReason]=useState("");
  const [confirmedWorkerSync,setConfirmedWorkerSync]=useState(false);
  const [editing,setEditing]=useState<Entry|null>(null);
@@ -101,12 +107,15 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   const list=((data||[]) as Day[]).map(day=>({...day,reported:reportDates.has(day.business_date)}));
   setDays(list);
   setSelected(old=>{
+   const requested=new URLSearchParams(window.location.search).get("day");
+   if(!old&&requested&&list.some(d=>d.business_date===requested))return requested;
    if(old&&list.some(d=>d.business_date===old))return old;
    return list.find(d=>d.status!=="approved")?.business_date||list[0]?.business_date||"";
   });
  },[]);
 
  const reloadDay=useCallback(async()=>{
+  if(reportCorrection)return;
   if(!selected||!navigator.onLine)return;
   try{
    const start=new Date(selected+"T00:00:00+03:00").toISOString();
@@ -140,11 +149,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    const response=await fetch("/api/worker-links/day-report?date="+encodeURIComponent(selected),{headers:{authorization:"Bearer "+session.access_token},cache:"no-store"});
    const json=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(json.error||"تعذر تحميل تقرير العامل");
-   setWorkerReport(json.report||null);
+   setWorkerReport(json.report||null);setCorrections(json.corrections||[]);setCorrectionsReady(json.correctionsReady===true);
    if(json.report){setCashActual(String(json.report.actual_cash));setPosActual(String(json.report.terminal_total));}
    setError("");
   }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
- },[selected]);
+ },[selected,reportCorrection]);
 
  useEffect(()=>{
   void reloadDays();
@@ -174,6 +183,20 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   await reloadDay();
  }
 
+ async function saveReportCorrection(){
+  if(busy)return;
+  setBusy(true);setError("");
+  try{
+   const {data:{session}}=await supabase.auth.getSession();
+   if(!session)throw Error("جلسة المدير غير متاحة");
+   const payload=correctionPending.current||{date:selected,cash:Number(cashActual),card:Number(correctedCard),terminal:Number(posActual),reason:correctionReason,requestId:crypto.randomUUID()};
+   correctionPending.current=payload;
+   const r=await fetch("/api/worker-links/day-report",{method:"PATCH",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify(payload)});
+   if(!r.ok){if(r.status<500)correctionPending.current=null;throw Error("لم يتأكد حفظ التصحيح؛ تحقق من القيم وأعد المحاولة بنفس الزر.");}
+   correctionPending.current=null;setReportCorrection(false);setCorrectionReason("");
+  }catch(e){setError(e instanceof Error?e.message:"تعذر التصحيح");}
+  finally{setBusy(false);}
+ }
  async function closeDay(){
   if(!current||current.status!=="open"||!dayIsFinished(selected,now))return;
   if(incomplete.length){setError("يوجد أجهزة لم تؤكد نهاية مزامنة هذا اليوم.");return;}
@@ -240,6 +263,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
        className={selected===d.business_date?"btn-primary":"btn-secondary"}
        style={d.status!=="approved"&&(d.reported||d.status==="awaiting_owner")?
         {borderColor:"#c27c14",borderWidth:2}:undefined}
+       disabled={busy||reportCorrection}
        onClick={()=>{setSelected(d.business_date);setWorkerReport(null);setCashActual("");setPosActual("");setReason("");setConfirmedWorkerSync(false);setError("");setDetail(null);}}>
        {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}
       </button>)}
@@ -332,9 +356,17 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
        systemLabel="الشبكة حسب العامل" reportedLabel="الإجمالي في صورة الجهاز"/>
      </section>}
      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} readOnly className={cashMismatch?"border-2 border-red-600":""} /></label>
-      <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} readOnly className={networkMismatch?"border-2 border-red-600":""} /></label>
+      <label className="form-label">الكاش الموجود فعليًا<input type="number" inputMode="decimal" min="0" step=".01" value={cashActual} readOnly={!reportCorrection} onChange={e=>setCashActual(e.target.value)} className={cashMismatch?"border-2 border-red-600":""} /></label>
+      <label className="form-label">إجمالي تقرير جهاز الشبكة<input type="number" inputMode="decimal" min="0" step=".01" value={posActual} readOnly={!reportCorrection} onChange={e=>setPosActual(e.target.value)} className={networkMismatch?"border-2 border-red-600":""} /></label>
      </div>
+     {reportForDay&&correctionsReady&&!reportCorrection&&<button className="btn-secondary" type="button" onClick={()=>{setCorrectedCard(String(reportForDay.actual_card));setReportCorrection(true);}}>تصحيح تقرير الموازنة مع حفظ الأصل</button>}
+     {reportCorrection&&<div className="space-y-3">
+      <label className="form-label">الشبكة المصححة<input type="number" min="0" step=".01" value={correctedCard} onChange={e=>setCorrectedCard(e.target.value)}/></label>
+      <label className="form-label">سبب التصحيح<textarea value={correctionReason} maxLength={500} onChange={e=>setCorrectionReason(e.target.value)}/></label>
+      <button className="btn-primary" type="button" disabled={busy||correctionReason.trim().length<5} onClick={()=>void saveReportCorrection()}>حفظ نسخة التصحيح</button>
+      {!correctionPending.current&&<button className="btn-secondary" type="button" onClick={()=>setReportCorrection(false)}>إلغاء</button>}
+     </div>}
+     {corrections.map(c=><p key={c.id} className="txt-muted text-sm">تصحيح {c.version}: {c.reason} — كاش {c.actual_cash}، شبكة {c.actual_card}، جهاز {c.terminal_total}</p>)}
      <div className="rounded-xl p-3" style={{background:"var(--surface-3)"}}>
       <p>الكاش المسجل: {formatCurrency(totals.cash)}</p>
       <p>المصروفات والدفعات النقدية: {formatCurrency(cashExpenses+cashWorkerPayouts)}</p>
@@ -348,7 +380,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <input type="checkbox" className="mt-1" checked={confirmedWorkerSync} onChange={e=>setConfirmedWorkerSync(e.target.checked)}/>
       <span>تأكدت من العمال أن سيارات هذا اليوم أُرسلت إلى النظام، ولا توجد تسجيلات معلّقة على أجهزتهم. رابط العامل لا يكشف العمليات المحفوظة دون إنترنت.</span>
      </label>
-     <button type="button" className="btn-primary w-full" disabled={busy||incomplete.length>0||!confirmedWorkerSync||!reportForDay} onClick={()=>void closeDay()}>
+     <button type="button" className="btn-primary w-full" disabled={busy||reportCorrection||incomplete.length>0||!confirmedWorkerSync||!reportForDay} onClick={()=>void closeDay()}>
       {busy?"جارٍ الاعتماد":"اعتماد هذا اليوم فقط"}
      </button>
     </section>:<section className="card"><p className="txt-muted">يوم {selected} لم ينتهِ بعد. يمكن مراجعته ولكن لا يعتمد قبل 12 صباحًا بتوقيت الرياض.</p></section>):

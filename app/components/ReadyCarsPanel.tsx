@@ -1,5 +1,6 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
+import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
 type Car={id:string;carType:string;serviceType:string;date:string;occurredAt:string;
  cash:number;card:number;discount:number;phone:string|null;consent:boolean;
@@ -43,7 +44,6 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [files,setFiles]=useState<Record<string,File>>({});
- const [brandedImage,setBrandedImage]=useState<File|null>(null);
  const preloadAttempted=useRef(new Set<string>());
  const [truncated,setTruncated]=useState(false);
  const headers=useCallback(async(contentType=true)=>{
@@ -82,29 +82,6 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
   return()=>window.clearInterval(timer);
  },[open,load,refreshKey]);
 
- // The single share action has a ready-to-send image before it is pressed.
- // A real car photo is used if one exists; otherwise we share a branded ready card.
- useEffect(()=>{
-  if(!open)return;
-  try{
-   const canvas=document.createElement("canvas");
-   canvas.width=1200;canvas.height=630;
-   const ctx=canvas.getContext("2d");
-   if(!ctx)return;
-   const grad=ctx.createLinearGradient(0,0,1200,630);
-   grad.addColorStop(0,"#214bc5");grad.addColorStop(1,"#4296e6");
-   ctx.fillStyle=grad;ctx.fillRect(0,0,1200,630);
-   ctx.fillStyle="#ffffff";ctx.textAlign="center";ctx.direction="rtl";
-   ctx.font="bold 58px sans-serif";ctx.fillText("مغسلة سيارتك اللامعة",600,165);
-   ctx.font="bold 78px sans-serif";ctx.fillText("سيارتك جاهزة للاستلام",600,325);
-   ctx.font="36px sans-serif";ctx.fillText("شكرًا لزيارتك، نسعد بخدمتك",600,425);
-   const binary=atob(canvas.toDataURL("image/png").split(",")[1]);
-   const bytes=new Uint8Array(binary.length);
-   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-   setBrandedImage(new File([bytes],"carwash-ready.png",{type:"image/png"}));
-  }catch{/* Text-only fallback remains available. */}
- },[open]);
-
  // Prefetch actual photos silently, never requiring a separate preparation tap.
  useEffect(()=>{
   if(!open)return;
@@ -125,7 +102,7 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
      const blob=await response.blob();
      const file=await imageForShare(new File([blob],"carwash-photo.jpg",{type:blob.type||"image/jpeg"}));
      if(!cancelled)setFiles(prev=>({...prev,[car.id]:file}));
-    }catch{/* The branded image is a safe local fallback. */}
+    }catch{/* Photo sharing remains optional. */}
    }
   }
   for(let i=0;i<Math.min(3,jobs.length);i++)void worker();
@@ -164,40 +141,27 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
   }catch(e){setError(e instanceof Error?e.message:"فشل الصورة");}
   finally{setBusy("");}
  }
- async function share(car:Car){
+ function share(car:Car){
   if(car.status!=="ready"||busy)return;
+  setError("");setNotice("");
+  const phone=car.phone?normalizeSaudiMobile(car.phone):null;
+  if(!phone){setError("لا يوجد رقم جوال صالح لهذه السيارة؛ يمكنك مشاركة الصورة منفصلًا عند الحاجة.");return;}
   const msg=readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.";
-  const file=files[car.id]||brandedImage;
-  const phone=car.phone?.replace(/^\+/,"")||"";
+  // Navigate directly during the tap; opening a chat never confirms sending.
+  void call("share_opened",car.id).catch(()=>{});
+  window.location.assign("https://wa.me/"+phone.replace(/^\+/,"")+"?text="+encodeURIComponent(msg));
+ }
+ async function sharePhoto(car:Car){
+  const file=files[car.id];
+  if(!file||busy)return;
   setError("");setNotice("");
   try{
-   if(typeof navigator.share==="function"&&file&&
-       (!navigator.canShare||navigator.canShare({files:[file]}))){
-    // Must invoke share synchronously from this one button click on iPhone.
-    await navigator.share({title:"مغسلة سيارتك اللامعة",text:msg,files:[file]});
-    void call("share_opened",car.id).catch(()=>{});
-    setNotice("اختر واتساب ثم محادثة العميل وأكمل الإرسال. لا يمكن للموقع اختيار المستلم تلقائيًا عند مشاركة الصورة.");
-    return;
+   if(!navigator.share||!navigator.canShare?.({files:[file]})){
+    setError("مشاركة الصور غير متاحة في هذا المتصفح؛ افتح الصفحة من جوال يدعم مشاركة الملفات.");return;
    }
-   // The WhatsApp deep link targets the customer's exact number, but
-   // official click-to-chat links cannot attach a local image.
-   if(phone){
-    const address="https://wa.me/"+phone+"?text="+encodeURIComponent(msg);
-    const opened=window.open(address,"_blank","noopener,noreferrer");
-    if(!opened)window.location.assign(address);
-    void call("share_opened",car.id).catch(()=>{});
-    setNotice("فُتحت محادثة العميل مع الرسالة. هذا المتصفح لا يدعم إرفاق الصورة عبر رابط واتساب.");
-    return;
-   }
-   if(typeof navigator.share==="function"){
-    await navigator.share({title:"مغسلة سيارتك اللامعة",text:msg});
-    void call("share_opened",car.id).catch(()=>{});
-    setNotice("اختر العميل من قائمة المشاركة وأكمل الإرسال.");
-   }else setError("أدخل رقم العميل أو افتح المشاركة من جوال يدعم واتساب.");
-  }catch(e){
-   if(e instanceof Error&&e.name==="AbortError")return;
-   setError("تعذر فتح المشاركة؛ تأكد من صلاحيات المشاركة وتطبيق واتساب.");
-  }
+   await navigator.share({files:[file]});
+   setNotice("أُغلقت نافذة مشاركة الصورة؛ لا يمكن التحقق من إرسالها إلى العميل.");
+  }catch(e){if(!(e instanceof Error&&e.name==="AbortError"))setError("تعذرت مشاركة الصورة.");}
  }
  return <section className="card space-y-3" dir="rtl">
   <button type="button" className="w-full flex items-center justify-between text-start gap-2"
@@ -244,10 +208,10 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
          e.currentTarget.value="";
         }}/>
       </label>
-      <p className="txt-muted text-xs mt-2">عند عدم وجود صورة سيارة، تُشارك بطاقة جاهزية المغسلة المصممة تلقائيًا.</p>
+      {files[car.id]&&<button type="button" className="btn-secondary w-full mt-2" disabled={!!busy} onClick={()=>void sharePhoto(car)}>مشاركة الصورة منفصلًا</button>}
      </details>}
     </div>)}</div>}
-   <p className="txt-muted text-xs">زر واحد يجهز الصورة والرسالة للمشاركة. اختر واتساب والمستلم عند ظهور قائمة الجهاز؛ المشاركة لا تؤكد التسليم.</p>
+   <p className="txt-muted text-xs">مشاركة الجاهزية تفتح محادثة العميل برسالة جاهزة. فتح المحادثة لا يؤكد إرسال الرسالة.</p>
   </>}
  </section>;
 }

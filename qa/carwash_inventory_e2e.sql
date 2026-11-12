@@ -31,7 +31,7 @@ begin
  if v_qty<>10 or v_avg<>10 then raise exception 'Purchase stock cost incorrect';end if;
  select count(*) into v_expenses from public.expenses
  where client_mutation_id='a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a001';
- if v_expenses<>1 then raise exception 'Inventory purchase expense missing or duplicated';end if;
+ if v_expenses<>0 then raise exception 'Inventory purchase must not be an operating expense';end if;
  select id into v_expense_id from public.expenses
  where client_mutation_id='a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a001';
  if (select expense_id from public.carwash_inventory_movements
@@ -43,9 +43,8 @@ begin
   'a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a002');
  if (select stock_qty from public.carwash_inventory_items where id=v_item)<>7
  then raise exception 'Consumption stock incorrect';end if;
- if (select expense_id from public.carwash_inventory_movements
-    where id=(v_use->>'id')::uuid) is not null
- then raise exception 'Consumption generated an extra expense';end if;
+ if (select amount from public.expenses where id=(v_use->>'expenseId')::uuid) is distinct from 30::numeric
+ then raise exception 'Actual consumption must recognize exactly 30';end if;
  begin
   perform public.carwash_inventory_apply(
    '22222222-2222-4222-8222-222222222222',v_item,'use',8,
@@ -56,6 +55,26 @@ begin
  if (select count(*) from public.expenses
   where client_mutation_id like 'a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a00%')<>1
  then raise exception 'Usage duplicated inventory purchase expense';end if;
+ -- Different purchase price uses weighted average; final issue consumes residual cents.
+ perform public.carwash_inventory_apply(
+  '22222222-2222-4222-8222-222222222222',v_item,'purchase',10,200,'network','QA second price',
+  'a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a004');
+ if (select inventory_value from public.carwash_inventory_items where id=v_item)<>270
+ then raise exception 'Weighted inventory value incorrect';end if;
+ perform public.carwash_inventory_apply(
+  '22222222-2222-4222-8222-222222222222',v_item,'use',17,0,null,'QA final issue',
+  'a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a005');
+ if (select inventory_value+stock_qty from public.carwash_inventory_items where id=v_item)<>0
+ then raise exception 'Final issue left residual inventory';end if;
+ if (select sum(amount) from public.expenses where client_mutation_id like 'a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a00%')<>300
+ then raise exception 'Material cost duplicated or lost';end if;
+ v_blocked:=false;
+ begin
+  perform public.carwash_inventory_apply(
+   '22222222-2222-4222-8222-222222222222',v_item,'purchase',10,999,'cash','QA changed retry',
+   'a0a0a0a0-b0b0-40a0-80a0-a0a0a0a0a001');
+ exception when others then v_blocked:=true;end;
+ if not v_blocked then raise exception 'Changed retry amount accepted';end if;
 end $inventory_qa$;
 -- Inventory API must be the only access path; authenticated users cannot
 -- directly query the manager-only stock tables.

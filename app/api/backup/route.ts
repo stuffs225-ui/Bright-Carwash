@@ -132,6 +132,9 @@ export async function GET(request:Request){
   // Daily immutable filenames avoid duplicate archives and extra storage usage.
   const tables:Record<string,unknown[]>={};
   for(const table of TABLES)tables[table]=await readAll(admin,table);
+  const correctionSchema=await admin.from("carwash_report_corrections").select("id").limit(1);
+  if(!correctionSchema.error)tables.carwash_report_corrections=await readAll(admin,"carwash_report_corrections");
+  else if(!["42P01","PGRST205"].includes(correctionSchema.error.code))throw Error("Unable to inspect correction archive");
   // Financial records take priority. When evidence exceeds the free-function
   // budget, save a VERIFIED financial archive instead of losing ALL backups.
   // Media is explicitly marked unprotected and retention cleanup is forbidden.

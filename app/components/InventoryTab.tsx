@@ -38,6 +38,7 @@ async function action(body:Record<string,unknown>){
  return result;
 }
 export function InventoryTab(){
+ const [accountingReady,setAccountingReady]=useState(false);
  const [items,setItems]=useState<Item[]>([]);
  const [movements,setMovements]=useState<Movement[]>([]);
  const [busy,setBusy]=useState(false);
@@ -58,7 +59,7 @@ export function InventoryTab(){
  const load=useCallback(async()=>{
   try{
    const response=await action({op:"list"});
-   setItems(response.items||[]);
+   setItems(response.items||[]);setAccountingReady(response.accountingReady===true);
    setMovements(response.movements||[]);
    setSelected(old=>old||(response.items||[]).find((i:Item)=>i.active)?.id||"");
    setError("");
@@ -68,7 +69,7 @@ export function InventoryTab(){
  useEffect(()=>{void load();},[load]);
  const active=useMemo(()=>items.filter(i=>i.active),[items]);
  const selectedItem=items.find(i=>i.id===selected);
- const low=items.filter(i=>i.active&&Number(i.stock_qty)<=Number(i.min_qty));
+ const low=items.filter(i=>i.active&&Number(i.min_qty)>0&&Number(i.stock_qty)<=Number(i.min_qty));
  const stockValue=items.filter(i=>i.active).reduce(
   (total,i)=>total+Number(i.stock_qty)*Number(i.avg_unit_cost),0);
  async function create(e:React.FormEvent){
@@ -96,7 +97,7 @@ export function InventoryTab(){
  }
  async function submit(e:React.FormEvent){
   e.preventDefault();if(busy)return;
-  const n=Number(quantity),value=kind==="purchase"?Number(cost):0;
+  const n=Number(quantity),value=(kind==="purchase"||kind==="adjust_in")?Number(cost):0;
   if(!selectedItem||!Number.isFinite(n)||n<=0||n>100000||
    Math.abs(n*1000-Math.round(n*1000))>0.000001||
    !Number.isFinite(value)||value<0||
@@ -115,7 +116,7 @@ export function InventoryTab(){
   try{
    const result=await action(payload);
    pending.current=null;setUnconfirmed(false);
-   setNotice(result.duplicate?"الحركة سُجلت سابقًا؛ لم تتكرر":"تم حفظ الحركة"+(result.expenseId?" وربط مشتريات المواد بالمصروفات":""));
+   setNotice(result.duplicate?"الحركة سُجلت سابقًا؛ لم تتكرر":"تم حفظ الحركة"+(result.expenseId?" وربط تكلفة الاستهلاك بالمصروفات":""));
    setQuantity("");setCost("");setNote("");await load();
   }catch(e){
    // If a response was lost, do not assign a new request UUID:
@@ -133,10 +134,10 @@ export function InventoryTab(){
   <header className="card space-y-2">
    <h2 className="section-title">مخزون المواد والاستهلاك</h2>
    <p className="txt-muted text-sm">
-    شراء الصابون أو الواكس أو أي مادة يسجل مصروفًا واحدًا ويزيد رصيد المخزون.
-    الاستهلاك ينقص الرصيد فقط ولا يضاعف المصروف. لا توجد كميات افتتاحية مفترضة.
+    الشراء يزيد المخزون ويخفض النقدية حسب مصدر الدفع. تكلفة الصرف الفعلي فقط تُسجل كمصروف وفق المتوسط المرجح، دون تكرار تكلفة الشراء.
    </p>
   </header>
+  {!accountingReady&&<p className="card txt-warning">حركات المخزون بانتظار تفعيل المحاسبة الجديدة والتحقق من قاعدة البيانات.</p>}
   {error&&<div className="card txt-danger" role="alert">{error}</div>}
   {notice&&<div className="card" role="status">{notice}</div>}
   <div className="grid grid-cols-2 gap-3">
@@ -158,7 +159,7 @@ export function InventoryTab(){
       {units.map(u=><option key={u} value={u}>{u}</option>)}
      </select>
     </label>
-    <label className="text-sm">حد التنبيه
+    <label className="text-sm">حد التنبيه (0 = غير مفعل)
      <input className={inputClass} type="number" min="0" step=".001"
       value={minimum} onChange={e=>setMinimum(e.target.value)}/>
     </label>
@@ -184,8 +185,8 @@ export function InventoryTab(){
     <input className={inputClass} type="number" inputMode="decimal" min=".001" step=".001"
      disabled={busy||unconfirmed} value={quantity} onChange={e=>setQuantity(e.target.value)}/>
    </label>
-   {kind==="purchase"&&<div className="grid grid-cols-2 gap-2">
-    <label className="block text-sm">تكلفة الشراء الكاملة (ر.س)
+   {(kind==="purchase"||kind==="adjust_in")&&<div className="grid grid-cols-2 gap-2">
+    <label className="block text-sm">التكلفة الإجمالية للكمية (ر.س)
      <input className={inputClass} type="number" min="0" step=".01" inputMode="decimal"
       disabled={busy||unconfirmed} value={cost} onChange={e=>setCost(e.target.value)}/>
     </label>
@@ -202,13 +203,13 @@ export function InventoryTab(){
      value={note} onChange={e=>setNote(e.target.value)}
      placeholder={kind==="use"?"مثال: استخدام الوردية":kind==="purchase"?"مثال: فاتورة توريد":"سبب فرق الجرد"}/>
    </label>
-   <button className="btn-primary w-full py-3" type="submit" disabled={busy||!selected}>
+   <button className="btn-primary w-full py-3" type="submit" disabled={busy||!selected||!accountingReady}>
     {busy?"جارٍ الحفظ...":unconfirmed?"إعادة تأكيد نفس الحركة":"حفظ حركة المخزون"}
    </button>
    {unconfirmed&&<button type="button" className="btn-secondary w-full" onClick={resetPending}>
     إلغاء إعادة المحاولة (تحقق من السجل أولًا)
    </button>}
-   {kind==="purchase"&&<p className="txt-muted text-xs">تسجل التكلفة المدفوعة ضمن المصروفات بمجرد اعتماد الحركة. لا تعِد تسجيل الفاتورة في المصروفات.</p>}
+   {kind==="purchase"&&<p className="txt-muted text-xs">تُسجل قيمة الشراء في المخزون، ويُسجل المصروف عند الصرف. لا تعِد تسجيل فاتورة الشراء في المصروفات.</p>}
   </form>
   <section className="card space-y-3">
    <div className="flex justify-between items-center">
@@ -218,16 +219,16 @@ export function InventoryTab(){
    </div>
    {loading&&<p className="txt-muted">تحميل المخزون...</p>}
    {!loading&&items.length===0&&<p className="txt-muted">لم تضاف مواد بعد.</p>}
-   {items.map(i=><div className="border-b pb-3 space-y-2" key={i.id}>
+   {items.map(i=><div className="border-b pb-3 space-y-2" key={i.id} id={"item-"+i.id}>
     <div className="flex justify-between gap-2">
      <span className="font-bold">{i.name} {!i.active?"(موقوف)":""}</span>
-     <span className={i.active&&Number(i.stock_qty)<=Number(i.min_qty)?"txt-danger":"txt-cash"}>
+     <span className={i.active&&Number(i.min_qty)>0&&Number(i.stock_qty)<=Number(i.min_qty)?"txt-danger":"txt-cash"}>
       {qtyFormat(Number(i.stock_qty))} {i.unit}
      </span>
     </div>
     <p className="txt-muted text-xs">التنبيه: {qtyFormat(Number(i.min_qty))} {i.unit} · تكلفة الوحدة التقديرية: {money(Number(i.avg_unit_cost))}</p>
     <div className="flex items-center gap-2">
-     <label className="text-xs">حد التنبيه
+     <label className="text-xs">حد التنبيه (0 = غير مفعل)
       <input className="w-24 p-2 border rounded-lg bg-transparent" id={"limit-"+i.id}
        key={i.min_qty} defaultValue={i.min_qty} type="number" min="0" step=".001"/>
      </label>

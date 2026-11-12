@@ -1,0 +1,47 @@
+// Local browser regression with synthetic API fixtures; never targets production.
+const {chromium,devices}=require('playwright');
+const assert=require('node:assert/strict');
+(async()=>{
+ const browser=await chromium.launch({executablePath:'/usr/bin/chromium',headless:true,args:['--no-sandbox']});
+ const context=await browser.newContext({...devices['iPhone 13'],serviceWorkers:'block'});
+ const page=await context.newPage();
+ const recorded=new Map();let writes=0;const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh'}).format(new Date());
+ const preset={id:'11111111-1111-4111-8111-111111111111',car_type:'سيارة صغيرة',service_type:'غسيل كامل',amount:25};
+ const car={id:'22222222-2222-4222-8222-222222222222',carType:'سيارة صغيرة',serviceType:'غسيل كامل',date:today,occurredAt:new Date().toISOString(),cash:25,card:0,discount:0,phone:'+966500000000',consent:true,status:'ready',photoAvailable:false};
+ await page.route('**/api/worker-links/**',async route=>{
+  const url=route.request().url(),body=route.request().postDataJSON();let json={};
+  if(url.endsWith('/catalog'))json={label:'اختبار اصطناعي',presets:[preset],addons:[],discountLimit:10,manualServiceEnabled:false};
+  else if(url.endsWith('/summary'))json={days:[{date:today,status:'open',cars:recorded.size,cash:25*recorded.size,card:0,crew:10*recorded.size}],today};
+  else if(url.endsWith('/record')){writes++;recorded.set(body.mutationId,body);json={ok:true,id:body.mutationId};}
+  else if(url.endsWith('/active'))json=body.op==='list'?{cars:[car],readyMessage:'سيارتك جاهزة للاستلام'}:{ok:true};
+  await route.fulfill({json});
+ });
+ const checks=[];
+ await page.goto('http://localhost:3000/w/'+'a'.repeat(64));
+ await page.getByRole('button',{name:'تسجيل السيارة',exact:true}).waitFor();
+ assert.equal(await page.getByText('إضافة خاصة لمرة واحدة').count(),0);
+ assert.equal(await page.getByText('وافق العميل على استخدام رقمه').count(),0);checks.push('Removed fields absent');
+ await page.getByRole('button',{name:'مختلط',exact:true}).click();
+ await page.getByLabel('المبلغ كاش',{exact:true}).fill('10');
+ await page.getByLabel('المبلغ شبكة',{exact:true}).fill('10');
+ assert.equal(await page.locator('input[aria-invalid="true"]').count(),2);
+ await page.getByRole('button',{name:'تسجيل السيارة',exact:true}).click();assert.equal(writes,0);checks.push('Mixed mismatch highlighted and rejected');
+ await page.getByLabel('المبلغ شبكة',{exact:true}).fill('15');
+ await page.getByRole('button',{name:'تسجيل السيارة',exact:true}).click();
+ await page.getByText('تم تسجيل السيارة بنجاح.',{exact:true}).waitFor();assert.equal(recorded.size,1);checks.push('Mixed payment saved once');
+ await context.setOffline(true);
+ await page.getByRole('button',{name:'كاش',exact:true}).click();
+ await page.getByRole('button',{name:'تسجيل السيارة',exact:true}).click();
+ await page.getByText('عمليات بانتظار المزامنة: 1',{exact:true}).waitFor();assert.equal(recorded.size,1);checks.push('Offline write stored without server revenue');
+ await context.setOffline(false);
+ await page.getByText('تمت مزامنة جميع السيارات المحفوظة بنجاح.',{exact:true}).waitFor();assert.equal(recorded.size,2);assert.equal(writes,2);
+ await page.evaluate(()=>window.dispatchEvent(new Event('online')));
+ await page.waitForTimeout(300);assert.equal(writes,2);checks.push('Reconnect and repeated online event do not duplicate');
+ await page.getByRole('button',{name:/سيارات اليوم وحالة الجاهزية/}).click();
+ await page.getByRole('button',{name:'مشاركة الجاهزية',exact:true}).waitFor();
+ let destination='';await page.route('https://wa.me/**',async route=>{destination=route.request().url();await route.fulfill({body:'synthetic WhatsApp destination'});});
+ await page.getByRole('button',{name:'مشاركة الجاهزية',exact:true}).click();
+ await page.waitForURL('https://wa.me/**');assert.match(destination,/966500000000/);assert.ok(new URL(destination).searchParams.get('text').includes('جاهزة'));checks.push('One tap opens exact WhatsApp recipient and prepared message without photo');
+ console.log(JSON.stringify({browser:'Chromium iPhone 13 emulation',checks,uniqueOperations:recorded.size,recordRequests:writes},null,2));
+ await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

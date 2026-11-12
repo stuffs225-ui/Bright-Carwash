@@ -11,10 +11,10 @@ export function operatingResult(revenue:number,expenses:number):OperatingResult{
   label:net<0?"خسارة":net>0?"ربح":"تعادل"};
 }
 /** Returns null when dividing by zero instead of misleading users with 0%. */
-export function expenseReturnPercent(revenue:number,expenses:number):number|null{
+export function netProfitMarginPercent(revenue:number,expenses:number):number|null{
  if(!Number.isFinite(revenue)||!Number.isFinite(expenses))return null;
- if(expenses<=0)return null;
- return (revenue-expenses)/expenses*100;
+ if(revenue<=0)return null;
+ return (revenue-expenses)/revenue*100;
 }
 const money=new Intl.NumberFormat("ar-SA-u-nu-latn",{
  minimumFractionDigits:0,maximumFractionDigits:2,
