@@ -59,7 +59,7 @@ const fs=require("node:fs");
  await page.getByRole("heading",{name:/Register cars/}).waitFor();
  await page.waitForFunction(()=>document.querySelector('input[placeholder="Notes about this car"]')?.value==="DRAFT-123");
  assert.equal(await page.getByPlaceholder("Notes about this car").inputValue(),"DRAFT-123");
- assert.equal(await page.evaluate(()=>localStorage.getItem(localeKey)),"en");
+ assert.equal(await page.evaluate(key=>localStorage.getItem(key),localeKey),"en");
  await page.getByRole("button",{name:"العربية"}).click();
  await page.getByRole("heading",{name:/تسجيل السيارات/}).waitFor();
  assert.equal(await page.locator(".worker-screen").getAttribute("dir"),"rtl");
@@ -68,14 +68,14 @@ const fs=require("node:fs");
  await page.getByRole("heading",{name:/تسجيل السيارات/}).waitFor();
  await page.waitForFunction(()=>document.querySelector('input[placeholder="ملاحظات عن السيارة"]')?.value==="DRAFT-123");
  assert.equal(await page.locator(".worker-screen").getAttribute("dir"),"rtl");
- assert.equal(await page.evaluate(()=>localStorage.getItem(localeKey)),"ar");
+ assert.equal(await page.evaluate(key=>localStorage.getItem(key),localeKey),"ar");
  await ctx.close();
  const other=await browser.newContext({...devices[device],serviceWorkers:"block"});
  await other.addInitScript(shareMock);
  const fresh=await other.newPage();await fake(fresh);
  await fresh.goto(URL);
  await fresh.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
- assert.equal(await fresh.evaluate(()=>localStorage.getItem(localeKey)),null,
+ assert.equal(await fresh.evaluate(key=>localStorage.getItem(key),localeKey),null,
   "Second device must have independent preference");
  await fresh.getByRole("button",{name:/Ƙaramar mota/}).click();
  await fresh.getByTestId("service-choices").getByRole("button",{name:/Cikakken wanki/}).click();
