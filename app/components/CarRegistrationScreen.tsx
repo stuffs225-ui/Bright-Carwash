@@ -58,8 +58,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
 
  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
  const [method,setMethod]=useState<"cash"|"card"|"mixed">("cash");
- const [discount,setDiscount]=useState("0");
- const [showDiscount,setShowDiscount]=useState(false);
  const [queued,setQueued]=useState(0);
  const [syncing,setSyncing]=useState(false);
  const [cash,setCash]=useState("");
@@ -194,8 +192,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     setPriceReason(String(draft.priceReason||"").slice(0,300));
     setSelectedAddons((Array.isArray(draft.selectedAddons)?draft.selectedAddons:[])
      .filter(id=>catalog.addons.some(a=>a.id===id)));
-    setDiscount(String(draft.discount??"0").slice(0,20));
-    setShowDiscount(Boolean(draft.showDiscount));
     if(draft.method==="cash"||draft.method==="card"||draft.method==="mixed")
      setMethod(draft.method);
     setCash(String(draft.cash||"").slice(0,20));
@@ -211,15 +207,15 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  useEffect(()=>{
   if(!catalog||!draftReady||busy||!outboxKey)return;
   const meaningful=Boolean(carType||presetId||customerPhone.trim()||notes.trim()||manualMode||
-   selectedAddons.length||showDiscount||method==="mixed");
+   selectedAddons.length||method==="mixed");
   const draft:WorkerDraft={presetId,carType,manualMode,manualService,manualPrice,
-   priceReason,selectedAddons,method,discount,showDiscount,cash,card,customerPhone,notes};
+   priceReason,selectedAddons,method,discount:"0",showDiscount:false,cash,card,customerPhone,notes};
   const timer=window.setTimeout(()=>{
    void (meaningful?storeWorkerDraft(outboxKey,draft):deleteWorkerDraft(outboxKey)).catch(()=>{});
   },350);
   return()=>window.clearTimeout(timer);
  },[catalog,draftReady,busy,outboxKey,presetId,carType,manualMode,manualService,
-  manualPrice,priceReason,selectedAddons,method,discount,showDiscount,cash,card,customerPhone,notes]);
+  manualPrice,priceReason,selectedAddons,method,cash,card,customerPhone,notes]);
 
  const preset=catalog?.presets.find(p=>p.id===presetId);
  const carChoices=[{name:"سيارة صغيرة",icon:"🚗"},{name:"سيارة كبيرة",icon:"🚙"},{name:"شاحنة",icon:"🚚"}] as const;
@@ -237,7 +233,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   .filter(a=>selectedAddons.includes(a.id)).reduce((v,a)=>v+Number(a.price),0),
  [catalog,selectedAddons]);
  const manualExtras=0;
- const discountNumber=Number(discount)||0;
+ const discountNumber=0;
  const basePrice=manualMode?Number(manualPrice||0):Number(preset?.amount||0);
  const price=rounded(basePrice+totalAddons+manualExtras-discountNumber);
  useEffect(()=>{
@@ -261,11 +257,10 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   if(manualMode&&(manualService.trim().length<2||!Number.isFinite(basePrice)||basePrice<=0||basePrice>5000)){
    setError("اسم الخدمة أو سعرها الاستثنائي غير صحيح");return;
   }
-  const c=Number(cash),d=Number(card),discountValue=Number(discount);
+  const c=Number(cash),d=Number(card),discountValue=0;
   if(!Number.isFinite(c)||!Number.isFinite(d)||c<0||d<0||
-     !Number.isFinite(discountValue)||discountValue<0||discountValue>Number(catalog.discountLimit??10)||
      rounded(c+d)!==price){
-   setError("راجع مبلغ الكاش والشبكة والخصم؛ مجموع الدفع يجب أن يطابق السعر النهائي.");return;
+   setError("راجع مبلغ الكاش والشبكة؛ مجموع الدفع يجب أن يطابق السعر النهائي.");return;
   }
   const phone=customerPhone.trim()?normalizeSaudiMobile(customerPhone):null;
   if(customerPhone.trim()&&!phone){setError("رقم جوال العميل غير صحيح. يمكنك تركه فارغًا.");return;}
@@ -313,7 +308,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
      throw Error("لم يتأكد استلام التسجيل؛ أعد المحاولة من نفس الصفحة.");
     directPending.current=null;
     await deleteWorkerDraft(outboxKey).catch(()=>{});
-    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
+    setNotes("");setSelectedAddons([]);
     setManualMode(false);setPriceReason("");setCarType("");setPresetId("");
     setManualService("");setManualPrice("");setCustomerPhone("");
     setStatus("تم تسجيل السيارة بنجاح.");
@@ -325,7 +320,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    setQueued((await listWorkerRecords(outboxKey)).length);
    await deleteWorkerDraft(outboxKey).catch(()=>{});
    setStatus("العملية محفوظة على هذا الجهاز؛ ستُرسل عند توفر الإنترنت.");
-   setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
+   setNotes("");setSelectedAddons([]);
    setManualMode(false);setPriceReason("");setCarType("");setPresetId("");
    setManualService("");setManualPrice("");setCustomerPhone("");
    if(navigator.onLine)void replay();
@@ -433,13 +428,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
      onChange={e=>setPriceReason(e.target.value)} placeholder={tt("reg.reasonHint")}/>
    </details>}
    <div className="space-y-2">
-    <button type="button" className="btn-secondary w-full" onClick={()=>{setShowDiscount(v=>!v);setDiscount("0");}}>{showDiscount?tt("reg.discountCancel"):tt("reg.discountAdd")}</button>
-    {showDiscount&&<label className="form-label">{tt("reg.discountMax",{max:money(Number(catalog?.discountLimit??10))})}
-     <input type="number" inputMode="decimal" min="0" max={Number(catalog?.discountLimit??10)} step=".01"
-      value={discount} onChange={e=>setDiscount(e.target.value)} required/>
-    </label>}
-   </div>
-   <div className="space-y-2">
     <p className="form-label">{tt("reg.payment")}</p>
     <div className="grid grid-cols-3 gap-2">
      {(["cash","card","mixed"] as const).map(x=>
@@ -464,7 +452,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    <div className="rounded-xl p-3 space-y-1" style={{background:"var(--surface-3)",color:"var(--text)"}}>
     <div className="flex justify-between gap-2 text-sm"><span>{tt("reg.base")}</span><strong>{money(basePrice)}</strong></div>
     {(totalAddons+manualExtras)>0&&<div className="flex justify-between gap-2 text-sm"><span>{tt("reg.extras")}</span><strong>{money(totalAddons+manualExtras)}</strong></div>}
-    {discountNumber>0&&<div className="flex justify-between gap-2 text-sm"><span>{tt("reg.discount")}</span><strong>−{money(discountNumber)}</strong></div>}
     <div className="flex justify-between gap-2 border-t pt-2 mt-2"><span className="font-bold">{tt("reg.total")}</span><strong className="text-xl">{money(Math.max(0,price))}</strong></div>
    </div>
    <details className="border rounded-lg p-3">
