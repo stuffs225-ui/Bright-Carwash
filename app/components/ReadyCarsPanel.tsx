@@ -1,13 +1,12 @@
 "use client";
 import {useCallback,useEffect,useRef,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
+import {workerText,workerMessage,workerCarName,workerServiceName,workerDirection,workerTime,type WorkerLocale} from "@/lib/workerI18n";
 type Car={id:string;carType:string;serviceType:string;date:string;occurredAt:string;
  cash:number;card:number;discount:number;phone:string|null;consent:boolean;
  status:"washing"|"ready"|"delivered";photoAvailable:boolean;readyAt:string|null;
  deliveredAt:string|null;shareRequestedAt:string|null};
-const statusText={washing:"قيد الغسيل",ready:"جاهزة للاستلام",delivered:"تم التسليم"};
-const time=(s:string)=>new Date(s).toLocaleTimeString("ar-SA-u-nu-latn",{
- timeZone:"Asia/Riyadh",hour:"2-digit",minute:"2-digit"});
+const STATUS_KEYS={washing:"ready.washing",ready:"ready.ready",delivered:"ready.delivered"} as const;
 async function imageForShare(raw:File):Promise<File>{
  if(raw.size<100)throw Error("الصورة فارغة");
  if(!raw.type.startsWith("image/"))throw Error("اختر ملف صورة");
@@ -33,9 +32,35 @@ async function imageForShare(raw:File):Promise<File>{
  }finally{URL.revokeObjectURL(url);}
 }
 
-export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
- token?:string;manager?:boolean;refreshKey?:number
+/** A ready-to-share JPEG when no real car photo has been uploaded. */
+function automaticReadyImage(car:Car):File{
+ const canvas=document.createElement("canvas");
+ canvas.width=1000;canvas.height=660;
+ const ctx=canvas.getContext("2d");
+ if(!ctx)throw Error("تعذر تجهيز صورة الجاهزية");
+ const gradient=ctx.createLinearGradient(0,0,1000,660);
+ gradient.addColorStop(0,"#082c4b");gradient.addColorStop(1,"#07538b");
+ ctx.fillStyle=gradient;ctx.fillRect(0,0,1000,660);
+ ctx.fillStyle="#dbf5ff";ctx.font="bold 43px system-ui";
+ ctx.textAlign="center";ctx.fillText("مغسلة سيارتك اللامعة",500,94);
+ ctx.font="124px system-ui";ctx.fillText("🚗",500,286);
+ ctx.fillStyle="#ffffff";ctx.font="bold 54px system-ui";
+ ctx.fillText("سيارتك جاهزة للاستلام",500,400);
+ ctx.fillStyle="#d3eeff";ctx.font="30px system-ui";
+ ctx.fillText(car.carType+" · "+car.serviceType,500,462);
+ ctx.strokeStyle="#65b8e4";ctx.lineWidth=3;
+ ctx.beginPath();ctx.moveTo(140,512);ctx.lineTo(860,512);ctx.stroke();
+ ctx.font="27px system-ui";ctx.fillText("نشكركم على زيارتكم",500,569);
+ const base64=canvas.toDataURL("image/jpeg",0.86).split(",")[1];
+ const binary=atob(base64),bytes=new Uint8Array(binary.length);
+ for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+ return new File([bytes],"carwash-ready.jpg",{type:"image/jpeg"});
+}
+
+export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
+ token?:string;manager?:boolean;locale?:WorkerLocale;refreshKey?:number
 }){
+ const tt=(key:Parameters<typeof workerText>[1],vars?:Record<string,string|number>)=>workerText(locale,key,vars);
  const [open,setOpen]=useState(false);
  const [cars,setCars]=useState<Car[]>([]);
  const [readyMessage,setReadyMessage]=useState("");
@@ -43,7 +68,6 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [files,setFiles]=useState<Record<string,File>>({});
- const [brandedImage,setBrandedImage]=useState<File|null>(null);
  const preloadAttempted=useRef(new Set<string>());
  const [truncated,setTruncated]=useState(false);
  const headers=useCallback(async(contentType=true)=>{
@@ -82,33 +106,10 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
   return()=>window.clearInterval(timer);
  },[open,load,refreshKey]);
 
- // The single share action has a ready-to-send image before it is pressed.
- // A real car photo is used if one exists; otherwise we share a branded ready card.
- useEffect(()=>{
-  if(!open)return;
-  try{
-   const canvas=document.createElement("canvas");
-   canvas.width=1200;canvas.height=630;
-   const ctx=canvas.getContext("2d");
-   if(!ctx)return;
-   const grad=ctx.createLinearGradient(0,0,1200,630);
-   grad.addColorStop(0,"#214bc5");grad.addColorStop(1,"#4296e6");
-   ctx.fillStyle=grad;ctx.fillRect(0,0,1200,630);
-   ctx.fillStyle="#ffffff";ctx.textAlign="center";ctx.direction="rtl";
-   ctx.font="bold 58px sans-serif";ctx.fillText("مغسلة سيارتك اللامعة",600,165);
-   ctx.font="bold 78px sans-serif";ctx.fillText("سيارتك جاهزة للاستلام",600,325);
-   ctx.font="36px sans-serif";ctx.fillText("شكرًا لزيارتك، نسعد بخدمتك",600,425);
-   const binary=atob(canvas.toDataURL("image/png").split(",")[1]);
-   const bytes=new Uint8Array(binary.length);
-   for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
-   setBrandedImage(new File([bytes],"carwash-ready.png",{type:"image/png"}));
-  }catch{/* Text-only fallback remains available. */}
- },[open]);
-
  // Prefetch actual photos silently, never requiring a separate preparation tap.
  useEffect(()=>{
   if(!open)return;
-  const queue=cars.filter(car=>car.status==="ready"&&car.photoAvailable&&
+  const queue=cars.filter(car=>car.status!=="delivered"&&car.photoAvailable&&
    !preloadAttempted.current.has(car.id));
   for(const car of queue)preloadAttempted.current.add(car.id);
   if(!queue.length)return;
@@ -125,20 +126,19 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
      const blob=await response.blob();
      const file=await imageForShare(new File([blob],"carwash-photo.jpg",{type:blob.type||"image/jpeg"}));
      if(!cancelled)setFiles(prev=>({...prev,[car.id]:file}));
-    }catch{/* The branded image is a safe local fallback. */}
+    }catch{/* Photo sharing remains optional. */}
    }
   }
   for(let i=0;i<Math.min(3,jobs.length);i++)void worker();
   return()=>{cancelled=true;};
  },[open,cars,call]);
 
- async function action(car:Car,op:"ready"|"delivered"){
-  if(busy)return;
-  if(op==="delivered"&&!confirm("تأكيد تسليم السيارة؟"))return;
+ async function deliver(car:Car){
+  if(busy||car.status==="delivered")return;
   setBusy(car.id);setError("");setNotice("");
   try{
-   await call(op,car.id);
-   setNotice(op==="ready"?"تم حفظ حالة جاهزية السيارة.":"تم توثيق التسليم.");
+   await call("delivered",car.id);
+   setNotice(workerText("ar","ready.savedDelivered"));
    await load();
   }catch(e){setError(e instanceof Error?e.message:"فشل تحديث حالة السيارة");}
   finally{setBusy("");}
@@ -159,95 +159,82 @@ export function ReadyCarsPanel({token,manager=false,refreshKey=0}:{
    const json=await result.json().catch(()=>({}));
    if(!result.ok)throw Error(json.error||"تعذر حفظ الصورة");
    setFiles(v=>({...v,[car.id]:file}));
-   setNotice("تم حفظ الصورة في التخزين الخاص؛ يمكنك مشاركتها الآن.");
+   setNotice("تم حفظ الصورة.");
    await load();
   }catch(e){setError(e instanceof Error?e.message:"فشل الصورة");}
   finally{setBusy("");}
  }
- async function share(car:Car){
-  if(car.status!=="ready"||busy)return;
-  const msg=readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.";
-  const file=files[car.id]||brandedImage;
-  const phone=car.phone?.replace(/^\+/,"")||"";
+ function share(car:Car){
+  if(car.status==="delivered"||busy)return;
   setError("");setNotice("");
-  try{
-   if(typeof navigator.share==="function"&&file&&
-       (!navigator.canShare||navigator.canShare({files:[file]}))){
-    // Must invoke share synchronously from this one button click on iPhone.
-    await navigator.share({title:"مغسلة سيارتك اللامعة",text:msg,files:[file]});
-    void call("share_opened",car.id).catch(()=>{});
-    setNotice("اختر واتساب ثم محادثة العميل وأكمل الإرسال. لا يمكن للموقع اختيار المستلم تلقائيًا عند مشاركة الصورة.");
-    return;
-   }
-   // The WhatsApp deep link targets the customer's exact number, but
-   // official click-to-chat links cannot attach a local image.
-   if(phone){
-    const address="https://wa.me/"+phone+"?text="+encodeURIComponent(msg);
-    const opened=window.open(address,"_blank","noopener,noreferrer");
-    if(!opened)window.location.assign(address);
-    void call("share_opened",car.id).catch(()=>{});
-    setNotice("فُتحت محادثة العميل مع الرسالة. هذا المتصفح لا يدعم إرفاق الصورة عبر رابط واتساب.");
-    return;
-   }
-   if(typeof navigator.share==="function"){
-    await navigator.share({title:"مغسلة سيارتك اللامعة",text:msg});
-    void call("share_opened",car.id).catch(()=>{});
-    setNotice("اختر العميل من قائمة المشاركة وأكمل الإرسال.");
-   }else setError("أدخل رقم العميل أو افتح المشاركة من جوال يدعم واتساب.");
-  }catch(e){
-   if(e instanceof Error&&e.name==="AbortError")return;
-   setError("تعذر فتح المشاركة؛ تأكد من صلاحيات المشاركة وتطبيق واتساب.");
+  // Native Web Share is the only browser-supported way to share JPEG plus
+  // a caption. It cannot force WhatsApp or preselect the recipient.
+  if(!navigator.share){setError(tt("ready.noSharing"));return;}
+  let file:File;
+  try{file=files[car.id]||automaticReadyImage(car);}
+  catch{setError(tt("ready.imageError"));return;}
+  if(navigator.canShare&&!navigator.canShare({files:[file]})){
+   setError(tt("ready.noSharing"));return;
   }
+  try{
+   // Share must run inside the original user tap (iOS user activation).
+   const pending=navigator.share({
+    files:[file],
+    text:readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.",
+    title:"مغسلة سيارتك اللامعة"
+   });
+   void call("share_opened",car.id).then(()=>load())
+    .catch(e=>setError(e instanceof Error?e.message:tt("error.cars")));
+   void pending.then(()=>setNotice(workerText("ar","ready.shareClosed"))).catch(e=>{
+    if(!(e instanceof Error&&e.name==="AbortError"))setError(tt("ready.imageError"));
+   });
+  }catch{setError(tt("ready.imageError"));}
  }
- return <section className="card space-y-3" dir="rtl">
+ return <section className="card space-y-3" dir={workerDirection(locale)} lang={locale}>
   <button type="button" className="w-full flex items-center justify-between text-start gap-2"
    aria-expanded={open} onClick={()=>setOpen(v=>!v)}>
-   <span className="section-title mb-0">🚘 سيارات اليوم وحالة الجاهزية</span>
-   <span className="txt-muted">{open?"إخفاء ▲":"عرض ▼"}</span>
+   <span className="section-title mb-0">{tt("ready.title")}</span>
+   <span className="txt-muted">{open?tt("ready.hide"):tt("ready.show")}</span>
   </button>
   {open&&<>
-   <p className="txt-muted text-sm">السيارات في الأيام غير المعتمدة فقط. بعد اعتماد الموازنة تُحفظ في أرشيف المدير.</p>
-   {truncated&&<p className="txt-warning text-sm">القائمة تعرض آخر 250 سيارة فقط؛ راجع أرشيف المدير عند الحاجة.</p>}
-   {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
-   {notice&&<p className="txt-cash text-sm" role="status">{notice}</p>}
-   <button type="button" className="btn-secondary" onClick={()=>void load()}>تحديث القائمة</button>
-   {cars.length===0?<p className="txt-muted text-sm">لا توجد سيارات نشطة الآن.</p>:
+   <p className="txt-muted text-sm">{tt("ready.archived")}</p>
+   {truncated&&<p className="txt-warning text-sm">{tt("ready.truncated")}</p>}
+   {error&&<p className="txt-danger text-sm" role="alert">{workerMessage(locale,error,"error.cars")}</p>}
+   {notice&&<p className="txt-cash text-sm" role="status">{workerMessage(locale,notice,"ready.savedReady")}</p>}
+
+   {cars.length===0?<p className="txt-muted text-sm">{tt("ready.none")}</p>:
     <div className="space-y-3">{cars.map(car=><div key={car.id}
       className="rounded-xl p-3 border space-y-3" style={{borderColor:"var(--border)",background:"var(--surface-2)"}}>
      <div className="flex flex-wrap justify-between gap-2">
       <div className="min-w-0">
-       <strong>{car.carType} — {car.serviceType}</strong>
-       <p className="txt-muted text-xs">تاريخ {car.date} · الساعة {time(car.occurredAt)}</p>
+       <strong>{workerCarName(locale,car.carType)} — {workerServiceName(locale,car.serviceType)}</strong>
+       <p className="txt-muted text-xs">{tt("ready.date")} <bdi dir="ltr">{car.date}</bdi> · {tt("ready.time")} <bdi dir="ltr">{workerTime(car.occurredAt,locale)}</bdi></p>
       </div>
       <span className={car.status==="ready"?"txt-cash":car.status==="washing"?"txt-warning":"txt-muted"}>
-       {statusText[car.status]}</span>
+       {tt(STATUS_KEYS[car.status])}</span>
      </div>
-     <div className="grid grid-cols-2 gap-2">
-      {car.status==="washing"&&<button type="button" className="btn-primary col-span-2"
-       disabled={busy===car.id} onClick={()=>void action(car,"ready")}>
-       إبلاغ بالجاهزية</button>}
-      {car.status==="ready"&&<>
-       <button type="button" className="btn-primary col-span-2 py-3"
-        disabled={!!busy} onClick={()=>void share(car)}>مشاركة الجاهزية</button>
-       <button type="button" className="btn-secondary col-span-2"
-        disabled={busy===car.id} onClick={()=>void action(car,"delivered")}>تم التسليم</button>
-      </>}
-     </div>
-     {car.status==="ready"&&<details className="rounded-lg border p-2 text-sm" style={{borderColor:"var(--border)"}}>
-      <summary className="cursor-pointer txt-muted">صورة السيارة الفعلية (اختياري)</summary>
-      <label className="btn-secondary block mt-2 text-center cursor-pointer">
-       📷 تصوير السيارة
-       <input type="file" className="sr-only" accept="image/*" capture="environment"
-        disabled={!!busy} onChange={e=>{
-         const photo=e.currentTarget.files?.[0];
-         if(photo)void upload(car,photo);
-         e.currentTarget.value="";
-        }}/>
-      </label>
-      <p className="txt-muted text-xs mt-2">عند عدم وجود صورة سيارة، تُشارك بطاقة جاهزية المغسلة المصممة تلقائيًا.</p>
-     </details>}
+     {car.status!=="delivered"&&<>
+      <div className="grid grid-cols-2 gap-2" data-testid="direct-ready-actions">
+       <button type="button" className="btn-primary py-3"
+        disabled={!!busy} onClick={()=>share(car)}>{tt("ready.share")}</button>
+       <button type="button" className="btn-secondary py-3"
+        disabled={!!busy} onClick={()=>void deliver(car)}>{tt("ready.markDelivered")}</button>
+      </div>
+      <details className="rounded-lg border p-2 text-sm" style={{borderColor:"var(--border)"}}>
+       <summary className="cursor-pointer txt-muted">{tt("ready.photoOptional")}</summary>
+       <label className="btn-secondary block mt-2 text-center cursor-pointer">
+        {tt("ready.capture")}
+        <input type="file" className="sr-only" accept="image/*" capture="environment"
+         disabled={!!busy} onChange={e=>{
+          const photo=e.currentTarget.files?.[0];
+          if(photo)void upload(car,photo);
+          e.currentTarget.value="";
+         }}/>
+       </label>
+      </details>
+     </>}
     </div>)}</div>}
-   <p className="txt-muted text-xs">زر واحد يجهز الصورة والرسالة للمشاركة. اختر واتساب والمستلم عند ظهور قائمة الجهاز؛ المشاركة لا تؤكد التسليم.</p>
+
   </>}
  </section>;
 }

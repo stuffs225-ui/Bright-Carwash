@@ -14,7 +14,7 @@ export function MetricCard({
   const content = <>
     <span className="metric-label">{label}</span>
     <strong className="metric-value">{value}</strong>
-    {hint && <small className="text-xs opacity-70 mt-1">{hint}</small>}
+
   </>;
   if (onClick) return (
     <button type="button" title={hint||"عرض تفاصيل "+label}

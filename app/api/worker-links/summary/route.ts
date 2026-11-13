@@ -7,7 +7,7 @@ import {riyadhDayKey} from "@/lib/carwashCalendarDay";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 const deny=(status:number,error:string)=>NextResponse.json({error},{status,headers:NO_STORE});
-type Day={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number;submitted?:boolean};
+type Day={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number;undelivered:number;submitted?:boolean};
 const cents=(v:unknown)=>Math.round((Number(v)||0)*100);
 export async function POST(request:Request){
  try{
@@ -41,11 +41,11 @@ export async function POST(request:Request){
    .eq("business_date",today).maybeSingle();
   if(current.error)return deny(503,"تعذر التحقق من اليوم");
   const days:Day[]=(existing||[]).map(r=>({
-   date:r.business_date,status:r.status,cars:0,cash:0,card:0,crew:0
+   date:r.business_date,status:r.status,cars:0,cash:0,card:0,crew:0,undelivered:0
   }));
   if(!current.data||current.data.status!=="approved"){
    if(!days.some(d=>d.date===today))days.unshift({
-    date:today,status:"open",cars:0,cash:0,card:0,crew:0
+    date:today,status:"open",cars:0,cash:0,card:0,crew:0,undelivered:0
    });
   }
   const byDay=new Map(days.map(d=>[d.date,d]));
@@ -77,6 +77,11 @@ export async function POST(request:Request){
    day.card=Math.round(day.card)/100;
 
   }
+  // Count delivery status in Postgres so no active car can be silently omitted.
+  const outstanding=await Promise.all(days.map(day=>
+   admin.rpc("carwash_undelivered_count",{p_date:day.date})));
+  if(outstanding.some(result=>result.error))return deny(503,"تعذر التحقق من تسليم السيارات");
+  days.forEach((day,index)=>{day.undelivered=Number(outstanding[index].data)||0;});
   const reports=dates.length?await admin.from('carwash_worker_day_reports').select('business_date').in('business_date',dates):{data:[],error:null};
   if(reports.error)return deny(503,'تعذر قراءة حالة الموازنات');
   const submitted=new Set((reports.data||[]).map(r=>r.business_date));

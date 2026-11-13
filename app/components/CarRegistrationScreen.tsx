@@ -1,17 +1,18 @@
 "use client";
 
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
-import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,type WorkerSubmission} from "@/lib/workerOfflineQueue";
+import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,storeWorkerDraft,loadWorkerDraft,deleteWorkerDraft,type WorkerSubmission,type WorkerDraft} from "@/lib/workerOfflineQueue";
 import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
 import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
 import {ReadyCarsPanel} from "./ReadyCarsPanel";
+import {workerText,workerCarName,workerServiceName,workerAddonName,workerMessage,workerMoney,readWorkerLocale,persistWorkerLocale,workerDirection,type WorkerLocale,type WorkerKey} from "@/lib/workerI18n";
 
 type Preset={id:string;car_type:string;service_type:string;amount:number;sort_order?:number};
 type Addon={id:string;name:string;price:number};
 type Catalog={label:string;presets:Preset[];addons:Addon[];
  discountLimit?:number;manualServiceEnabled?:boolean;manualAddonEnabled?:boolean};
-const sar=(value:number)=>new Intl.NumberFormat("ar-SA",{maximumFractionDigits:2,minimumFractionDigits:2}).format(value)+" ر.س";
+const sar=(value:number)=>new Intl.NumberFormat("ar-SA-u-nu-latn",{maximumFractionDigits:2,minimumFractionDigits:2}).format(value)+" ر.س";
 const rounded=(n:number)=>Math.round(n*100)/100;
 
 export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:{token?:string;manager?:boolean;managerUserId?:string}){
@@ -21,9 +22,32 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   ? (/^[0-9a-f-]{36}$/i.test(managerUserId)?managerUserId.toLowerCase().replace(/-/g,"").padEnd(64,"0"):"")
   :token;
  const [catalog,setCatalog]=useState<Catalog|null>(null);
+ const [language,setLanguage]=useState<WorkerLocale>("ha-NG");
+ const locale:WorkerLocale=manager?"ar":language;
+ const tt=(key:WorkerKey,vars?:Record<string,string|number>)=>workerText(locale,key,vars);
+ const money=(value:number)=>manager?sar(value):workerMoney(value);
+ useEffect(()=>{
+  if(manager)return;
+  const saved=readWorkerLocale();
+  setLanguage(saved);
+  document.documentElement.lang=saved;
+  document.documentElement.dir=workerDirection(saved);
+  document.documentElement.removeAttribute("data-worker-lang-pending");
+ },[manager]);
+ useEffect(()=>{
+  if(manager)return;
+  document.title=workerText(locale,"reg.title");
+ },[locale,manager]);
+ function selectLanguage(lang:WorkerLocale){
+  if(manager)return;
+  setLanguage(lang);persistWorkerLocale(lang);
+  document.documentElement.lang=lang;
+  document.documentElement.dir=workerDirection(lang);
+ }
  const [invalid,setInvalid]=useState("");
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
+ const [draftReady,setDraftReady]=useState(false);
  const [presetId,setPresetId]=useState("");
  const [carType,setCarType]=useState("");
  const [showMoreServices,setShowMoreServices]=useState(false);
@@ -34,8 +58,6 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
 
  const [selectedAddons,setSelectedAddons]=useState<string[]>([]);
  const [method,setMethod]=useState<"cash"|"card"|"mixed">("cash");
- const [discount,setDiscount]=useState("0");
- const [showDiscount,setShowDiscount]=useState(false);
  const [queued,setQueued]=useState(0);
  const [syncing,setSyncing]=useState(false);
  const [cash,setCash]=useState("");
@@ -47,6 +69,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [error,setError]=useState("");
  const syncActive=useRef(false);
  const savingNow=useRef(false);
+ const skipRestoredPayment=useRef(false);
  // Keep the same idempotency key if online direct submission has an uncertain outcome.
  const directPending=useRef<WorkerSubmission|null>(null);
  const safeToken=manager||/^[a-f0-9]{64}$/.test(token);
@@ -70,25 +93,17 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     if(!cancelled){
      setCatalog(info);
      if(info.presets?.length){
-      let lastType:string|null=null,lastPreset:string|null=null,lastPayment:string|null=null;
-      try{
-       lastType=localStorage.getItem("carwash_last_car_type_v1");
-       lastPreset=localStorage.getItem("carwash_last_preset_v1");
-       lastPayment=localStorage.getItem("carwash_last_payment_v1");
-      }catch{}
-      const first=info.presets.find((p:Preset)=>p.id===lastPreset)||
-       info.presets.find((p:Preset)=>p.car_type===lastType)||info.presets[0];
-      setPresetId(first.id);setCarType(first.car_type);
-      if(lastPayment==="cash"||lastPayment==="card"||lastPayment==="mixed")
-       setMethod(lastPayment);
+      let lastPayment:string|null=null;
+      try{lastPayment=localStorage.getItem("carwash_last_payment_v1");}catch{}
+      setPresetId("");setCarType("");
+      if(lastPayment==="cash"||lastPayment==="card"||lastPayment==="mixed")setMethod(lastPayment);
      }
      if(outboxKey)void storeWorkerCatalog(outboxKey,info).catch(()=>setError("التخزين الآمن غير متاح على هذا الجهاز؛ يلزم الإنترنت عند التسجيل."));
     }
    }catch(e){
     const fallback=outboxKey?await loadWorkerCatalog(outboxKey).catch(()=>null):null;
     if(!cancelled){
-     if(fallback){setCatalog(fallback);if(fallback.presets?.length){setPresetId(fallback.presets[0].id);setCarType(fallback.presets[0].car_type);}
-      setStatus("أنت دون اتصال: الأسعار المحفوظة مؤقتة، وسيُراجعها السيرفر عند المزامنة.");}
+     if(fallback){setCatalog(fallback);setStatus("أنت دون اتصال. التسجيلات ستُزامن تلقائيًا.");}
      else setInvalid(e instanceof Error?e.message:"تعذر فتح الرابط");
     }
    }
@@ -135,7 +150,11 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    const remaining=(await listWorkerRecords(outboxKey)).length;
    setQueued(remaining);
    if(blocked)setError("هناك تسجيلات معلقة رُفضت من السيرفر. اطلب من المدير مراجعة الرابط أو السعر؛ لم تُحذف البيانات.");
-   if(sent){setSummaryVersion(v=>v+1);if(remaining===0)setStatus("تمت مزامنة جميع السيارات المحفوظة بنجاح.");}
+   if(sent){
+    setSummaryVersion(v=>v+1);
+    window.dispatchEvent(new Event("carwash:data-changed"));
+    if(remaining===0)setStatus("تم تسجيل السيارة بنجاح.");
+   }
    return {sent,remaining,blocked};
   }catch(e){
    setError(e instanceof Error?e.message:"فشلت المزامنة، ولا تزال العمليات محفوظة محليًا.");
@@ -152,52 +171,96 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   return()=>{active=false;window.removeEventListener("online",onOnline);};
  },[outboxKey,replay]);
 
+ // Restore draft once the active price catalog is loaded, before a blank save can occur.
+ useEffect(()=>{
+  let active=true;
+  setDraftReady(false);
+  if(!catalog)return()=>{active=false;};
+  if(!outboxKey){setDraftReady(true);return()=>{active=false;};}
+  void loadWorkerDraft(outboxKey).then(draft=>{
+   if(!active)return;
+   if(draft){
+    if(catalog.presets.some(p=>p.id===draft.presetId)){
+     setPresetId(draft.presetId);setCarType(draft.carType);
+    }else if(draft.carType==="شاحنة"||catalog.presets.some(p=>p.car_type===draft.carType)){
+     setCarType(draft.carType);setPresetId("");
+    }
+    const manualAllowed=manager||catalog.manualServiceEnabled!==false;
+    setManualMode(Boolean(draft.manualMode&&manualAllowed));
+    setManualService(String(draft.manualService||"").slice(0,80));
+    setManualPrice(String(draft.manualPrice||"").slice(0,20));
+    setPriceReason(String(draft.priceReason||"").slice(0,300));
+    setSelectedAddons((Array.isArray(draft.selectedAddons)?draft.selectedAddons:[])
+     .filter(id=>catalog.addons.some(a=>a.id===id)));
+    if(draft.method==="cash"||draft.method==="card"||draft.method==="mixed")
+     setMethod(draft.method);
+    setCash(String(draft.cash||"").slice(0,20));
+    setCard(String(draft.card||"").slice(0,20));
+    setCustomerPhone(String(draft.customerPhone||"").slice(0,24));
+    setNotes(String(draft.notes||"").slice(0,500));
+    skipRestoredPayment.current=true;
+   }
+   setDraftReady(true);
+  }).catch(()=>{if(active)setDraftReady(true);});
+  return()=>{active=false;};
+ },[catalog,outboxKey,manager]);
+ useEffect(()=>{
+  if(!catalog||!draftReady||busy||!outboxKey)return;
+  const meaningful=Boolean(carType||presetId||customerPhone.trim()||notes.trim()||manualMode||
+   selectedAddons.length||method==="mixed");
+  const draft:WorkerDraft={presetId,carType,manualMode,manualService,manualPrice,
+   priceReason,selectedAddons,method,discount:"0",showDiscount:false,cash,card,customerPhone,notes};
+  const timer=window.setTimeout(()=>{
+   void (meaningful?storeWorkerDraft(outboxKey,draft):deleteWorkerDraft(outboxKey)).catch(()=>{});
+  },350);
+  return()=>window.clearTimeout(timer);
+ },[catalog,draftReady,busy,outboxKey,presetId,carType,manualMode,manualService,
+  manualPrice,priceReason,selectedAddons,method,cash,card,customerPhone,notes]);
+
  const preset=catalog?.presets.find(p=>p.id===presetId);
- const allCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)));
- const filteredPresets=(catalog?.presets||[]).filter(p=>p.car_type===(carType||preset?.car_type));
- // Two popular prices per car type, in configured official display order.
- // One tap sets car type AND service without opening secondary menus.
- const quickPresets=useMemo(()=>{
-  const grouped=new Map<string,Preset[]>();
-  for(const item of catalog?.presets||[]){
-   const list=grouped.get(item.car_type)||[];
-   if(list.length<2)list.push(item);
-   grouped.set(item.car_type,list);
-  }
-  return [...grouped.values()].flat().slice(0,6);
- },[catalog]);
+ const carChoices=[{name:"سيارة صغيرة",icon:"🚗"},{name:"سيارة كبيرة",icon:"🚙"},{name:"شاحنة",icon:"🚚"}] as const;
+ const otherCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)))
+  .filter(name=>!carChoices.some(c=>c.name===name));
+ const filteredPresets=(catalog?.presets||[]).filter(p=>p.car_type===carType);
+ const serviceSuggestions=Array.from(new Set((catalog?.presets||[]).map(p=>p.service_type)));
+ function chooseCarType(name:string){
+  setCarType(name);setPresetId("");setManualMode(false);setShowMoreServices(false);
+  setManualPrice("");setManualService("");setPriceReason("");setSelectedAddons([]);
+ }
  const manualServiceAllowed=manager||catalog?.manualServiceEnabled!==false;
  const useException=manualMode;
  const totalAddons=useMemo(()=>(catalog?.addons||[])
   .filter(a=>selectedAddons.includes(a.id)).reduce((v,a)=>v+Number(a.price),0),
  [catalog,selectedAddons]);
  const manualExtras=0;
- const discountNumber=Number(discount)||0;
+ const discountNumber=0;
  const basePrice=manualMode?Number(manualPrice||0):Number(preset?.amount||0);
  const price=rounded(basePrice+totalAddons+manualExtras-discountNumber);
  useEffect(()=>{
   if(!preset&&!manualMode)return;
+  if(!draftReady)return;
+  if(skipRestoredPayment.current){skipRestoredPayment.current=false;return;}
   if(method==="cash"){setCash(String(price));setCard("0");}
   else if(method==="card"){setCash("0");setCard(String(price));}
   else{
    const half=rounded(price/2);
    setCash(String(half));setCard(String(rounded(price-half)));
   }
- },[price,method,presetId]);
+ },[price,method,presetId,draftReady]);
 
+ const paymentMismatch=method==="mixed"&&(!Number.isFinite(Number(cash))||!Number.isFinite(Number(card))||Number(cash)<0||Number(card)<0||rounded(Number(cash)+Number(card))!==price);
  async function submit(e:React.FormEvent){
   e.preventDefault();setError("");setStatus("");
-  if(!catalog||busy||savingNow.current||(!preset&&!manualMode))return;
+  if(!catalog||!draftReady||busy||savingNow.current||(!preset&&!manualMode))return;
   if(manualMode&&!manualServiceAllowed){setError("السعر الاستثنائي معطل في الإعدادات");return;}
   if(useException&&priceReason.trim().length<3){setError("اكتب سبب الخدمة أو السعر الاستثنائي");return;}
   if(manualMode&&(manualService.trim().length<2||!Number.isFinite(basePrice)||basePrice<=0||basePrice>5000)){
    setError("اسم الخدمة أو سعرها الاستثنائي غير صحيح");return;
   }
-  const c=Number(cash),d=Number(card),discountValue=Number(discount);
+  const c=Number(cash),d=Number(card),discountValue=0;
   if(!Number.isFinite(c)||!Number.isFinite(d)||c<0||d<0||
-     !Number.isFinite(discountValue)||discountValue<0||discountValue>Number(catalog.discountLimit??10)||
      rounded(c+d)!==price){
-   setError("راجع مبلغ الكاش والشبكة والخصم؛ مجموع الدفع يجب أن يطابق السعر النهائي.");return;
+   setError("راجع مبلغ الكاش والشبكة؛ مجموع الدفع يجب أن يطابق السعر النهائي.");return;
   }
   const phone=customerPhone.trim()?normalizeSaudiMobile(customerPhone):null;
   if(customerPhone.trim()&&!phone){setError("رقم جوال العميل غير صحيح. يمكنك تركه فارغًا.");return;}
@@ -244,194 +307,174 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     if(result.ok!==true||!result.id)
      throw Error("لم يتأكد استلام التسجيل؛ أعد المحاولة من نفس الصفحة.");
     directPending.current=null;
-    setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
-    setManualMode(false);setPriceReason("");
-    setCustomerPhone("");
-    setStatus("تم تسجيل السيارة مباشرة في السيرفر. التخزين المحلي غير متاح على هذا الجهاز.");
+    await deleteWorkerDraft(outboxKey).catch(()=>{});
+    setNotes("");setSelectedAddons([]);
+    setManualMode(false);setPriceReason("");setCarType("");setPresetId("");
+    setManualService("");setManualPrice("");setCustomerPhone("");
+    setStatus("تم تسجيل السيارة بنجاح.");
     setSummaryVersion(v=>v+1);
+    window.dispatchEvent(new Event("carwash:data-changed"));
     window.scrollTo({top:0,behavior:"smooth"});
     return;
    }
    setQueued((await listWorkerRecords(outboxKey)).length);
-   setStatus("العملية محفوظة مشفرة على هذا الجهاز؛ ستُرسل إلى السيرفر عند الاتصال.");
-   setNotes("");setSelectedAddons([]);setDiscount("0");setShowDiscount(false);
-   setManualMode(false);setPriceReason("");
-   setCustomerPhone("");
-   if(navigator.onLine){
-    const result=await replay().catch((e:unknown)=>{
-     setError(e instanceof Error?e.message:"تعذرت المزامنة؛ العملية محفوظة على الجهاز.");
-     return {sent:0,remaining:1,blocked:0};
-    });
-    if(result.remaining===0&&result.blocked===0)setStatus("تم تسجيل السيارة بنجاح.");
-    else setStatus("التسجيل محفوظ على الجهاز ولم يتأكد وصوله بعد. لا تحذفه.");
-   }
+   await deleteWorkerDraft(outboxKey).catch(()=>{});
+   setStatus("العملية محفوظة على هذا الجهاز؛ ستُرسل عند توفر الإنترنت.");
+   setNotes("");setSelectedAddons([]);
+   setManualMode(false);setPriceReason("");setCarType("");setPresetId("");
+   setManualService("");setManualPrice("");setCustomerPhone("");
+   if(navigator.onLine)void replay();
    window.scrollTo({top:0,behavior:"smooth"});
   }catch(e){
    setError(e instanceof Error?e.message:"تعذر الحفظ الآمن؛ لم تُسجل السيارة.");
   }finally{savingNow.current=false;setBusy(false);}
  }
- return <main className="min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4" dir="rtl">
-  <header className="card text-center space-y-2">
-   <h1 className="section-title">🚗 تسجيل السيارات {manager?"— الإدارة":""}</h1>
-   <p className="txt-muted text-sm">مغسلة سيارتك اللامعة</p>
-   {catalog&&<p className="text-sm font-bold">{catalog.label}</p>}
+ return <main className="worker-screen min-h-screen px-3 sm:px-4 py-6 max-w-3xl mx-auto space-y-4"
+  dir={workerDirection(locale)} lang={locale}>
+  <header className="card flex flex-wrap items-center justify-between gap-3">
+   <h1 className="section-title mb-0">{manager?"🚗 تسجيل السيارات — الإدارة":tt("reg.title")}</h1>
+   {!manager&&<div className="flex gap-1 rounded-xl border p-1 text-xs" dir="ltr"
+    role="group" aria-label="Language">
+    {(["ha-NG","en","ar"] as const).map(choice=><button key={choice} type="button"
+     className={locale===choice?"btn-primary px-2 py-2":"btn-secondary px-2 py-2"}
+     aria-pressed={locale===choice} onClick={()=>selectLanguage(choice)}>
+     {choice==="ha-NG"?"Hausa":choice==="en"?"English":"العربية"}
+    </button>)}
+   </div>}
   </header>
   {queued>0&&<section className="card space-y-2" role="status">
-    <p className="font-bold">عمليات بانتظار المزامنة: {queued}</p>
-    <p className="txt-muted text-sm">محفوظة مشفرة على نفس هذا الجهاز. لا تحذف بيانات Safari قبل إتمام المزامنة. قد تُرفض أسعار قديمة عند العودة للإنترنت.</p>
-    <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?"جارٍ المزامنة":"إعادة المزامنة الآن"}</button>
+    <p className="font-bold">{tt("reg.pending",{n:queued})}</p>
+
+    <button type="button" className="btn-secondary w-full" disabled={syncing||!navigator.onLine} onClick={()=>void replay()}>{syncing?tt("reg.syncing"):tt("reg.retry")}</button>
    </section>}
-  {loading?<section className="card text-center">جارٍ فتح نموذج تسجيل السيارات...</section>:
-   invalid?<section className="card"><p className="txt-danger">{invalid}</p>
-    <p className="txt-muted text-sm mt-2">اطلب رابطًا جديدًا من مدير المغسلة.</p></section>:
-  <form onSubmit={submit} className="card space-y-4">
-   {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{status}</p>}
-   {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
-   {quickPresets.length>0&&<div className="space-y-2">
-    <p className="form-label">⚡ تسجيل سريع — اختر السيارة والخدمة بضغطة واحدة</p>
-    <div className="grid grid-cols-2 gap-2">
-     {quickPresets.map(p=><button type="button" key={p.id}
-       className={!manualMode&&presetId===p.id?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
-       aria-pressed={!manualMode&&presetId===p.id}
-       onClick={()=>{
-        setCarType(p.car_type);setPresetId(p.id);setShowMoreServices(false);
-        setManualMode(false);setSelectedAddons([]);setPriceReason("");
-        try{
-         localStorage.setItem("carwash_last_car_type_v1",p.car_type);
-         localStorage.setItem("carwash_last_preset_v1",p.id);
-        }catch{}
-       }}>
-       <span className="block text-xs">{p.car_type}</span>
-       <strong className="block">{p.service_type}</strong>
-       <span className="block text-sm">{sar(Number(p.amount))}</span>
-      </button>)}
+  {loading?<section className="card text-center">{tt("reg.loading")}</section>:
+   invalid?<section className="card"><p className="txt-danger">{workerMessage(locale,invalid,"error.invalidLink")}</p>
+    <p className="txt-muted text-sm mt-2">{tt("reg.invalid")}</p></section>:
+  <form onSubmit={submit} noValidate={!manager} className="card space-y-4">
+   {!draftReady&&<p role="status">{tt("reg.draft")}</p>}
+   {status&&<p className="rounded-lg p-3 text-sm" style={{background:"var(--tone-green-bg)",color:"var(--tone-green-fg)"} } role="status">{workerMessage(locale,status,"reg.success")}</p>}
+   {error&&<p className="txt-danger text-sm" role="alert">{workerMessage(locale,error)}</p>}
+   <div className="space-y-3">
+    <h2 className="form-label">{tt("reg.vehicle")}</h2>
+    <div className="grid grid-cols-3 gap-2" data-testid="car-type-choices">
+     {carChoices.map(choice=><button type="button" key={choice.name}
+      aria-pressed={carType===choice.name}
+      className={carType===choice.name?"btn-primary p-3":"btn-secondary p-3"}
+      onClick={()=>chooseCarType(choice.name)}>
+      <span className="block text-2xl" aria-hidden="true">{choice.icon}</span>
+      <span className="block text-sm font-bold">{workerCarName(locale,choice.name)}</span>
+     </button>)}
     </div>
-   </div>}
-   <details className="border rounded-xl p-3" style={{borderColor:"var(--border)"}}>
-    <summary className="cursor-pointer font-bold">تغيير نوع السيارة أو عرض كل الخدمات</summary>
-    <div className="space-y-3 pt-3">
-   <div className="space-y-2">
-    <p className="form-label">1. نوع السيارة</p>
-    <div className="carwash-quick-choices">
-     {allCarTypes.map(name=><button type="button" key={name}
-       className={name===carType?"active":""}
-       aria-pressed={name===carType} onClick={()=>{
-        setCarType(name);setShowMoreServices(false);
-        const first=catalog?.presets.find(p=>p.car_type===name);
-        if(first)setPresetId(first.id);
-        setManualMode(false);setSelectedAddons([]);
-        try{localStorage.setItem("carwash_last_car_type_v1",name);}catch{}
-       }}>{name}</button>)}
-    </div>
+    {otherCarTypes.length>0&&<details className="rounded-lg border p-2" style={{borderColor:"var(--border)"}}>
+     <summary className="cursor-pointer text-sm">{tt("reg.other")}</summary>
+     <div className="carwash-quick-choices mt-2">
+      {otherCarTypes.map(name=><button type="button" key={name}
+       className={carType===name?"active":""} onClick={()=>chooseCarType(name)}>{workerCarName(locale,name)}</button>)}
+     </div>
+    </details>}
    </div>
-   <div className="space-y-2">
-    <p className="form-label">2. الخدمة والسعر المعتمد</p>
-    {filteredPresets.length===0?<p className="txt-muted text-sm">لا توجد خدمات مفعلة لهذا النوع. استخدم خدمة استثنائية إذا كانت الصلاحية متاحة.</p>:
-     <div className="carwash-quick-choices">
-      {filteredPresets.slice(0,showMoreServices?100:4).map(p=>
-       <button type="button" key={p.id}
-        className={!manualMode&&presetId===p.id?"active":""}
-        aria-pressed={!manualMode&&presetId===p.id}
-        onClick={()=>{
-         setPresetId(p.id);setManualMode(false);setPriceReason("");
-         try{localStorage.setItem("carwash_last_preset_v1",p.id);}catch{}
-        }}>
-        <span>{p.service_type}</span><strong>{sar(Number(p.amount))}</strong>
-       </button>)}
-     </div>}
-    {filteredPresets.length>4&&<button type="button" className="btn-secondary w-full"
-      onClick={()=>setShowMoreServices(v=>!v)}>
-      {showMoreServices?"إخفاء الخيارات الأقل استخدامًا":"المزيد من الخدمات"}
-    </button>}
-    {manualServiceAllowed&&<button type="button" className={manualMode?"btn-primary w-full":"btn-secondary w-full"}
+   {carType&&<div className="space-y-3" data-testid="service-choices">
+    <h2 className="form-label">{tt("reg.wash")}</h2>
+    {filteredPresets.length>0?<div className="grid grid-cols-2 gap-2">
+     {filteredPresets.slice(0,showMoreServices?100:6).map(p=><button type="button" key={p.id}
+      className={!manualMode&&presetId===p.id?"btn-primary p-3 text-start":"btn-secondary p-3 text-start"}
+      aria-pressed={!manualMode&&presetId===p.id}
+      onClick={()=>{setPresetId(p.id);setManualMode(false);setManualService("");setManualPrice("");
+       try{localStorage.setItem("carwash_last_preset_v1",p.id);}catch{}}}>
+      <span className="block font-bold">{workerServiceName(locale,p.service_type)}</span>
+      <strong className="block text-lg" dir="ltr">{money(Number(p.amount))}</strong>
+     </button>)}
+    </div>:<div className="grid grid-cols-2 gap-2">
+     {serviceSuggestions.map(service=><button key={service} type="button"
+      className={manualMode&&manualService===service?"btn-primary p-3":"btn-secondary p-3"}
+      onClick={()=>{setPresetId("");setManualService(service);setManualPrice("");
+       setPriceReason("تسعير يدوي للخدمة");setManualMode(true);}}>
+      {workerServiceName(locale,service)}
+     </button>)}
+    </div>}
+    {filteredPresets.length>6&&<button type="button" className="btn-secondary w-full"
+     onClick={()=>setShowMoreServices(v=>!v)}>{showMoreServices?tt("reg.less"):tt("reg.more")}</button>}
+    {manualServiceAllowed&&preset&&<button type="button" className="btn-secondary w-full"
      aria-expanded={manualMode} onClick={()=>{
-      setManualMode(v=>!v);
-      setManualService(preset?.service_type||"");
-      setManualPrice(String(Number(preset?.amount||0)));
-     }}>خدمة أو سعر مختلف لهذه السيارة فقط</button>}
+      if(manualMode){setManualMode(false);setManualService("");setManualPrice("");}
+      else{setManualMode(true);setManualService(preset?.service_type||"");
+       setManualPrice(String(preset?.amount||""));setPriceReason("تعديل السعر يدويًا");}
+     }}>{manualMode&&preset?tt("reg.official"):tt("reg.manual")}</button>}
     {manualMode&&<div className="rounded-xl border p-3 space-y-3" style={{borderColor:"var(--border)"}}>
-     <p className="txt-muted text-sm">لن يُضاف هذا السعر إلى القائمة الرسمية. يحفظ النظام المبلغ وسبب الاختلاف مع هذه السيارة فقط.</p>
-     <label className="form-label">اسم الخدمة
-      <input type="text" maxLength={80} value={manualService}
-       onChange={e=>setManualService(e.target.value)} placeholder="مثل غسيل ماكينة"/>
+     <label className="form-label">{tt("reg.service")}
+      <input maxLength={80}
+       value={!manager&&preset?.service_type===manualService
+        ?workerServiceName(locale,manualService):manualService}
+       onChange={e=>setManualService(e.target.value)}/>
      </label>
-     <label className="form-label">السعر الأساسي لهذه السيارة (ر.س)
+     <label className="form-label">{manager?"السعر لهذه السيارة (ر.س)":tt("reg.manualPrice")}
       <input type="number" inputMode="decimal" min=".01" max="5000" step=".01"
        value={manualPrice} onChange={e=>setManualPrice(e.target.value)}/>
      </label>
     </div>}
-   </div>
-    </div>
-   </details>
+   </div>}
    {(catalog?.addons.length||0)>0&&<div className="space-y-2">
-    <p className="form-label">خدمات إضافية (اختياري)</p>
+    <p className="form-label">{tt("reg.addons")}</p>
     {catalog?.addons.map(a=><label key={a.id} className="flex items-center justify-between gap-2 p-3 border rounded-lg">
      <span><input type="checkbox" checked={selectedAddons.includes(a.id)}
-      onChange={e=>setSelectedAddons(v=>e.target.checked?[...v,a.id]:v.filter(z=>z!==a.id))}/> {a.name}</span>
-     <span>{sar(Number(a.price))}</span>
+      onChange={e=>setSelectedAddons(v=>e.target.checked?[...v,a.id]:v.filter(z=>z!==a.id))}/> {workerAddonName(locale,a.name)}</span>
+     <span>{money(Number(a.price))}</span>
     </label>)}
    </div>}
 
-   {useException&&<label className="form-label">سبب السعر أو الخدمة الاستثنائية
-    <input type="text" maxLength={300} required value={priceReason}
-     onChange={e=>setPriceReason(e.target.value)}
-     placeholder="مثل خدمة خاصة أو سعر استثنائي بطلب العميل"/>
-   </label>}
+   {useException&&<details className="border rounded-lg p-3">
+    <summary className="cursor-pointer text-sm">{tt("reg.reason")}</summary>
+    <input type="text" className="w-full mt-2" maxLength={300} required value={!manager&&["تعديل السعر يدويًا","تسعير يدوي للخدمة"].includes(priceReason)?tt("reg.manual"):priceReason}
+     onChange={e=>setPriceReason(e.target.value)} placeholder={tt("reg.reasonHint")}/>
+   </details>}
    <div className="space-y-2">
-    <button type="button" className="btn-secondary w-full" onClick={()=>{setShowDiscount(v=>!v);setDiscount("0");}}>{showDiscount?"إلغاء الخصم":"إضافة خصم (اختياري)"}</button>
-    {showDiscount&&<label className="form-label">الخصم (حتى {sar(Number(catalog?.discountLimit??10))})
-     <input type="number" inputMode="decimal" min="0" max={Number(catalog?.discountLimit??10)} step=".01"
-      value={discount} onChange={e=>setDiscount(e.target.value)} required/>
-    </label>}
-   </div>
-   <div className="space-y-2">
-    <p className="form-label">طريقة الدفع</p>
+    <p className="form-label">{tt("reg.payment")}</p>
     <div className="grid grid-cols-3 gap-2">
      {(["cash","card","mixed"] as const).map(x=>
       <button type="button" key={x} className={method===x?"btn-primary":"btn-secondary"}
        onClick={()=>{
         setMethod(x);
         try{localStorage.setItem("carwash_last_payment_v1",x);}catch{}
-       }}>{x==="cash"?"كاش":x==="card"?"شبكة":"مختلط"}</button>)}
+       }}>{x==="cash"?tt("reg.cash"):x==="card"?tt("reg.pos"):tt("reg.mixed")}</button>)}
     </div>
    </div>
    {method==="mixed"&&<div className="grid grid-cols-2 gap-3">
-    <label className="form-label">المبلغ كاش
-     <input type="number" inputMode="decimal" min="0" step=".01" value={cash}
+    <label className="form-label">{tt("reg.cashAmount")}
+     <input aria-invalid={paymentMismatch} aria-describedby={paymentMismatch?"payment-error":undefined} style={paymentMismatch?{borderColor:"#d92d20",borderWidth:2}:undefined} type="number" inputMode="decimal" min="0" step=".01" value={cash}
       onChange={e=>setCash(e.target.value)}/>
     </label>
-    <label className="form-label">المبلغ شبكة
-     <input type="number" inputMode="decimal" min="0" step=".01" value={card}
+    <label className="form-label">{tt("reg.posAmount")}
+     <input aria-invalid={paymentMismatch} aria-describedby={paymentMismatch?"payment-error":undefined} style={paymentMismatch?{borderColor:"#d92d20",borderWidth:2}:undefined} type="number" inputMode="decimal" min="0" step=".01" value={card}
       onChange={e=>setCard(e.target.value)}/>
     </label>
    </div>}
+   {paymentMismatch&&<p id="payment-error" className="txt-danger text-sm" role="alert">{tt("reg.mismatch",{amount:money(price)})}</p>}
    <div className="rounded-xl p-3 space-y-1" style={{background:"var(--surface-3)",color:"var(--text)"}}>
-    <div className="flex justify-between gap-2 text-sm"><span>الخدمة الأساسية</span><strong>{sar(basePrice)}</strong></div>
-    {(totalAddons+manualExtras)>0&&<div className="flex justify-between gap-2 text-sm"><span>الإضافات</span><strong>{sar(totalAddons+manualExtras)}</strong></div>}
-    {discountNumber>0&&<div className="flex justify-between gap-2 text-sm"><span>الخصم</span><strong>−{sar(discountNumber)}</strong></div>}
-    <div className="flex justify-between gap-2 border-t pt-2 mt-2"><span className="font-bold">المطلوب تحصيله</span><strong className="text-xl">{sar(Math.max(0,price))}</strong></div>
+    <div className="flex justify-between gap-2 text-sm"><span>{tt("reg.base")}</span><strong>{money(basePrice)}</strong></div>
+    {(totalAddons+manualExtras)>0&&<div className="flex justify-between gap-2 text-sm"><span>{tt("reg.extras")}</span><strong>{money(totalAddons+manualExtras)}</strong></div>}
+    <div className="flex justify-between gap-2 border-t pt-2 mt-2"><span className="font-bold">{tt("reg.total")}</span><strong className="text-xl">{money(Math.max(0,price))}</strong></div>
    </div>
    <details className="border rounded-lg p-3">
-    <summary className="cursor-pointer font-semibold">معلومات إضافية (اختيارية)</summary>
+    <summary className="cursor-pointer font-semibold">{tt("reg.info")}</summary>
     <div className="space-y-3 pt-3">
-     <label className="form-label">ملاحظات
+     <label className="form-label">{tt("reg.notes")}
       <input type="text" maxLength={500} value={notes} onChange={e=>setNotes(e.target.value)}
-       placeholder="ملاحظات عن السيارة"/>
+       placeholder={tt("reg.notesHint")}/>
      </label>
-     <label className="form-label">رقم جوال العميل (اختياري — لإشعار الجاهزية فقط)
+     <label className="form-label">{tt("reg.phone")}
       <input type="tel" inputMode="tel" value={customerPhone} onChange={e=>setCustomerPhone(e.target.value)}
        placeholder="05XXXXXXXX"/>
      </label>
 
     </div>
    </details>
-   <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={busy||(!preset&&!manualMode)||price<=0}>
-    {busy?"جارٍ الحفظ الآمن...":"تسجيل السيارة"}
+   <button className="btn-primary w-full py-4 text-lg" type="submit" disabled={!draftReady||busy||(!preset&&!manualMode)||price<=0}>
+    {busy?tt("reg.saving"):tt("reg.save")}
    </button>
-   <p className="txt-muted text-xs text-center">عند توفر التخزين الآمن تُحفظ العمليات مشفرة حتى تتزامن. إذا تعذر التخزين المحلي والإنترنت متصل، يُرسل التسجيل مباشرة مع منع التكرار. لا يُرحّل تسجيل اليوم السابق تلقائيًا.</p>
+
   </form>}
   {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token}
-   manager={manager} refreshKey={summaryVersion} queued={queued}/>}
-  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} refreshKey={summaryVersion}/>}
+   manager={manager} locale={locale} refreshKey={summaryVersion} queued={queued}/>}
+  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} locale={locale} refreshKey={summaryVersion}/>}
  </main>;
 }

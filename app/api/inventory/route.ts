@@ -22,6 +22,7 @@ export async function POST(request:Request){
   const body=await request.json().catch(()=>null);
   const {admin,user}=access;
   if(body?.op==="list"){
+   const policy=await admin.from("settings").select("value").eq("key","inventory_accounting_version").maybeSingle();
    const [items,moves]=await Promise.all([
     admin.from("carwash_inventory_items")
      .select("id,name,unit,stock_qty,min_qty,avg_unit_cost,active,updated_at")
@@ -31,7 +32,7 @@ export async function POST(request:Request){
      .order("occurred_at",{ascending:false}).limit(100)
    ]);
    if(items.error||moves.error)return reply(503,"تعذر تحميل المخزون؛ تأكد من تحديث قاعدة البيانات");
-   return NextResponse.json({ok:true,items:items.data||[],movements:moves.data||[]},{headers:NO_STORE});
+   return NextResponse.json({ok:true,accountingReady:!policy.error&&policy.data?.value===2,items:items.data||[],movements:moves.data||[]},{headers:NO_STORE});
   }
   if(body?.op==="create"){
    const name=typeof body.name==="string"?body.name.trim():"";
@@ -61,11 +62,13 @@ export async function POST(request:Request){
    return NextResponse.json({ok:true,id:data.id},{headers:NO_STORE});
   }
   if(body?.op==="move"){
+   const policy=await admin.from("settings").select("value").eq("key","inventory_accounting_version").maybeSingle();
+   if(policy.error||policy.data?.value!==2)return reply(409,"تسجيل المخزون بانتظار تفعيل محاسبة الاستهلاك بعد اختبار قاعدة البيانات");
    const {itemId,kind,qty,total,source,note,requestId}=body;
    if(typeof itemId!=="string"||!uuid.test(itemId)||
     typeof requestId!=="string"||!uuid.test(requestId)||
     !modes.includes(kind)||!validQty(qty)||!validAmount(total)||
-    (kind!=="purchase"&&total!==0)||
+    (!["purchase","adjust_in"].includes(kind)&&total!==0)||
     (kind==="purchase"&&total>0&&!sources.includes(source))||
     (typeof note!=="string"&&note!==null&&note!==undefined)||
     (typeof note==="string"&&note.trim().length>300))

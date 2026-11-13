@@ -3,7 +3,7 @@ import {useCallback,useEffect,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 
 type WorkerLink={id:string;label:string;created_at:string;expires_at:string;revoked_at:string|null;last_used_at:string|null;daily_limit:number};
-const date=(s:string)=>new Date(s).toLocaleDateString("ar-SA",{year:"numeric",month:"short",day:"numeric"});
+const date=(s:string)=>new Date(s).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{year:"numeric",month:"short",day:"numeric"});
 export function UsersTab(){
  const [label,setLabel]=useState("الرابط المشترك لجميع العمال");
  const [links,setLinks]=useState<WorkerLink[]>([]);

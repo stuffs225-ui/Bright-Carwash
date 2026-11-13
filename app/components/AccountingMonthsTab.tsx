@@ -86,10 +86,10 @@ export function AccountingMonthsTab(){
     <section className="card">
       <h2 className="section-title">سجل إصدارات التقرير المعتمدة</h2>
       {versions.length===0?<p className="txt-muted">لا توجد إصدارات معتمدة بعد.</p>:
-      <div className="space-y-3">{versions.map(x=><div key={x.version} className="border-b pb-3">
-        <p className="font-bold">إصدار {x.version} — {new Date(x.approved_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh",day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"})}</p>
-        <p className="txt-muted text-sm">سيارات: {x.snapshot.cars??0} · كاش: {formatCurrency(Number(x.snapshot.cash)||0)} · شبكة: {formatCurrency(Number(x.snapshot.card)||0)} · خصومات: {formatCurrency(Number(x.snapshot.discount)||0)} · مخصص الفريق: {formatCurrency(Number(x.snapshot.crew_provision)||0)} · مكافآت إضافية: {formatCurrency(Number(x.snapshot.crew_extra_bonuses)||0)} · مصروفات: {formatCurrency(Number(x.snapshot.expenses)||0)}</p>
-      </div>)}</div>}
+      <div className="space-y-3">{versions.map(x=><details key={x.version} className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+        <summary className="cursor-pointer font-bold">إصدار {x.version} — {new Date(x.approved_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh",day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"})}</summary>
+        <p className="txt-muted text-sm mt-3">سيارات: {x.snapshot.cars??0} · كاش: {formatCurrency(Number(x.snapshot.cash)||0)} · شبكة: {formatCurrency(Number(x.snapshot.card)||0)} · خصومات: {formatCurrency(Number(x.snapshot.discount)||0)} · مخصص الفريق: {formatCurrency(Number(x.snapshot.crew_provision)||0)} · مكافآت إضافية: {formatCurrency(Number(x.snapshot.crew_extra_bonuses)||0)} · مصروفات: {formatCurrency(Number(x.snapshot.expenses)||0)}</p>
+      </details>)}</div>}
     </section>
   </div>;
 }

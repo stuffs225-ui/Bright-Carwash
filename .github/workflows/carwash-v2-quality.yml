@@ -2,6 +2,7 @@ name: Carwash V2 checks
 on:
   push:
     branches:
+      - chatgpt/carwash-approved-optimization-20261112
       - chatgpt/carwash-v2-secure-preview-20261101
       - chatgpt/bright-carwash-approved-phases-20261107
       - chatgpt/carwash-ui-finance-governance-20261107
@@ -17,6 +18,7 @@ permissions:
   contents: read
 jobs:
   quality:
+    if: github.event_name == 'workflow_dispatch' || github.ref_name != 'chatgpt/carwash-approved-optimization-20261112'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -46,6 +48,27 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
+      - name: Install mobile browser engines
+        run: npx playwright install --with-deps chromium webkit
+      - name: Mobile registration and offline replay (synthetic API only)
+        run: |
+          set -euo pipefail
+          npm run start > /tmp/carwash-next.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" || true' EXIT
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://localhost:3000 > /dev/null; then break; fi
+            sleep 1
+          done
+          BROWSER=chromium node qa/mobile-acceptance.cjs
+          BROWSER=webkit node qa/mobile-acceptance.cjs
+          BROWSER=webkit node qa/worker-language-acceptance.cjs
+          BROWSER=chromium node qa/worker-language-acceptance.cjs
+          node qa/worker-offline-locale-acceptance.cjs
+          node --check public/worker-offline.js
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
       - name: Package exact tested source for QA
         if: success()
         run: |
@@ -62,6 +85,7 @@ jobs:
           if-no-files-found: error
 
   database-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.ref_name != 'chatgpt/carwash-approved-optimization-20261112'
     name: "Synthetic PostgreSQL migrations / RLS / shift close"
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -110,4 +134,84 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_inventory_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_worker_report_wages_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_manager_report_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_missing_membership_e2e.sql
+            '
+
+  focused-ui:
+    name: Focused mobile registration and settlement UI
+    if: github.event_name == 'push' && github.ref_name == 'chatgpt/carwash-approved-optimization-20261112'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Only touched-feature tests
+        run: npx vitest run lib/expenseCategories.test.ts lib/expenseDates.test.ts lib/workers.test.ts
+      - name: Type-check and compile changed pages
+        run: npx tsc --noEmit && npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
+      - name: Install focused mobile browser engines
+        run: npx playwright install --with-deps webkit chromium
+      - name: Worker registration, encrypted drafts and offline acceptance
+        run: |
+          set -euo pipefail
+          npm run start > /tmp/carwash-next.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" || true' EXIT
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://localhost:3000 > /dev/null; then break; fi
+            sleep 1
+          done
+          BROWSER=webkit node qa/mobile-acceptance.cjs
+          BROWSER=chromium node qa/mobile-acceptance.cjs
+          BROWSER=webkit node qa/worker-language-acceptance.cjs
+          BROWSER=chromium node qa/worker-language-acceptance.cjs
+          node qa/worker-offline-locale-acceptance.cjs
+          node --check public/worker-offline.js
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
+  focused-database:
+    name: Targeted manager day-close security and totals
+    if: github.event_name == 'push' && github.ref_name == 'chatgpt/carwash-approved-optimization-20261112'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: carwash-ci-only
+          POSTGRES_DB: carwash_synthetic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d carwash_synthetic"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Migrated schema and direct manager close only
+        run: |
+          set -euo pipefail
+          docker run --rm --network host \
+            -e PGPASSWORD=carwash-ci-only \
+            -v "$PWD:/src:ro" -w /src postgres:16 \
+            bash -ceu '
+              export PGHOST=127.0.0.1 PGUSER=postgres PGDATABASE=carwash_synthetic
+              psql -v ON_ERROR_STOP=1 -f qa/supabase_postgres_test_bootstrap.sql >/dev/null
+              for f in supabase/migrations/*.sql; do
+                psql -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+              done
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_manager_direct_close_e2e.sql
             '

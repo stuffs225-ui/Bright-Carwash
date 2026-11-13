@@ -1,7 +1,14 @@
 <!doctype html>
-<html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<html lang="ha-NG" dir="ltr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="referrer" content="no-referrer"/>
-<title>تسجيل السيارات دون إنترنت — مغسلة سيارتك اللامعة</title>
+<title>Wankin mota — offline</title>
+<script>(function(){
+ var v="ha-NG";try{v=localStorage.getItem("bright_carwash_worker_lang_v1")||"ha-NG"}catch{}
+ if(v!=="ha-NG"&&v!=="en"&&v!=="ar")v="ha-NG";
+ document.documentElement.lang=v;document.documentElement.dir=v==="ar"?"rtl":"ltr";
+ document.documentElement.setAttribute("data-worker-locale-pending","1");
+ setTimeout(function(){document.documentElement.removeAttribute("data-worker-locale-pending")},4000);
+})();</script>
 <style>
 :root{color-scheme:light;--bg:#f3f4f6;--surface:#fff;--surface2:#f8fafc;--text:#111827;--muted:#64748b;--border:#e2e8f0;--blue:#1d4ed8;--success:#047857}
 @media(prefers-color-scheme:dark){:root{color-scheme:dark;--bg:#0b1220;--surface:#151f32;--surface2:#1b273d;--text:#e6edf7;--muted:#93a3ba;--border:#2a3a55;--blue:#2563eb;--success:#34d399}}
@@ -18,29 +25,75 @@ button[aria-pressed=true]{background:var(--blue);color:white}button[aria-pressed
 #status{color:var(--success);font-weight:700;white-space:pre-line}#error{color:#dc2626;white-space:pre-line}
 #addons label{padding:7px 0;margin:0}.total{background:var(--surface2);padding:12px;border-radius:12px;font-size:20px;font-weight:800;margin-top:12px}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+html[data-worker-locale-pending="1"] body{visibility:hidden}
+#lang-buttons{display:flex;gap:5px;direction:ltr}
+#lang-buttons button{min-height:38px;font-size:12px;margin:0;padding:5px 7px;width:auto}
+#car-types button{min-height:90px;font-size:13px;line-height:1.5}
+#car-types span.icon{display:block;font-size:27px}
+#service-panel[hidden],#manual-box[hidden]{display:none}
+#manual-box{margin-top:12px;background:var(--surface2);padding:10px;border-radius:12px}
+#count:empty{display:none}
+html[dir="ltr"] select,html[dir="ltr"] input{direction:ltr}
+button,summary{font-family:inherit}
 @media(max-width:480px){body{padding:10px}.card{padding:14px}.choice{gap:5px}.choice button{padding:8px}}
 </style></head><body><main>
-<section class="card"><h1>🚗 تسجيل السيارات</h1><p class="muted">مغسلة سيارتك اللامعة — وضع عدم الاتصال</p>
-<p>يتم حفظ التسجيلات مشفرة على هذا الجهاز فقط. لا تُحتسب في لوحة المدير حتى تعود الشبكة وتنجح المزامنة.</p>
-<div id="status" role="status"></div><div id="error" role="alert"></div>
-<p id="count" class="muted"></p><button type="button" id="reconnect">المزامنة عند رجوع الإنترنت</button></section>
-<form class="card" id="form" hidden>
-<label for="preset">نوع السيارة والخدمة</label><select id="preset" required></select>
-<div id="addons"></div>
-<button type="button" id="discount-toggle" aria-pressed="false">إضافة خصم (اختياري)</button>
-<div id="discount-area" hidden><label for="discount">قيمة الخصم (بحد أقصى 10 ريالات)</label><input id="discount" type="number" inputmode="decimal" min="0" max="10" step=".01" value="0"/></div>
-<label>طريقة الدفع</label><div class="choice" id="payment-method">
-<button type="button" data-method="cash" aria-pressed="true">كاش</button>
-<button type="button" data-method="card" aria-pressed="false">شبكة</button>
-<button type="button" data-method="mixed" aria-pressed="false">مختلط</button></div>
-<div id="mixed" hidden><label for="cash">كاش</label><input id="cash" type="number" inputmode="decimal" min="0" step=".01"/>
-<label for="card">شبكة</label><input id="card" type="number" inputmode="decimal" min="0" step=".01"/></div>
-<div class="total">الإجمالي: <span id="total"></span></div>
-<details><summary>معلومات إضافية (اختيارية)</summary>
-<label for="notes">ملاحظات</label><input id="notes" maxlength="500"/>
-<label for="phone">رقم جوال العميل</label><input id="phone" type="tel" inputmode="tel" placeholder="05XXXXXXXX"/>
-<label><input type="checkbox" id="consent"/> موافقة العميل على إشعار واتساب</label></details>
-<button id="save" type="submit">حفظ السيارة على هذا الجهاز</button>
-<p class="muted">الأسعار المخزنة مؤقتة وتخضع للتحقق من السيرفر. لا تحذف بيانات Safari قبل المزامنة.</p>
+<section class="card">
+ <header style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+  <h1 data-i18n="reg.title">🚗 Rijistar motoci</h1>
+  <div id="lang-buttons" role="group" aria-label="Language">
+   <button type="button" data-locale="ha-NG" aria-pressed="true">Hausa</button>
+   <button type="button" data-locale="en" aria-pressed="false">English</button>
+   <button type="button" data-locale="ar" aria-pressed="false">العربية</button>
+  </div>
+ </header>
+ <p class="muted" data-i18n="offline.subtitle">Rijista ba tare da intanet ba</p>
+ <div id="status" role="status"></div><div id="error" role="alert"></div>
+ <p id="count" class="muted"></p>
+ <button type="button" id="reconnect" data-i18n="offline.reconnect">Komawa a daidaita bayanai</button>
+</section>
+<form class="card" id="form" hidden novalidate>
+ <label data-i18n="reg.vehicle">Nau'in mota</label>
+ <div id="car-types" class="choice">
+  <button type="button" data-car="سيارة صغيرة" aria-pressed="false">
+   <span class="icon">🚗</span><span data-i18n="car.small">Ƙaramar mota</span>
+  </button>
+  <button type="button" data-car="سيارة كبيرة" aria-pressed="false">
+   <span class="icon">🚙</span><span data-i18n="car.large">Babbar mota</span>
+  </button>
+  <button type="button" data-car="شاحنة" aria-pressed="false">
+   <span class="icon">🚚</span><span data-i18n="car.truck">Babbar motar kaya</span>
+  </button>
+ </div>
+ <div id="service-panel" hidden>
+  <label for="preset" data-i18n="offline.selectService">Zaɓi wanki da farashi</label>
+  <select id="preset" required></select>
+  <button type="button" id="manual-toggle" data-i18n="reg.manual">Canza farashi</button>
+  <div id="manual-box" hidden>
+   <label for="manual-service" data-i18n="reg.service">Aiki</label>
+   <select id="manual-service"></select>
+   <label for="manual-price" data-i18n="reg.manualPrice">Farashin wannan motar (SAR)</label>
+   <input id="manual-price" type="number" inputmode="decimal" min=".01" max="5000" step=".01"/>
+  </div>
+ </div>
+ <div id="addons"></div>
+ <label data-i18n="reg.payment">Hanyar biyan kuɗi</label>
+ <div class="choice" id="payment-method">
+  <button type="button" data-method="cash" aria-pressed="true" data-i18n="reg.cash">Tsabar kuɗi</button>
+  <button type="button" data-method="card" aria-pressed="false" data-i18n="reg.pos">Kati / POS</button>
+  <button type="button" data-method="mixed" aria-pressed="false" data-i18n="reg.mixed">Biya a haɗe</button>
+ </div>
+ <div id="mixed" hidden>
+  <label for="cash" data-i18n="reg.cashAmount">Kuɗin hannu</label>
+  <input id="cash" type="number" inputmode="decimal" min="0" step=".01"/>
+  <label for="card" data-i18n="reg.posAmount">Kuɗin POS</label>
+  <input id="card" type="number" inputmode="decimal" min="0" step=".01"/>
+ </div>
+ <div class="total"><span data-i18n="offline.total">Jimilla</span>: <span id="total"></span></div>
+ <details><summary data-i18n="reg.info">Ƙarin bayani (zaɓi ne)</summary>
+  <label for="notes" data-i18n="reg.notes">Bayanan kula</label><input id="notes" maxlength="500" data-i18n-placeholder="reg.notesHint"/>
+  <label for="phone" data-i18n="reg.phone">Lambar wayar abokin ciniki (zaɓi ne)</label>
+  <input id="phone" type="tel" inputmode="tel" placeholder="05XXXXXXXX"/>
+ </details>
+ <button id="save" type="submit" data-i18n="offline.save">Ajiye motar a waya</button>
 </form>
 </main><script src="/worker-offline.js" defer></script></body></html>

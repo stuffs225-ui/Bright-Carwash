@@ -1,7 +1,8 @@
 "use client";
 import {useState,useRef} from "react";
 import {supabase} from "@/lib/supabaseClient";
-type Props={date:string;token?:string;manager?:boolean;queued:number;onSent:()=>void};
+import {workerText,workerMessage,type WorkerLocale} from "@/lib/workerI18n";
+type Props={date:string;token?:string;manager?:boolean;locale?:WorkerLocale;queued:number;onSent:()=>void};
 async function compress(file:File):Promise<Blob>{
  if(file.size<=2.5*1024*1024&&["image/jpeg","image/png","image/webp"].includes(file.type))return file;
  const url=URL.createObjectURL(file);
@@ -17,14 +18,15 @@ async function compress(file:File):Promise<Blob>{
   return blob;
  }finally{URL.revokeObjectURL(url);}
 }
-export function WorkerDayReport({date,token,manager=false,queued,onSent}:Props){
+export function WorkerDayReport({date,token,manager=false,locale="ar",queued,onSent}:Props){
+ const tt=(key:Parameters<typeof workerText>[1],vars?:Record<string,string|number>)=>workerText(locale,key,vars);
  const [cash,setCash]=useState(""),[card,setCard]=useState(""),[terminal,setTerminal]=useState("");
  const [photo,setPhoto]=useState<File|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const locked=useRef(false);
  async function submit(e:React.FormEvent){
   e.preventDefault();if(locked.current||queued>0||!photo)return;
   if([cash,card,terminal].some(v=>!v.trim()||!Number.isFinite(Number(v))||Number(v)<0)){
-   setError("أدخل المبالغ الثلاثة");return;
+   setError("أدخل المبالغ الثلاثة.");return;
   }
   locked.current=true;setBusy(true);setError("");
   try{
@@ -46,16 +48,14 @@ export function WorkerDayReport({date,token,manager=false,queued,onSent}:Props){
   finally{locked.current=false;setBusy(false);}
  }
  return <form className="card mt-3 space-y-3" onSubmit={submit}>
-  <h3 className="font-bold">موازنة نهاية يوم {date}</h3>
-  <p className="txt-muted text-sm">{manager
-   ?"نفس نموذج العامل: أدخل مبالغ الكاش والشبكة وصوّر تقرير الشبكة. يُرسل للمراجعة ثم يُعتمد من صفحة الموازنة."
-   :"أرسل المبالغ الفعلية وصورة تقرير الجهاز للمدير. سيظل اليوم ظاهرًا إلى أن يعتمده."}</p>
-  <label className="form-label">الكاش الموجود معك (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={cash} onChange={e=>setCash(e.target.value)}/></label>
-  <label className="form-label">مبلغ الشبكة (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={card} onChange={e=>setCard(e.target.value)}/></label>
-  <label className="form-label">المبلغ الظاهر في تقرير موازنة جهاز الشبكة (ر.س)<input type="number" min="0" step=".01" inputMode="decimal" required value={terminal} onChange={e=>setTerminal(e.target.value)}/></label>
-  <label className="form-label">صوّر تقرير جهاز الشبكة<input type="file" accept="image/*" capture="environment" required onChange={e=>setPhoto(e.target.files?.[0]||null)}/></label>
-  {queued>0&&<p className="txt-warning text-sm">زامن السيارات المحفوظة أولًا قبل إرسال الموازنة.</p>}
-  {error&&<p className="txt-danger" role="alert">{error}</p>}
-  <button type="submit" className="btn-primary w-full" disabled={busy||queued>0||!photo}>{busy?"جارٍ رفع الموازنة...":"إرسال الموازنة للمراجعة"}</button>
+  <h3 className="font-bold">{tt("report.title",{date})}</h3>
+
+  <label className="form-label">{tt("report.cash")}<input type="number" min="0" step=".01" inputMode="decimal" required value={cash} onChange={e=>setCash(e.target.value)}/></label>
+  <label className="form-label">{tt("report.pos")}<input type="number" min="0" step=".01" inputMode="decimal" required value={card} onChange={e=>setCard(e.target.value)}/></label>
+  <label className="form-label">{tt("report.terminal")}<input type="number" min="0" step=".01" inputMode="decimal" required value={terminal} onChange={e=>setTerminal(e.target.value)}/></label>
+  <label className="form-label">{tt("report.photo")}<input type="file" accept="image/*" capture="environment" required onChange={e=>setPhoto(e.target.files?.[0]||null)}/></label>
+  {queued>0&&<p className="txt-warning text-sm">{tt("report.waitSync")}</p>}
+  {error&&<p className="txt-danger" role="alert">{workerMessage(locale,error,"error.report")}</p>}
+  <button type="submit" className="btn-primary w-full" disabled={busy||queued>0||!photo}>{busy?tt("report.sending"):tt("report.send")}</button>
  </form>;
 }

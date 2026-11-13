@@ -855,3 +855,17 @@ body{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset
 .carwash-compact-header{padding-block:14px}
 }
 @media (max-width:390px){.carwash-main-tabs button{font-size:.8rem}}
+
+/* Worker-only locale protection: prevent the wrong language appearing during hydration.
+   The manager routes and their Arabic RTL layout remain unchanged. */
+html[data-worker-lang-pending="1"] .worker-screen { visibility: hidden; }
+.worker-screen[lang="ha-NG"],
+.worker-screen[lang="en"] {
+  font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+}
+.worker-screen[dir="ltr"] input[type="tel"],
+.worker-screen[dir="ltr"] input[type="number"] {
+  direction: ltr;
+  font-variant-numeric: tabular-nums;
+}
+.worker-screen .metric-value { font-variant-numeric: tabular-nums; }

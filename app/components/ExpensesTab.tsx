@@ -1,441 +1,330 @@
 "use client";
-
-import "@/lib/chartRegistry";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Doughnut } from "react-chartjs-2";
-import { supabase } from "@/lib/supabaseClient";
-import { fetchAllRows } from "@/lib/fetchAll";
-import { AR_GREGORIAN_LOCALE, formatCurrency } from "@/lib/business";
-import { showToast } from "@/lib/toast";
-import type { Expense } from "@/lib/types";
+import {useCallback,useEffect,useMemo,useState} from "react";
+import {supabase} from "@/lib/supabaseClient";
+import {fetchAllRows} from "@/lib/fetchAll";
+import {AR_GREGORIAN_LOCALE,formatCurrency} from "@/lib/business";
+import {showToast} from "@/lib/toast";
+import type {Expense} from "@/lib/types";
 import {canonicalExpenseType,EXPENSE_QUICK_CHOICES} from "@/lib/expenseCategories";
 import {ArabicDateField} from "./ArabicDateField";
-import { enqueue } from "@/lib/offlineQueue";
-import { isNetworkError } from "@/lib/offlineSync";
-import { riyadhDate, expenseEffectiveTimestamp, lateExpenseMonth } from "@/lib/expenseDates";
+import {enqueue} from "@/lib/offlineQueue";
+import {isNetworkError} from "@/lib/offlineSync";
+import {riyadhDate,expenseEffectiveTimestamp,lateExpenseMonth} from "@/lib/expenseDates";
 import {riyadhDayKey} from "@/lib/carwashCalendarDay";
-import { MetricCard } from "./MetricCard";
-import { Modal } from "./Modal";
-import { PAYMENT_SOURCES, loadWorkers } from "@/lib/workers";
-import type { Worker } from "@/lib/types";
 
-const DEFAULT_COLORS = ["#3b82f6", "#8b5cf6", "#ef4444", "#f59e0b", "#10b981", "#6366f1", "#ec4899", "#6d28d9", "#06b6d4", "#eab308"];
+const isWage=(type:string)=>/راتب|رواتب/.test(type);
+const expenseDay=(timestamp:string)=>new Date(timestamp).toLocaleDateString("en-GB",{timeZone:"Asia/Riyadh"});
+const monthKey=(stamp:string)=>riyadhDayKey(new Date(stamp)).slice(0,7);
+type PaySource="cash"|"network"|"bank"|"other";
+const SOURCE_LABELS:{value:PaySource;label:string}[]=[
+ {value:"cash",label:"كاش"},
+ {value:"network",label:"شبكة"},
+ {value:"bank",label:"تحويل"},
+ {value:"other",label:"مصدر آخر"}
+];
 
-function monthKey(date: Date) {
-  return riyadhDayKey(date).slice(0,7);
-}
-
-export function ExpensesTab() {
-  const [expenseTypes, setExpenseTypes] = useState<{ name: string; color: string }[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [showEntries, setShowEntries] = useState(false);
-  const [expenseDetails, setExpenseDetails] = useState<"total"|"count"|"average"|null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const [expenseType, setExpenseType] = useState("");
-  const [amount, setAmount] = useState("");
-  const [notes, setNotes] = useState("");
-  const [expenseDate, setExpenseDate] = useState(() => riyadhDate());
-
-  // ربط مصروف الراتب بدفتر العامل
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [workerId, setWorkerId] = useState("");
-  const [paymentSource, setPaymentSource] = useState("cash");
-  const [expensePaymentSource,setExpensePaymentSource]=useState<"cash"|"network"|"bank"|"other">("cash");
-  const [customExpenseLabel,setCustomExpenseLabel]=useState("");
-  const isSalary = expenseType === "راتب";
-
-  const colorMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    expenseTypes.forEach((t, i) => {
-      map[t.name] = t.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
-    });
-    return map;
-  }, [expenseTypes]);
-
-  const loadTypes = useCallback(async () => {
-    const { data } = await supabase.from("expense_types").select("name, color").eq("active", true).order("sort_order");
-    setExpenseTypes(data || []);
-  }, []);
-
-  const loadExpenses = useCallback(async () => {
-    const data = await fetchAllRows<Expense>((from, to) =>
-      supabase.from("expenses").select("*").is("deleted_at", null).order("occurred_at", { ascending: false }).range(from, to)
-    );
-    setExpenses(data);
-  }, []);
-
-  useEffect(() => {
-    loadTypes();
-    loadExpenses();
-    loadWorkers().then(setWorkers);
-    const channel = supabase
-      .channel("expenses-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "expenses" }, () => loadExpenses())
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const summary = useMemo(() => {
-    const map = new Map<string, { monthName: string; total: number; entries: Expense[]; types: Record<string, number> }>();
-    expenses.forEach((exp) => {
-      const d = new Date(exp.occurred_at);
-      const key = monthKey(d);
-      if (!map.has(key)) {
-        map.set(key, { monthName: d.toLocaleDateString(AR_GREGORIAN_LOCALE, { month: "long", year: "numeric",timeZone:"Asia/Riyadh" }), total: 0, entries: [], types: {} });
-      }
-      const bucket = map.get(key)!;
-      bucket.total += Number(exp.amount);
-      bucket.entries.push(exp);
-      const canonical=canonicalExpenseType(exp.expense_type,exp.notes);
-      bucket.types[canonical]=(bucket.types[canonical]||0)+Number(exp.amount);
-    });
-    return map;
-  }, [expenses]);
-
-  const monthKeys = useMemo(() => Array.from(summary.keys()).sort().reverse(), [summary]);
-
-  useEffect(() => {
-    if (!selectedMonth && monthKeys.length) setSelectedMonth(monthKeys[0]);
-  }, [monthKeys, selectedMonth]);
-
-  const currentMonth = selectedMonth ? summary.get(selectedMonth) : undefined;
-
-  const suggestedAmount=useMemo(()=>{
-    const match=expenses.find(e=>e.expense_type===expenseType &&
-      (!notes||!EXPENSE_QUICK_CHOICES.some(q=>q.note===notes)||String(e.notes||"").includes(notes)));
-    return match?Number(match.amount):null;
-  },[expenses,expenseType,notes]);
-  const chartData = useMemo(() => {
-    if (!currentMonth) return null;
-    const labels = Object.keys(currentMonth.types);
-    if (!labels.length) return null;
-    return {
-      labels,
-      datasets: [
-        {
-          data: labels.map((l) => currentMonth.types[l]),
-          backgroundColor: labels.map((l, i) => colorMap[l] || DEFAULT_COLORS[i % DEFAULT_COLORS.length]),
-          borderWidth: 1,
-        },
-      ],
-    };
-  }, [currentMonth, colorMap]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const amt = Number(amount) || 0;
-    if (!expenseType) {
-      showToast("يرجى اختيار نوع المصروف.", "warning");
-      return;
-    }
-    if (amt <= 0) {
-      showToast("يجب أن يكون مبلغ المصروف أكبر من صفر.", "warning");
-      return;
-    }
-    if (lateExpenseMonth(expenseDate) && notes.trim().length < 5) {
-      showToast("المصروفات المتعلقة بشهر سابق تحتاج شرحًا لا يقل عن 5 أحرف.", "warning");
-      return;
-    }
-    if (isSalary) {
-      showToast("سجّل مستحقات الرواتب وصرفها من قسم «العمال والرواتب» لمنع القيد المكرر.", "warning");
-      return;
-    }
-    if(expenseType==="اخرى"&&!customExpenseLabel.trim()&&!notes.trim()){
-      showToast("اكتب وصفًا للمصروف غير المصنف.", "warning");return;
-    }
-    setSubmitting(true);
-    const combinedNotes=expenseType==="اخرى"&&customExpenseLabel.trim()
-      ?customExpenseLabel.trim()+(notes.trim()?" — "+notes.trim():""):notes.trim();
-    const payload={expense_type:expenseType,amount:amt,notes:combinedNotes||null,
-      occurred_at:expenseEffectiveTimestamp(expenseDate),
-      client_recorded_at:new Date().toISOString(),
-      salary_worker_id:null,salary_payment_source:null,
-      payment_source:expensePaymentSource,recognition_kind:"operating",
-      client_mutation_id:crypto.randomUUID()};
-
-    if (!navigator.onLine) {
-      enqueue("expenses", payload);
-      setSubmitting(false);
-      showToast("لا يوجد اتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
-      setExpenseType(""); setAmount(""); setNotes(""); setCustomExpenseLabel(""); setExpenseDate(riyadhDate());
-      return;
-    }
-
-    const { data: inserted, error } = await supabase.from("expenses").insert(payload).select("id").single();
-    setSubmitting(false);
-    if (error) {
-      if (isNetworkError(error)) {
-        enqueue("expenses", payload);
-        showToast("تعذر الاتصال — تم حفظ المصروف محلياً وسيُرفع تلقائياً عند رجوع النت.", "warning");
-        setExpenseType(""); setAmount(""); setNotes(""); setExpenseDate(riyadhDate());
-        return;
-      }
-      showToast("خطأ في حفظ المصروف: " + error.message, "error");
-      return;
-    }
-
-    // The database trigger creates/updates the linked worker payment atomically.
-    showToast("تم حفظ المصروف بنجاح.");
-    setExpenseType("");
-    setCustomExpenseLabel("");
-    setAmount("");
-    setNotes("");
-    setExpenseDate(riyadhDate());
-    setWorkerId("");
-    loadExpenses();
+export function ExpensesTab(){
+ const [expenseTypes,setExpenseTypes]=useState<{name:string;color:string}[]>([]);
+ const [expenses,setExpenses]=useState<Expense[]>([]);
+ const [selectedMonth,setSelectedMonth]=useState("");
+ const [expenseType,setExpenseType]=useState("");
+ const [amount,setAmount]=useState("");
+ const [notes,setNotes]=useState("");
+ const [expenseDate,setExpenseDate]=useState(riyadhDate);
+ const [paymentSource,setPaymentSource]=useState<PaySource>("cash");
+ const [customLabel,setCustomLabel]=useState("");
+ const [showOtherType,setShowOtherType]=useState(false);
+ const [submitting,setSubmitting]=useState(false);
+ const [loaded,setLoaded]=useState(false);
+ const [editingId,setEditingId]=useState<string|null>(null);
+ const [search,setSearch]=useState("");
+ const [visibleCount,setVisibleCount]=useState(20);
+ const loadTypes=useCallback(async()=>{
+  const {data}=await supabase.from("expense_types").select("name,color").eq("active",true).order("sort_order");
+  setExpenseTypes(data||[]);
+ },[]);
+ const loadExpenses=useCallback(async()=>{
+  const data=await fetchAllRows<Expense>((from,to)=>
+   supabase.from("expenses").select("*").is("deleted_at",null)
+    .order("occurred_at",{ascending:false}).range(from,to));
+  setExpenses(data);setLoaded(true);
+ },[]);
+ useEffect(()=>{
+  void loadTypes();void loadExpenses();
+  const changes=supabase.channel("expenses-simple-changes")
+   .on("postgres_changes",{event:"*",schema:"public",table:"expenses"},()=>void loadExpenses())
+   .subscribe();
+  const onChange=()=>void loadExpenses();
+  window.addEventListener("carwash:data-changed",onChange);
+  return()=>{supabase.removeChannel(changes);window.removeEventListener("carwash:data-changed",onChange);};
+ },[loadExpenses,loadTypes]);
+ const summary=useMemo(()=>{
+  const groups=new Map<string,{name:string;total:number;entries:Expense[];types:Record<string,number>}>();
+  for(const exp of expenses){
+   const month=monthKey(exp.occurred_at);
+   let current=groups.get(month);
+   if(!current){
+    current={name:new Date(exp.occurred_at).toLocaleDateString(AR_GREGORIAN_LOCALE,{
+     timeZone:"Asia/Riyadh",month:"long",year:"numeric"}),total:0,entries:[],types:{}};
+    groups.set(month,current);
+   }
+   const type=canonicalExpenseType(exp.expense_type,exp.notes);
+   current.total+=Number(exp.amount);
+   current.types[type]=(current.types[type]||0)+Number(exp.amount);
+   current.entries.push(exp);
   }
-
-  async function handleDelete(id: string) {
-    if (!confirm("هل أنت متأكد من حذف هذا المصروف؟")) return;
-    const { error } = await supabase.from("expenses").update({ deleted_at: new Date().toISOString() }).eq("id", id);
-    if (error) {
-      showToast("فشل الحذف: " + error.message, "error");
-      return;
-    }
-    showToast("تم حذف المصروف بنجاح.");
-    loadExpenses();
+  return groups;
+ },[expenses]);
+ const months=useMemo(()=>[...summary.keys()].sort().reverse(),[summary]);
+ const activeMonth=selectedMonth&&summary.has(selectedMonth)?selectedMonth:months[0]||"";
+ const current=summary.get(activeMonth);
+ const records=(current?.entries||[]).filter(e=>
+  !search.trim()||[e.expense_type,e.notes||"",String(e.amount)]
+   .join(" ").toLowerCase().includes(search.trim().toLowerCase()));
+ const selectedQuick=EXPENSE_QUICK_CHOICES.find(q=>q.category===expenseType&&q.note===notes);
+ function selectQuick(choice:typeof EXPENSE_QUICK_CHOICES[number]){
+  setExpenseType(choice.category);
+  setNotes(choice.note);
+  setCustomLabel("");
+  setShowOtherType(false);
+  const last=expenses.find(e=>
+   (e.expense_type===choice.category||
+    canonicalExpenseType(e.expense_type)===canonicalExpenseType(choice.category))&&
+   (!choice.note||String(e.notes||"").includes(choice.note)));
+  setAmount(last?String(last.amount):"");
+ }
+ function resetForm(){
+  setExpenseType("");setAmount("");setNotes("");setCustomLabel("");
+  setExpenseDate(riyadhDate());setPaymentSource("cash");setShowOtherType(false);
+ }
+ async function submit(e:React.FormEvent){
+  e.preventDefault();
+  const value=Number(amount);
+  if(!expenseType){showToast("اختر المصروف.","warning");return;}
+  if(isWage(expenseType)){
+   showToast("الرواتب والدفعات من صفحة العمال والرواتب لمنع التكرار.","warning");return;
   }
-
-  async function handleUpdate(expense: Expense, patch: { expense_type: string; amount: number; notes: string }) {
-    if (patch.expense_type === "راتب" && !expense.salary_worker_id) {
-      showToast("لا يمكن تحويل المصروف إلى راتب بدون اختيار عامل جديد.", "warning");
-      return;
-    }
-    if (patch.amount <= 0) {
-      showToast("يجب أن يكون مبلغ المصروف أكبر من صفر.", "warning");
-      return;
-    }
-    const { error } = await supabase
-      .from("expenses")
-      .update({ expense_type: patch.expense_type, amount: patch.amount, notes: patch.notes || null })
-      .eq("id", expense.id);
-    if (error) {
-      showToast("فشل التحديث: " + error.message, "error");
-      return;
-    }
-    showToast("تم تحديث المصروف بنجاح.");
-    setEditingId(null);
-    loadExpenses();
+  if(!Number.isFinite(value)||value<=0||Math.abs(Math.round(value*100)/100-value)>0.000001){
+   showToast("أدخل مبلغًا صحيحًا.","warning");return;
   }
-
-  return (
-    <div className="space-y-6">
-      <section className="card">
-        <h2 className="section-title">إضافة مصروف جديد</h2>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-3">
-           <p className="form-label">اختيارات سريعة للمصروفات</p>
-           <div className="carwash-quick-choices">
-            {EXPENSE_QUICK_CHOICES.map(choice=><button type="button" key={choice.name}
-             className={expenseType===choice.category&&notes===choice.note?"active":""}
-             onClick={()=>{setExpenseType(choice.category);setNotes(choice.note);setCustomExpenseLabel("");}}>
-             {choice.name}
-            </button>)}
-           </div>
-           <label className="form-label">الفئة المحاسبية
-            <select value={expenseType} onChange={e=>{setExpenseType(e.target.value);setCustomExpenseLabel("");}} required>
-             <option value="">اختر نوع المصروف</option>
-             {expenseTypes.map(t=><option key={t.name} value={t.name}>{t.name}</option>)}
-            </select>
-           </label>
-           {expenseType==="اخرى"&&<label className="form-label">وصف المصروف بحرية
-            <input type="text" maxLength={120} value={customExpenseLabel}
-             onChange={e=>setCustomExpenseLabel(e.target.value)} placeholder="مثل مشتريات طارئة أو رسوم أخرى"/>
-           </label>}
-           {isSalary&&<p className="txt-warning text-sm">
-            الرواتب والسلف والدفعات تسجّل من صفحة «العمال والرواتب». يمنع النظام إنشاء مصروف راتب جديد من هنا لتجنب تكرار التكلفة.</p>}
-          </div>
-          <div>
-            <label className="form-label">التاريخ الذي يخصه المصروف (بتوقيت الرياض)</label>
-            <ArabicDateField value={expenseDate} onChange={setExpenseDate} ariaLabel="تاريخ المصروف" max={riyadhDate()}/>
-            {lateExpenseMonth(expenseDate) && <p className="txt-warning text-sm mt-2">هذا مصروف يخص شهرًا سابقًا. سيحفظ النظام تاريخ التسجيل الفعلي منفصلًا، ويُلزمك بتوضيح السبب. إذا كان الشهر مقفلًا فستدخل عملية مراجعة الفترات المقفلة قبل اعتماد التقارير.</p>}
-          </div>
-          <div>
-            <label className="form-label">المبلغ (ر.س)</label>
-            <input type="number" min="0.01" step="0.01" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} required />
-            {suggestedAmount!==null&&<button type="button" className="btn-secondary mt-2 text-sm"
-             onClick={()=>setAmount(String(suggestedAmount))}>
-             استخدام مبلغ آخر عملية مشابهة: {formatCurrency(suggestedAmount)}
-            </button>}
-
-          </div>
-          <label className="form-label">مصدر دفع المصروف
-           <select value={expensePaymentSource}
-            onChange={e=>setExpensePaymentSource(e.target.value as "cash"|"network"|"bank"|"other")}>
-            <option value="cash">كاش من صندوق المغسلة</option>
-            <option value="network">شبكة / بطاقة</option>
-            <option value="bank">تحويل بنكي</option>
-            <option value="other">مصدر آخر</option>
-           </select>
-          </label>
-          <div>
-            <label className="form-label">ملاحظات</label>
-            <input type="text" placeholder="اختياري..." value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-          <button type="submit" disabled={submitting||isSalary} className="btn-add-expense w-full">
-            {submitting ? <span className="spinner" /> : "حفظ المصروف"}
-          </button>
-        </form>
-      </section>
-
-      <section className="card">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-5">
-          <div>
-            <h2 className="section-title mb-1">ملخص المصروفات</h2>
-            <p className="txt-muted">اختر الشهر لعرض الملخص والتوزيع.</p>
-          </div>
-          <div className="w-full md:w-72">
-            <label className="form-label">الشهر</label>
-            <div className="select-wrapper">
-              <select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
-                {monthKeys.map((key) => (
-                  <option key={key} value={key}>{summary.get(key)!.monthName}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <MetricCard label="إجمالي المصروفات" value={formatCurrency(currentMonth?.total || 0)} tone="red" onClick={()=>setExpenseDetails("total")} hint="اضغط لعرض تفاصيل المصروفات" />
-          <MetricCard label="عدد العمليات" value={currentMonth?.entries.length || 0} tone="indigo" onClick={()=>setExpenseDetails("count")} hint="عرض القيود وتواريخها" />
-          <MetricCard
-            label="متوسط المصروف"
-            value={formatCurrency(currentMonth && currentMonth.entries.length ? currentMonth.total / currentMonth.entries.length : 0)}
-            tone="amber"
-            onClick={()=>setExpenseDetails("average")}
-            hint="كيفية حساب متوسط المصروف وتفاصيل القيود"
-          />
-        </div>
-
-        <div className="chart-box">
-          {chartData && <Doughnut data={chartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }} />}
-        </div>
-      </section>
-
-      {expenseDetails && (
-        <Modal title={expenseDetails==="total"?"تفاصيل إجمالي المصروفات":expenseDetails==="count"?"تفاصيل عدد المصروفات":"حساب متوسط المصروف"} onClose={()=>setExpenseDetails(null)}>
-          <p className="font-bold mb-3">
-            {expenseDetails==="average"
-              ? `${formatCurrency(currentMonth?.total||0)} ÷ ${currentMonth?.entries.length||0} مصروف = ${formatCurrency(currentMonth&&currentMonth.entries.length?currentMonth.total/currentMonth.entries.length:0)}`
-              : expenseDetails==="count" ? `${currentMonth?.entries.length||0} مصروف` : formatCurrency(currentMonth?.total||0)}
-          </p>
-          <div className="space-y-2">
-            {(currentMonth?.entries||[]).length===0?<p className="txt-muted">لا توجد مصروفات خلال هذا الشهر.</p>:
-              (currentMonth?.entries||[]).map(exp=>(
-                <div key={exp.id} className="flex justify-between gap-3 border-b py-3">
-                  <span className="text-sm">{new Date(exp.occurred_at).toLocaleDateString("en-GB",{timeZone:"Asia/Riyadh"})} · {exp.expense_type}{exp.notes?" · "+exp.notes:""}</span>
-                  <strong>{formatCurrency(exp.amount)}</strong>
-                </div>
-              ))}
-          </div>
-        </Modal>
-      )}
-
-      <section className="card overflow-hidden p-0">
-        <button type="button" className={`accordion-button ${showEntries ? "active" : ""}`} onClick={() => setShowEntries((v) => !v)}>
-          <span>سجل المصروفات</span>
-          <span>⌄</span>
-        </button>
-        <div className="accordion-content" style={{ maxHeight: showEntries ? "5000px" : undefined }}>
-          <div className="p-4 overflow-x-auto">
-            {expenses.length === 0 ? (
-              <p className="text-center txt-muted py-5">لا توجد سجلات مصروفات.</p>
-            ) : (
-              <table className="app-table">
-                <thead>
-                  <tr><th>التاريخ</th><th>نوع المصروف</th><th>المبلغ</th><th>ملاحظات</th><th>إجراءات</th></tr>
-                </thead>
-                <tbody>
-                  {expenses.map((exp) => (
-                    <ExpenseRow
-                      key={exp.id}
-                      expense={exp}
-                      expenseTypes={expenseTypes.map((t) => t.name)}
-                      editing={editingId === exp.id}
-                      onEdit={() => setEditingId(exp.id)}
-                      onCancel={() => setEditingId(null)}
-                      onSave={(patch) => handleUpdate(exp, patch)}
-                      onDelete={() => handleDelete(exp.id)}
-                    />
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </div>
-      </section>
+  if(lateExpenseMonth(expenseDate)&&notes.trim().length<5){
+   showToast("لمصروف شهر سابق، اكتب السبب في تفاصيل المصروف.","warning");return;
+  }
+  if(canonicalExpenseType(expenseType)==="مصروفات أخرى"&&!customLabel.trim()&&!notes.trim()){
+   showToast("اكتب وصف المصروف.","warning");return;
+  }
+  const fullNotes=canonicalExpenseType(expenseType)==="مصروفات أخرى"&&customLabel.trim()
+   ?customLabel.trim()+(notes.trim()?" — "+notes.trim():""):notes.trim();
+  const payload={
+   expense_type:expenseType,amount:value,notes:fullNotes||null,
+   occurred_at:expenseEffectiveTimestamp(expenseDate),
+   client_recorded_at:new Date().toISOString(),
+   salary_worker_id:null,salary_payment_source:null,
+   payment_source:paymentSource,recognition_kind:"operating",
+   client_mutation_id:crypto.randomUUID()
+  };
+  setSubmitting(true);
+  try{
+   if(!navigator.onLine){
+    enqueue("expenses",payload);
+    showToast("حُفظ المصروف على الجهاز؛ سيُزامن تلقائيًا عند عودة الإنترنت.","warning");
+    resetForm();return;
+   }
+   const {error}=await supabase.from("expenses").insert(payload);
+   if(error){
+    if(isNetworkError(error)){
+     enqueue("expenses",payload);
+     showToast("حُفظ المصروف على الجهاز وسيُزامن عند عودة الإنترنت.","warning");
+     resetForm();return;
+    }
+    showToast("تعذر حفظ المصروف: "+error.message,"error");return;
+   }
+   showToast("تم تسجيل المصروف.");
+   setSelectedMonth(expenseDate.slice(0,7));
+   resetForm();
+   window.dispatchEvent(new Event("carwash:data-changed"));
+   void loadExpenses();
+  }finally{setSubmitting(false);}
+ }
+ async function removeExpense(exp:Expense){
+  if(exp.crew_business_date||exp.salary_worker_id){
+   showToast("هذا القيد مرتبط بالأجور؛ لا يُحذف من سجل المصروفات.","warning");return;
+  }
+  if(!confirm("إلغاء هذا المصروف؟ سيبقى أثر التعديل محفوظًا."))return;
+  const {error}=await supabase.from("expenses")
+   .update({deleted_at:new Date().toISOString()}).eq("id",exp.id);
+  if(error){showToast("تعذر إلغاء المصروف: "+error.message,"error");return;}
+  showToast("تم إلغاء المصروف.");setEditingId(null);void loadExpenses();
+ }
+ async function updateExpense(exp:Expense,patch:{expense_type:string;amount:number;notes:string}){
+  if(exp.crew_business_date||exp.salary_worker_id||isWage(patch.expense_type)){
+   showToast("القيود المرتبطة بالأجور تعدّل من حسابات العمال فقط.","warning");return;
+  }
+  if(!Number.isFinite(patch.amount)||patch.amount<=0||
+    Math.abs(Math.round(patch.amount*100)/100-patch.amount)>0.000001){
+   showToast("المبلغ غير صحيح.","warning");return;
+  }
+  const {error}=await supabase.from("expenses")
+   .update({expense_type:patch.expense_type,amount:patch.amount,notes:patch.notes||null})
+   .eq("id",exp.id);
+  if(error){showToast("تعذر التعديل: "+error.message,"error");return;}
+  setEditingId(null);showToast("تم تعديل المصروف.");void loadExpenses();
+ }
+ return <div className="space-y-3">
+  <section className="card space-y-4">
+   <h2 className="section-title mb-0">تسجيل مصروف</h2>
+   <form className="space-y-4" onSubmit={e=>void submit(e)}>
+    <div>
+     <p className="form-label">نوع المصروف</p>
+     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {EXPENSE_QUICK_CHOICES.map(q=><button type="button" key={q.name}
+       className={selectedQuick===q?"btn-primary p-3":"btn-secondary p-3"}
+       aria-pressed={selectedQuick===q}
+       onClick={()=>selectQuick(q)}>{q.name}</button>)}
+     </div>
     </div>
-  );
+    <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+     <summary className="font-semibold cursor-pointer">فئة أخرى من القائمة</summary>
+     <label className="form-label mt-3">الفئة
+      <select value={expenseType} onChange={e=>{
+       setExpenseType(e.target.value);setNotes("");setCustomLabel("");
+       setAmount("");setShowOtherType(true);
+      }}>
+       <option value="">اختر فئة</option>
+       {expenseTypes.filter(x=>!isWage(x.name)).map(x=>
+        <option key={x.name} value={x.name}>{x.name}</option>)}
+      </select>
+     </label>
+    </details>
+    {(canonicalExpenseType(expenseType)==="مصروفات أخرى"||showOtherType&&expenseType==="اخرى")&&
+     <label className="form-label">وصف المصروف
+      <input maxLength={120} value={customLabel} onChange={e=>setCustomLabel(e.target.value)}
+       placeholder="مثلاً رسوم أو مشتريات أخرى"/>
+     </label>}
+    <label className="form-label">المبلغ (ر.س)
+     <input type="number" inputMode="decimal" min=".01" step=".01" placeholder="0.00"
+      required value={amount} onChange={e=>setAmount(e.target.value)}/>
+    </label>
+    <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+     <summary className="font-semibold cursor-pointer">التاريخ والدفع والملاحظات</summary>
+     <div className="space-y-3 mt-3">
+      <label className="form-label">تاريخ المصروف
+       <ArabicDateField value={expenseDate} onChange={setExpenseDate}
+        ariaLabel="تاريخ المصروف" max={riyadhDate()}/>
+      </label>
+      {lateExpenseMonth(expenseDate)&&<p className="txt-warning text-sm">
+       هذا المصروف يخص شهرًا سابقًا؛ اكتب السبب أدناه.
+      </p>}
+      <label className="form-label">طريقة دفع المصروف
+       <select value={paymentSource} onChange={e=>setPaymentSource(e.target.value as PaySource)}>
+        {SOURCE_LABELS.map(s=><option key={s.value} value={s.value}>{s.label}</option>)}
+       </select>
+      </label>
+      <label className="form-label">ملاحظات
+       <input value={notes} maxLength={500} onChange={e=>setNotes(e.target.value)}
+        placeholder="اختياري"/>
+      </label>
+     </div>
+    </details>
+    <button type="submit" className="btn-primary w-full py-3 text-lg"
+     disabled={submitting||!expenseType||isWage(expenseType)}>
+     {submitting?"جارٍ الحفظ...":"حفظ المصروف"}
+    </button>
+   </form>
+  </section>
+  <section className="card space-y-3">
+   <div className="flex flex-wrap items-center justify-between gap-2">
+    <h2 className="section-title mb-0">مصروفات الشهر</h2>
+    <select className="max-w-40" aria-label="شهر المصروفات"
+     value={activeMonth} onChange={e=>{setSelectedMonth(e.target.value);setVisibleCount(20);}}>
+     {months.length===0?<option value="">هذا الشهر</option>:months.map(k=>
+      <option key={k} value={k}>{summary.get(k)?.name||k}</option>)}
+    </select>
+   </div>
+   {!loaded?<p className="txt-muted">جارٍ تحميل المصروفات...</p>:<div className="grid grid-cols-2 gap-2">
+    <div className="rounded-xl tone-red p-3">
+     <span className="text-xs block">الإجمالي</span>
+     <strong className="text-xl" dir="ltr">{formatCurrency(current?.total||0)}</strong>
+    </div>
+    <div className="rounded-xl tone-slate p-3">
+     <span className="text-xs block">عدد المصروفات</span>
+     <strong className="text-xl">{current?.entries.length||0}</strong>
+    </div>
+   </div>}
+   <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+    <summary className="font-semibold cursor-pointer">توزيع المصروفات حسب النوع</summary>
+    <div className="space-y-2 mt-3">
+     {Object.entries(current?.types||{}).sort((a,b)=>b[1]-a[1]).map(([name,value])=>
+      <div key={name} className="flex items-center justify-between gap-2 border-b py-2">
+       <span>{name}</span><strong dir="ltr">{formatCurrency(value)}</strong>
+      </div>)}
+     {!current&&<p className="txt-muted">لا توجد مصروفات لهذا الشهر.</p>}
+    </div>
+   </details>
+   <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+    <summary className="font-semibold cursor-pointer">سجل المصروفات ({current?.entries.length||0})</summary>
+    <div className="space-y-3 mt-3">
+     {(current?.entries.length||0)>8&&<input type="search" aria-label="البحث في المصروفات"
+      placeholder="بحث عن مصروف..." value={search}
+      onChange={e=>{setSearch(e.target.value);setVisibleCount(20);}}/>}
+     {records.length===0?<p className="txt-muted">لا توجد مصروفات.</p>:
+      records.slice(0,visibleCount).map(exp=><ExpenseItem key={exp.id} expense={exp}
+       types={expenseTypes.filter(x=>!isWage(x.name)).map(x=>x.name)}
+       editing={editingId===exp.id}
+       onEdit={()=>setEditingId(exp.id)} onCancel={()=>setEditingId(null)}
+       onSave={patch=>void updateExpense(exp,patch)}
+       onDelete={()=>void removeExpense(exp)}/>)}
+     {records.length>visibleCount&&<button type="button" className="btn-secondary w-full"
+      onClick={()=>setVisibleCount(n=>n+20)}>عرض المزيد ({records.length-visibleCount})</button>}
+    </div>
+   </details>
+  </section>
+ </div>;
 }
 
-function ExpenseRow({
-  expense,
-  expenseTypes,
-  editing,
-  onEdit,
-  onCancel,
-  onSave,
-  onDelete,
-}: {
-  expense: Expense;
-  expenseTypes: string[];
-  editing: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onSave: (patch: { expense_type: string; amount: number; notes: string }) => void;
-  onDelete: () => void;
-}) {
-  const [type, setType] = useState(expense.expense_type);
-  const [amount, setAmount] = useState(String(expense.amount));
-  const [notes, setNotes] = useState(expense.notes || "");
-
-  if (!editing) {
-    return (
-      <tr>
-        <td data-label="التاريخ">{new Date(expense.occurred_at).toLocaleDateString("en-GB")}</td>
-        <td data-label="نوع المصروف">{expense.expense_type}</td>
-        <td data-label="المبلغ" className="txt-expense">{formatCurrency(expense.amount)}</td>
-        <td data-label="ملاحظات">{expense.notes || ""}</td>
-        <td className="flex gap-1.5">
-          {expense.crew_business_date?<span className="txt-muted text-xs">تلقائي — حسب السيارات</span>:<>
-          <button type="button" className="action-button edit-button" onClick={onEdit}>تعديل</button>
-          <button type="button" className="action-button delete-button" onClick={onDelete}>حذف</button></>}
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr>
-      <td colSpan={5}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 py-2">
-          <div>
-            <label className="form-label">نوع المصروف</label>
-            <select value={type} onChange={(e) => setType(e.target.value)}>
-              {expenseTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="form-label">المبلغ</label>
-            <input type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          </div>
-          <div>
-            <label className="form-label">ملاحظات</label>
-            <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2 pb-2">
-          <button type="button" className="btn-primary" onClick={() => onSave({ expense_type: type, amount: Number(amount) || 0, notes })}>حفظ</button>
-          <button type="button" className="btn-secondary" onClick={onCancel}>إلغاء</button>
-        </div>
-      </td>
-    </tr>
-  );
+function ExpenseItem({expense,types,editing,onEdit,onCancel,onSave,onDelete}:{
+ expense:Expense;types:string[];editing:boolean;onEdit:()=>void;onCancel:()=>void;
+ onSave:(patch:{expense_type:string;amount:number;notes:string})=>void;onDelete:()=>void
+}){
+ const [type,setType]=useState(expense.expense_type);
+ const [amount,setAmount]=useState(String(expense.amount));
+ const [notes,setNotes]=useState(expense.notes||"");
+ const locked=!!expense.crew_business_date||!!expense.salary_worker_id;
+ return <div className="border-b pb-3 space-y-2" style={{borderColor:"var(--border)"}}>
+  {!editing?<div className="flex justify-between items-start gap-3">
+   <div className="min-w-0">
+    <strong className="block">{canonicalExpenseType(expense.expense_type,expense.notes)}</strong>
+    <p className="txt-muted text-xs">{expenseDay(expense.occurred_at)}</p>
+    {expense.notes&&<p className="txt-muted text-sm break-words">{expense.notes}</p>}
+   </div>
+   <div className="text-end shrink-0">
+    <strong className="txt-expense block" dir="ltr">{formatCurrency(expense.amount)}</strong>
+    {locked?<span className="txt-muted text-xs">قيد أجور مرتبط</span>:
+    <div className="flex gap-3 justify-end mt-1 text-xs">
+     <button type="button" className="link-inline" onClick={onEdit}>تعديل</button>
+     <button type="button" className="txt-danger" onClick={onDelete}>إلغاء</button>
+    </div>}
+   </div>
+  </div>:<form className="space-y-3 p-3 rounded-xl"
+   style={{background:"var(--surface-2)"}} onSubmit={e=>{
+    e.preventDefault();onSave({expense_type:type,amount:Number(amount),notes});
+   }}>
+   <label className="form-label">فئة المصروف
+    <select value={type} onChange={e=>setType(e.target.value)}>
+     {(!types.includes(type)?[type,...types]:types).map(t=><option key={t} value={t}>{t}</option>)}
+    </select>
+   </label>
+   <label className="form-label">المبلغ
+    <input type="number" inputMode="decimal" min=".01" step=".01"
+     value={amount} onChange={e=>setAmount(e.target.value)} required/>
+   </label>
+   <label className="form-label">ملاحظات
+    <input value={notes} onChange={e=>setNotes(e.target.value)}/>
+   </label>
+   <div className="grid grid-cols-2 gap-2">
+    <button type="submit" className="btn-primary">حفظ التعديل</button>
+    <button type="button" className="btn-secondary" onClick={onCancel}>رجوع</button>
+   </div>
+  </form>}
+ </div>;
 }

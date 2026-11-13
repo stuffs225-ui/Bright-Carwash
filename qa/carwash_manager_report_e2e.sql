@@ -33,6 +33,15 @@ begin
  or has_function_privilege('authenticated',
    'public.carwash_submit_manager_day_report(date,numeric,numeric,numeric,text,uuid)','EXECUTE')
  then raise exception 'Unsafe manager report function grant';end if;
+ perform public.carwash_correct_pending_report(manager_id,d,24,1,1,'QA corrected report','abababab-abab-4bab-8bab-abababababab');
+ perform public.carwash_correct_pending_report(manager_id,d,24,1,1,'QA corrected report','abababab-abab-4bab-8bab-abababababab');
+ if (select count(*) from public.carwash_report_corrections where business_date=d)<>1
+ then raise exception 'Correction duplicated';end if;
+ if (select actual_cash from public.carwash_worker_day_reports where business_date=d)<>25
+ then raise exception 'Original report overwritten';end if;
+ if (select before_values->>'cash' from public.carwash_report_corrections where business_date=d)<>'25.00'
+ and (select (before_values->>'cash')::numeric from public.carwash_report_corrections where business_date=d)<>25
+ then raise exception 'Correction lost original cash';end if;
 end $qa_manager_report$;
 reset role;
 select 'MANAGER REPORT PARITY AND IDEMPOTENCY PASSED' as result;
