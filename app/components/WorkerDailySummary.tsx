@@ -5,7 +5,7 @@ import {WorkerDayReport} from "./WorkerDayReport";
 import {dayIsFinished} from "@/lib/carwashCalendarDay";
 import {workerText,workerMessage,workerDate,workerDirection,workerMoney,type WorkerLocale} from "@/lib/workerI18n";
 
-type OpenDay={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number;submitted?:boolean};
+type OpenDay={date:string;status:"open"|"awaiting_owner";cars:number;cash:number;card:number;crew:number;undelivered:number;submitted?:boolean};
 type Props={token?:string;manager?:boolean;locale?:WorkerLocale;refreshKey?:number;queued?:number};
 const sar=(n:number)=>new Intl.NumberFormat("ar-SA-u-nu-latn",{maximumFractionDigits:2}).format(n)+" ر.س";
 const dateLabel=(date:string,locale:WorkerLocale)=>workerDate(date,locale);
@@ -67,7 +67,8 @@ export function WorkerDailySummary({token,manager=false,locale="ar",refreshKey=0
      <strong className="metric-value">{money(day.crew)}</strong></div>
    </div>
 
-   {!manager&&!!token&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&<WorkerDayReport date={day.date} token={token} manager={manager} locale={locale} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
+   {(day.undelivered||0)>0&&<p className="txt-warning text-sm mt-2" role="status">{tt("days.pendingDelivery",{n:day.undelivered})}</p>}
+   {!manager&&!!token&&dayIsFinished(day.date)&&day.status==="open"&&!day.submitted&&day.undelivered===0&&<WorkerDayReport date={day.date} token={token} manager={manager} locale={locale} queued={queued} onSent={()=>{setDays(old=>old.map(d=>d.date===day.date?{...d,submitted:true}:d));void refresh();}}/>}
    {day.submitted&&<p className="txt-cash font-bold mt-3">{tt("days.reportSent")}</p>}
   </details>)}
 

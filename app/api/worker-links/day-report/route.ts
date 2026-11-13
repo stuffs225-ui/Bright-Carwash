@@ -66,6 +66,9 @@ export async function POST(request:Request){
   if(existing.data)return NextResponse.json({ok:true,alreadySubmitted:true},{headers:NO_STORE});
   const day=await admin.from("carwash_days").select("status").eq("business_date",date).maybeSingle();
   if(day.error||day.data?.status!=="open")return deny(409,"اليوم غير مفتوح");
+  const delivery=await admin.rpc("carwash_undelivered_count",{p_date:date});
+  if(delivery.error)return deny(503,"تعذر التحقق من تسليم جميع السيارات");
+  if(Number(delivery.data)>0)return deny(409,"لا يمكن إرسال الموازنة قبل تسليم جميع السيارات ("+delivery.data+")");
   const file=form.get("photo");
   if(!(file instanceof File)||file.size<=0||file.size>3*1024*1024||
    !["image/jpeg","image/png","image/webp"].includes(file.type))return deny(400,"ارفع صورة JPG أو PNG أو WebP لا تتجاوز 3MB");

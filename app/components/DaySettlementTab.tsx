@@ -53,6 +53,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [movementBusy,setMovementBusy]=useState(false);
  const [devices,setDevices]=useState<Device[]>([]);
  const [settlement,setSettlement]=useState<Settlement|null>(null);
+ const [pendingDeliveries,setPendingDeliveries]=useState<number|null>(null);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [detail,setDetail]=useState<Entry|null>(null);
@@ -151,6 +152,17 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    setSettlement((proof.data as Settlement)||null);
    const {data:{session}}=await supabase.auth.getSession();
    if(!session)throw Error("جلسة المدير غير متاحة");
+   const summaryResponse=await fetch("/api/worker-links/summary",{
+    method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},
+    body:"{}",cache:"no-store"
+   });
+   if(!summaryResponse.ok)throw Error("تعذر فحص السيارات التي لم تُسلّم");
+   const summaryJson=await summaryResponse.json().catch(()=>({}));
+   const pending=(Array.isArray(summaryJson.days)?summaryJson.days:[])
+    .find((d:{date:string})=>d.date===selected)?.undelivered;
+   if(current?.status==="open"&&typeof pending!=="number")
+    throw Error("تعذر التأكد من تسليم جميع السيارات");
+   setPendingDeliveries(typeof pending==="number"?pending:0);
    const response=await fetch("/api/worker-links/day-report?date="+encodeURIComponent(selected),{headers:{authorization:"Bearer "+session.access_token},cache:"no-store"});
    const json=await response.json().catch(()=>({}));
    if(!response.ok)throw Error(json.error||"تعذر تحميل تقرير العامل");
@@ -163,6 +175,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
  },[selected,reportCorrection]);
 
+ useEffect(()=>{setPendingDeliveries(null);},[selected]);
  useEffect(()=>{
   void reloadDays();
   const timer=setInterval(()=>{setNow(new Date());if(navigator.onLine)void reloadDays();},20000);
@@ -207,6 +220,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  }
  async function closeDay(){
   if(!current||current.status!=="open"||!dayIsFinished(selected,now)||busy)return;
+  if(pendingDeliveries!==0){
+   setError(pendingDeliveries===null?"لم يكتمل فحص تسليم السيارات.":
+    "لا يمكن اعتماد اليوم: توجد "+pendingDeliveries+" سيارة لم يتم تسليمها.");
+   return;
+  }
   if(incomplete.length&&!confirmedWorkerSync){setError("أكد مراجعة الأجهزة التي لم تُنهِ المزامنة.");return;}
   const actual=Number(cashActual),network=Number(posActual);
   if(!cashActual.trim()||!posActual.trim()||
@@ -330,6 +348,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    {current.status==="open"?(dayIsFinished(selected,now)?
     <section className="card space-y-4">
      <h3 className="section-title">اعتماد يوم {selected}</h3>
+     {pendingDeliveries===null?<p className="txt-muted text-sm">جارٍ فحص تسليم السيارات...</p>:
+      pendingDeliveries>0?<p role="alert" className="txt-danger font-bold">
+       يجب تسليم {pendingDeliveries} سيارة قبل إقفال اليوم. افتح قائمة السيارات وسجّل «تم التسليم» أولًا.
+      </p>:null}
      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <label className="form-label">الكاش الفعلي (ر.س)
        <input type="number" inputMode="decimal" min="0" step=".01" value={cashActual}
@@ -365,7 +387,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
        onChange={e=>setManagerProof(e.currentTarget.files?.[0]||null)}/>
      </label>
      <button type="button" className="btn-primary w-full py-3"
-      disabled={busy||reportCorrection||incomplete.length>0&&!confirmedWorkerSync} onClick={()=>void closeDay()}>
+      disabled={busy||reportCorrection||pendingDeliveries!==0||incomplete.length>0&&!confirmedWorkerSync} onClick={()=>void closeDay()}>
       {busy?"جارٍ الاعتماد":"اعتماد وإقفال اليوم"}
      </button>
      {reportForDay&&<details className="border rounded-xl p-3" style={{borderColor:"var(--border)"}}>
