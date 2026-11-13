@@ -24,9 +24,9 @@ insert into public.entries(
  'qa-direct-close-2026-01-16','88888888-8888-4888-8888-888888888888');
 set local role authenticated;
 do $qa$
-declare decision text;car_id uuid;denied boolean:=false;
+declare denied boolean:=false;
 begin
- -- The database must reject any manager approval when one car is not delivered.
+ -- The manager must be refused before all cars are handed over.
  begin
   perform public.carwash_manager_close_day('2026-01-16',25,0,null,null,false);
  exception when others then
@@ -34,13 +34,23 @@ begin
   denied:=true;
  end;
  if not denied then raise exception 'An undelivered car was incorrectly approved';end if;
+end $qa$;
+reset role;
+-- Readiness RPC is intentionally server-role-only, just like production's API.
+do $qa$
+declare car_id uuid;
+begin
  select id into car_id from public.entries where client_mutation_id='qa-direct-close-2026-01-16';
  if car_id is null then raise exception 'Synthetic car missing';end if;
- -- Delivery works immediately from washing without a prior ready tap.
  perform public.carwash_readiness_action(
   car_id,'delivered','manager','88888888-8888-4888-8888-888888888888',null,null);
  if not exists(select 1 from public.carwash_entry_readiness where entry_id=car_id and status='delivered')
  then raise exception 'Direct delivery from washing did not complete';end if;
+end $qa$;
+set local role authenticated;
+do $qa$
+declare decision text;
+begin
  decision:=public.carwash_manager_close_day('2026-01-16',25,0,null,null,false);
  if decision<>'approved' or
    not exists(select 1 from public.carwash_days
