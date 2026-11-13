@@ -92,7 +92,7 @@
   "ready.ready": "Ta shirya a karɓa",
   "ready.delivered": "An miƙa mota",
   "ready.markReady": "Alama ta shirya",
-  "ready.share": "Tura saƙon an gama",
+  "ready.share": "Raba hoto",
   "ready.markDelivered": "An miƙa mota",
   "ready.photoOptional": "Hoton mota (zaɓi ne)",
   "ready.capture": "📷 Ɗauki hoto",
@@ -103,7 +103,7 @@
   "ready.savedPhoto": "An ajiye hoton.",
   "ready.noPhone": "Babu ingantacciyar lambar waya ga motar nan.",
   "ready.noSharing": "Ba a iya tura hoto a wannan wayar ba.",
-  "ready.shareClosed": "An rufe rabawa. Ba a tabbatar an aika ba.",
+  "ready.shareClosed": "An buɗe rabawa. Zaɓi WhatsApp da mai motar, sannan ka aika hoto da saƙo.",
   "ready.imageError": "Ba a iya aika hoton ba.",
   "ready.fileEmpty": "Hoton babu komai.",
   "ready.selectImage": "Zaɓi hoto.",
@@ -150,5 +150,6 @@
   "offline.consent": "Yardar abokin ciniki ga WhatsApp",
   "offline.noService": "Da farko zaɓi aiki.",
   "offline.failure": "Ba a iya ajiye bayanan a wayar ba.",
-  "offline.queueSafe": "Bayanan da ba a tura ba suna nan a wayarka."
+  "offline.queueSafe": "Bayanan da ba a tura ba suna nan a wayarka.",
+  "days.pendingDelivery": "Akwai motoci {n} da ba a miƙa ba. Ba za a iya rufe ranar ba."
 }

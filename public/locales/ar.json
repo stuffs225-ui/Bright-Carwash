@@ -92,7 +92,7 @@
   "ready.ready": "جاهزة للاستلام",
   "ready.delivered": "تم التسليم",
   "ready.markReady": "إبلاغ بالجاهزية",
-  "ready.share": "مشاركة الجاهزية",
+  "ready.share": "مشاركة",
   "ready.markDelivered": "تم التسليم",
   "ready.photoOptional": "صورة السيارة (اختيارية)",
   "ready.capture": "📷 تصوير السيارة",
@@ -103,7 +103,7 @@
   "ready.savedPhoto": "تم حفظ الصورة.",
   "ready.noPhone": "لا يوجد رقم جوال صالح لهذه السيارة.",
   "ready.noSharing": "مشاركة الصور غير متاحة على هذا الجهاز.",
-  "ready.shareClosed": "أُغلقت المشاركة. لا يمكن تأكيد إرسالها.",
+  "ready.shareClosed": "فُتحت المشاركة؛ اختر واتساب ومحادثة العميل وأرسل الصورة مع نص الجاهزية.",
   "ready.imageError": "تعذر مشاركة الصورة.",
   "ready.fileEmpty": "الصورة فارغة.",
   "ready.selectImage": "اختر صورة.",
@@ -150,5 +150,6 @@
   "offline.consent": "موافقة العميل على إشعار واتساب",
   "offline.noService": "اختر الخدمة أولًا.",
   "offline.failure": "تعذر حفظ العملية على هذا الجهاز.",
-  "offline.queueSafe": "البيانات غير المرسلة تبقى على جهازك."
+  "offline.queueSafe": "البيانات غير المرسلة تبقى على جهازك.",
+  "days.pendingDelivery": "باقي {n} سيارة لم تُسلّم. لا يمكن إقفال اليوم قبل تسليمها."
 }

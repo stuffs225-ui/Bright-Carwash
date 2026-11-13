@@ -92,7 +92,7 @@
   "ready.ready": "Ready for collection",
   "ready.delivered": "Delivered",
   "ready.markReady": "Mark ready",
-  "ready.share": "Share ready notice",
+  "ready.share": "Share",
   "ready.markDelivered": "Mark delivered",
   "ready.photoOptional": "Car photo (optional)",
   "ready.capture": "📷 Take photo",
@@ -103,7 +103,7 @@
   "ready.savedPhoto": "Photo saved.",
   "ready.noPhone": "No valid customer phone for this car.",
   "ready.noSharing": "Photo sharing isn't supported here.",
-  "ready.shareClosed": "Share closed. Sending isn't confirmed.",
+  "ready.shareClosed": "Share opened. Choose WhatsApp, select the customer, and send the image with its message.",
   "ready.imageError": "Could not share photo.",
   "ready.fileEmpty": "Photo is empty.",
   "ready.selectImage": "Select an image.",
@@ -150,5 +150,6 @@
   "offline.consent": "Customer WhatsApp consent",
   "offline.noService": "Select a service first.",
   "offline.failure": "Could not save on this device.",
-  "offline.queueSafe": "Unsent entries remain on this device."
+  "offline.queueSafe": "Unsent entries remain on this device.",
+  "days.pendingDelivery": "{n} cars still need delivery before day closing."
 }
