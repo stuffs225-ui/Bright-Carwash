@@ -171,6 +171,11 @@ jobs:
             sleep 1
           done
           BROWSER=webkit node qa/mobile-acceptance.cjs
+          BROWSER=chromium node qa/mobile-acceptance.cjs
+          BROWSER=webkit node qa/worker-language-acceptance.cjs
+          BROWSER=chromium node qa/worker-language-acceptance.cjs
+          node qa/worker-offline-locale-acceptance.cjs
+          node --check public/worker-offline.js
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: validation-placeholder-no-real-credentials
