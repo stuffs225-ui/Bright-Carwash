@@ -5,19 +5,29 @@ const assert=require('node:assert/strict');
  const engine=process.env.BROWSER==='webkit'?webkit:chromium;
  const browser=await engine.launch({headless:true});
  const context=await browser.newContext({...devices['iPhone 13'],serviceWorkers:'block'});
+ await context.addInitScript(()=>{
+  Object.defineProperty(navigator,"canShare",{configurable:true,value:p=>p.files?.length===1});
+  Object.defineProperty(navigator,"share",{configurable:true,value:async p=>{
+   window.__share={name:p.files[0].name,mime:p.files[0].type,caption:p.text,size:p.files[0].size};
+  }});
+ });
  // Legacy cash/offline test intentionally runs in Arabic; a separate fixture
  // verifies that untouched devices start in Hausa and remembers last choice.
  await context.addInitScript(()=>localStorage.setItem('bright_carwash_worker_lang_v1','ar'));
  const page=await context.newPage();
  const recorded=new Map();let writes=0;const today=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Riyadh'}).format(new Date());
  const preset={id:'11111111-1111-4111-8111-111111111111',car_type:'سيارة صغيرة',service_type:'غسيل كامل',amount:25};
- const car={id:'22222222-2222-4222-8222-222222222222',carType:'سيارة صغيرة',serviceType:'غسيل كامل',date:today,occurredAt:new Date().toISOString(),cash:25,card:0,discount:0,phone:'+966500000000',consent:true,status:'ready',photoAvailable:false};
+ const car={id:'22222222-2222-4222-8222-222222222222',carType:'سيارة صغيرة',serviceType:'غسيل كامل',date:today,occurredAt:new Date().toISOString(),cash:25,card:0,discount:0,phone:'+966500000000',consent:true,status:'washing',photoAvailable:false};
  await page.route('**/api/worker-links/**',async route=>{
   const url=route.request().url(),body=route.request().postDataJSON();let json={};
   if(url.endsWith('/catalog'))json={label:'اختبار اصطناعي',presets:[preset],addons:[],discountLimit:10,manualServiceEnabled:true};
   else if(url.endsWith('/summary'))json={days:[{date:today,status:'open',cars:recorded.size,cash:25*recorded.size,card:0,crew:10*recorded.size}],today};
   else if(url.endsWith('/record')){writes++;recorded.set(body.mutationId,body);json={ok:true,id:body.mutationId};}
-  else if(url.endsWith('/active'))json=body.op==='list'?{cars:[car],readyMessage:'سيارتك جاهزة للاستلام'}:{ok:true};
+  else if(url.endsWith('/active')){
+   if(body.op==='share_opened')car.status='ready';
+   if(body.op==='delivered')car.status='delivered';
+   json=body.op==='list'?{cars:[car],readyMessage:'سيارتك جاهزة للاستلام'}:{ok:true};
+  }
   await route.fulfill({json});
  });
  const checks=[];
@@ -74,10 +84,23 @@ const assert=require('node:assert/strict');
  await page.evaluate(()=>window.dispatchEvent(new Event('online')));
  await page.waitForTimeout(300);assert.equal(writes,2);checks.push('Reconnect and repeated online event do not duplicate');
  await page.getByRole('button',{name:/سيارات اليوم وحالة الجاهزية/}).click();
- await page.getByRole('button',{name:'مشاركة الجاهزية',exact:true}).waitFor();
- let destination='';await page.route('https://wa.me/**',async route=>{destination=route.request().url();await route.fulfill({body:'synthetic WhatsApp destination'});});
- await page.getByRole('button',{name:'مشاركة الجاهزية',exact:true}).click();
- await page.waitForURL('https://wa.me/**');assert.match(destination,/966500000000/);assert.ok(new URL(destination).searchParams.get('text').includes('جاهزة'));checks.push('One tap opens exact WhatsApp recipient and prepared message without photo');
+ const actions=page.getByTestId('direct-ready-actions');
+ await actions.waitFor();
+ assert.equal(await actions.getByRole('button').count(),2,'Only Share and Delivered are direct options');
+ assert.equal(await page.getByRole('button',{name:/إبلاغ بالجاهزية/}).count(),0);
+ assert.equal(await page.getByRole('button',{name:/إضافة خصم/}).count(),0);
+ await actions.getByRole('button',{name:'مشاركة',exact:true}).click();
+ await page.waitForFunction(()=>Boolean(window.__share));
+ const shared=await page.evaluate(()=>window.__share);
+ assert.equal(shared.mime,'image/jpeg');assert.ok(shared.size>5000);
+ assert.match(shared.caption,/سيارتك جاهزة/);
+ checks.push('Share uses a prepared actual JPEG and Arabic caption, never text-only wa.me');
+ const dialogs=[];page.on('dialog',d=>{dialogs.push(d.type());void d.dismiss()});
+ await actions.getByRole('button',{name:'تم التسليم',exact:true}).click();
+ await page.getByText('تم توثيق التسليم.',{exact:true}).waitFor();
+ assert.deepEqual(dialogs,[],'Delivery must not trigger a confirmation popup');
+ assert.equal(await page.getByTestId('direct-ready-actions').count(),0);
+ checks.push('Delivered directly from the ready list with no confirmation dialog');
  console.log(JSON.stringify({browser:(process.env.BROWSER||'chromium')+' iPhone 13 emulation',checks,uniqueOperations:recorded.size,recordRequests:writes},null,2));
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});

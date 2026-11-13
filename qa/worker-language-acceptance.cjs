@@ -30,6 +30,13 @@ const fs=require("node:fs");
   });
  };
  const ctx=await browser.newContext({...devices[device],serviceWorkers:"block"});
+ const shareMock=()=>{
+  Object.defineProperty(navigator,"canShare",{configurable:true,value:p=>p.files?.length===1});
+  Object.defineProperty(navigator,"share",{configurable:true,value:async p=>{
+   window.__share={name:p.files[0].name,mime:p.files[0].type,caption:p.text};
+  }});
+ };
+ await ctx.addInitScript(shareMock);
  const page=await ctx.newPage();await fake(page);
  await page.goto(URL);
  await page.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
@@ -62,6 +69,7 @@ const fs=require("node:fs");
  assert.equal(await page.evaluate(()=>localStorage.getItem(localeKey)),"ar");
  await ctx.close();
  const other=await browser.newContext({...devices[device],serviceWorkers:"block"});
+ await other.addInitScript(shareMock);
  const fresh=await other.newPage();await fake(fresh);
  await fresh.goto(URL);
  await fresh.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
@@ -83,16 +91,13 @@ const fs=require("node:fs");
  const visible=(await fresh.locator(".worker-screen").innerText()).replace("العربية","");
  assert.doesNotMatch(visible,/[\u0600-\u06FF]/,
   "Hausa worker page must have no hardcoded Arabic text except the Arabic language name");
- // Customer WhatsApp message remains Arabic, independent of worker's Hausa UI.
- let whatsapp="";
- await fresh.route("https://wa.me/**",async route=>{
-  whatsapp=route.request().url();
-  await route.fulfill({body:"Fake WhatsApp response"});
- });
- await fresh.getByRole("button",{name:"Tura saƙon an gama"}).click();
- await fresh.waitForURL("https://wa.me/**");
- assert.match(whatsapp,/966500000000/);
- assert.match(new URL(whatsapp).searchParams.get("text"),/سيارتك جاهزة/);
+ // Customer caption stays Arabic regardless of the Hausa user interface.
+ await fresh.getByRole("button",{name:"Raba hoto"}).click();
+ await fresh.waitForFunction(()=>Boolean(window.__share));
+ const shared=await fresh.evaluate(()=>window.__share);
+ assert.equal(shared.mime,"image/jpeg");
+ assert.match(shared.caption,/سيارتك جاهزة/);
+ assert.equal(await fresh.getByRole("button",{name:/Alama ta shirya/}).count(),0);
  await other.close();
  // Manager shares the JSX component but is deliberately forced to Arabic.
  const source=fs.readFileSync("app/components/CarRegistrationScreen.tsx","utf8");
