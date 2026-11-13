@@ -27,8 +27,6 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 <form class="card" id="form" hidden>
 <label for="preset">نوع السيارة والخدمة</label><select id="preset" required></select>
 <div id="addons"></div>
-<button type="button" id="discount-toggle" aria-pressed="false">إضافة خصم (اختياري)</button>
-<div id="discount-area" hidden><label for="discount">قيمة الخصم (بحد أقصى 10 ريالات)</label><input id="discount" type="number" inputmode="decimal" min="0" max="10" step=".01" value="0"/></div>
 <label>طريقة الدفع</label><div class="choice" id="payment-method">
 <button type="button" data-method="cash" aria-pressed="true">كاش</button>
 <button type="button" data-method="card" aria-pressed="false">شبكة</button>
