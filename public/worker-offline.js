@@ -25,8 +25,7 @@
  if(!supported.includes(lang))lang=workerMode?"ha-NG":"ar";
  const localeFiles=new Map(),ui={};
  let strings={},lastNotice=null,hash="",db=null,catalog=null;
- let method="cash",discountEnabled=false,carType="",manualMode=false;
- let discountLimit=10;
+ let method="cash",carType="",manualMode=false;
  const carKeys={"سيارة صغيرة":"car.small","سيارة كبيرة":"car.large","شاحنة":"car.truck",
   "باص صغير":"car.smallBus","باص كبير":"car.largeBus","سيدان":"car.sedan","SUV":"car.suv"};
  const serviceKeys={"غسيل كامل":"service.full","غسيل خارجي":"service.exterior","غسيل بستم":"service.piston"};
@@ -49,14 +48,12 @@
   if(workerMode)document.title=t("reg.title")+" — "+t("offline.subtitle");
   for(const el of document.querySelectorAll("[data-i18n]")){
    const key=el.getAttribute("data-i18n");
-   if(key==="offline.discountMaximum")el.textContent=t(key,{n:discountLimit});
-   else el.textContent=t(key);
+   el.textContent=t(key);
   }
   for(const el of document.querySelectorAll("[data-i18n-placeholder]"))
    el.placeholder=t(el.getAttribute("data-i18n-placeholder"));
   for(const btn of document.querySelectorAll("[data-locale]"))
    btn.setAttribute("aria-pressed",String(btn.getAttribute("data-locale")===lang));
-  if($("discount-toggle"))$("discount-toggle").textContent=t(discountEnabled?"reg.discountCancel":"reg.discountAdd");
   if(lastNotice)notify(lastNotice.key,lastNotice.error,lastNotice.vars);
   drawPresets();drawAddons();update();
   if(method==="mixed"&&oldCash!==undefined&&oldCard!==undefined){
@@ -113,9 +110,6 @@
  const row=await reqResult(db.transaction("catalogs","readonly").objectStore("catalogs").get(hash)).catch(()=>null);
  if(!row||Date.now()-row.savedAt>14*86400000){notify("offline.none",true);return;}
  catalog=row.catalog;
- discountLimit=Number.isFinite(Number(catalog.discountLimit))?
-  Math.max(0,Math.min(1000,Number(catalog.discountLimit))):10;
- $("discount").max=String(discountLimit);
  const presets=catalog.presets||[],addons=catalog.addons||[];
  if(!presets.length){notify("offline.none",true);return;}
  const selectedPreset=()=>presets.find(p=>p.id===$("preset").value);
@@ -158,13 +152,12 @@
    parent.append(label);
   }
  }
- const discount=()=>discountEnabled?Number($("discount").value)||0:0;
  const manualPrice=()=>Number($("manual-price")?.value||0);
  const price=()=>{
   const base=manualMode?manualPrice():Number(selectedPreset()?.amount||0);
   const extra=addons.filter(a=>document.querySelector('[data-addon="'+a.id+'"]')?.checked)
     .reduce((sum,a)=>sum+Number(a.price),0);
-  return Math.round((base+extra-discount())*100)/100;
+  return Math.round((base+extra)*100)/100;
  };
  function update(){
   if(!catalog)return;
@@ -215,13 +208,6 @@
   update();
  });
  if($("manual-price"))$("manual-price").addEventListener("input",update);
- $("discount").addEventListener("input",update);
- $("discount-toggle").addEventListener("click",()=>{
-  discountEnabled=!discountEnabled;$("discount-area").hidden=!discountEnabled;
-  $("discount-toggle").setAttribute("aria-pressed",String(discountEnabled));
-  $("discount-toggle").textContent=t(discountEnabled?"reg.discountCancel":"reg.discountAdd");
-  if(!discountEnabled)$("discount").value="0";update();
- });
  for(const button of $("payment-method").querySelectorAll("button")){
   button.addEventListener("click",()=>{
    method=button.dataset.method;
@@ -256,7 +242,7 @@
   event.preventDefault();
   const base=manualMode?manualPrice():Number(selectedPreset()?.amount||0);
   const net=price(),cash=Number($("cash").value),card=Number($("card").value);
-  const discountValue=discount();
+  const discountValue=0;
   if(workerMode&&!carType){notify("offline.noService",true);return;}
   if(manualMode&&catalog.manualServiceEnabled===false){notify("error.customDisabled",true);return;}
   if(manualMode&&(!Number.isFinite(base)||base<=0||base>5000||!$("manual-service")?.value)){
@@ -264,7 +250,6 @@
   }
   if((!manualMode&&!selectedPreset())||!Number.isFinite(net)||net<=0||
    ![cash,card,discountValue].every(Number.isFinite)||cash<0||card<0||
-   discountValue<0||discountValue>discountLimit||
    Math.round((cash+card)*100)!==Math.round(net*100)){
    notify("offline.invalid",true);return;
   }
@@ -296,9 +281,6 @@
    await done;
    $("notes").value="";$("phone").value="";
    if($("consent"))$("consent").checked=false;
-   discountEnabled=false;$("discount").value="0";$("discount-area").hidden=true;
-   $("discount-toggle").setAttribute("aria-pressed","false");
-   $("discount-toggle").textContent=t("reg.discountAdd");
    if(workerMode){carType="";$("service-panel").hidden=true;
     for(const btn of document.querySelectorAll("[data-car]"))btn.setAttribute("aria-pressed","false");}
    setManual(false);update();
