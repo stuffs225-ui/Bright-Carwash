@@ -138,7 +138,7 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
   setBusy(car.id);setError("");setNotice("");
   try{
    await call("delivered",car.id);
-   setNotice(tt("ready.savedDelivered"));
+   setNotice(workerText("ar","ready.savedDelivered"));
    await load();
   }catch(e){setError(e instanceof Error?e.message:"فشل تحديث حالة السيارة");}
   finally{setBusy("");}
@@ -185,7 +185,7 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
    });
    void call("share_opened",car.id).then(()=>load())
     .catch(e=>setError(e instanceof Error?e.message:tt("error.cars")));
-   void pending.then(()=>setNotice(tt("ready.shareClosed"))).catch(e=>{
+   void pending.then(()=>setNotice(workerText("ar","ready.shareClosed"))).catch(e=>{
     if(!(e instanceof Error&&e.name==="AbortError"))setError(tt("ready.imageError"));
    });
   }catch{setError(tt("ready.imageError"));}
