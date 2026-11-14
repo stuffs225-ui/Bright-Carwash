@@ -10,6 +10,14 @@ export async function loadPresets(): Promise<EntryPreset[]> {
   return (data as EntryPreset[]) || [];
 }
 
+/** Manager-only settings view includes inactive entries for safe restoration. */
+export async function loadAllPresets():Promise<EntryPreset[]>{
+ const {data,error}=await supabase.from("entry_presets").select("*")
+  .order("sort_order",{ascending:true});
+ if(error)throw error;
+ return (data as EntryPreset[])||[];
+}
+
 // اقتراحات السعر للنموذج اليدوي: كل الأسعار المسجّلة لهذي التركيبة
 export function suggestionsFor(
   presets: EntryPreset[],
