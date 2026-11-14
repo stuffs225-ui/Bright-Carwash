@@ -1,6 +1,13 @@
 import {describe,it,expect} from "vitest";
-import {calendarDayTotals,dayIsFinished,riyadhDayKey,visibleWorkerCalendarEntries} from "./carwashCalendarDay";
+import {calendarDayTotals,crewBonusEligible,dayIsFinished,riyadhDayKey,visibleWorkerCalendarEntries} from "./carwashCalendarDay";
 describe("Midnight Riyadh business dates (not old 15:00-04:00 shift)",()=>{
+ it("accrues 10 SAR for a truck along with cars, but not unknown vehicle classes",()=>{
+  expect(crewBonusEligible("سيارة صغيرة")).toBe(true);
+  expect(crewBonusEligible("سيارة كبيرة")).toBe(true);
+  expect(crewBonusEligible("شاحنة")).toBe(true);
+  expect(crewBonusEligible("دراجة")).toBe(false);
+  expect(calendarDayTotals([{car_type:"شاحنة",cash_paid:0,card_paid:50}]).collectiveTens).toBe(10);
+ });
  it("classifies 23:59:59 and 00:00:00 exactly",()=>{
   expect(riyadhDayKey("2026-11-05T20:59:59.000Z")).toBe("2026-11-05");
   expect(riyadhDayKey("2026-11-05T21:00:00.000Z")).toBe("2026-11-06");
