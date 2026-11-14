@@ -57,7 +57,7 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
   const response=await fetch("/api/worker-links/active",{
    method:"POST",headers:await headers(),
    body:JSON.stringify({op,entryId,...(token?{token}:{})}),
-   credentials:"same-origin",cache:"no-store"
+   credentials:"same-origin",cache:"no-store",keepalive:op==="share_opened"
   });
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(data.error||"تعذر تحميل السيارات");
