@@ -18,11 +18,13 @@ begin
  insert into public.worker_ledger(worker_id,kind,amount,notes)
  values(v_worker,'earning',100,'Synthetic accrued wage');
  update public.workers set name='Synthetic renamed worker',
-   hourly_rate=12.50,notes='Renamed from settings',active=false
+   hourly_rate=12.50,notes='Renamed from settings',active=false,
+   phone='+966500000000',job_title='Team attendant',joined_on=date '2026-11-01'
  where id=v_worker;
  if not exists(select 1 from public.workers
   where id=v_worker and name='Synthetic renamed worker' and active=false
-  and hourly_rate=12.50) then
+  and hourly_rate=12.50 and phone='+966500000000'
+  and job_title='Team attendant' and joined_on=date '2026-11-01') then
   raise exception 'Manager could not rename/archive a worker';
  end if;
  if (select count(*) from public.worker_ledger
