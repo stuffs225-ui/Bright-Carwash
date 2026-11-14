@@ -20,7 +20,7 @@ permissions:
 jobs:
   quality:
     if: github.event_name == 'workflow_dispatch' || github.ref_name != 'chatgpt/carwash-approved-optimization-20261112'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -88,7 +88,7 @@ jobs:
   database-smoke:
     if: github.event_name == 'workflow_dispatch' || github.ref_name != 'chatgpt/carwash-approved-optimization-20261112'
     name: "Synthetic PostgreSQL migrations / RLS / shift close"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -141,7 +141,7 @@ jobs:
   focused-ui:
     name: Focused mobile registration and settlement UI
     if: github.event_name == 'push' && github.ref_name == 'chatgpt/carwash-approved-optimization-20261112'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -183,7 +183,7 @@ jobs:
   focused-database:
     name: Targeted manager day-close security and totals
     if: github.event_name == 'push' && github.ref_name == 'chatgpt/carwash-approved-optimization-20261112'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     services:
       postgres:
