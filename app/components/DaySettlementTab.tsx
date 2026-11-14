@@ -3,6 +3,7 @@ import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 import {fetchAllRows} from "@/lib/fetchAll";
 import {formatCurrency} from "@/lib/business";
+import {settlementAttentionDays,settlementArchiveMonths} from "@/lib/daySettlementNavigation";
 import {dayIsFinished,riyadhDayKey,calendarDayTotals} from "@/lib/carwashCalendarDay";
 import {Modal} from "./Modal";
 import {arabicDate} from "./ArabicDateField";
@@ -43,6 +44,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [days,setDays]=useState<Day[]>([]);
  const [selected,setSelected]=useState("");
  const initialDeepLinkHandled=useRef(false);
+ const detailsRef=useRef<HTMLDivElement>(null);
+ const scrollToDayRef=useRef(false);
+ const [loadingDays,setLoadingDays]=useState(true);
  const [rows,setRows]=useState<Entry[]>([]);
  const [cashExpenseRows,setCashExpenseRows]=useState<{id:string;amount:number;expense_type:string;notes:string|null}[]>([]);
  const [cashPayoutRows,setCashPayoutRows]=useState<{id:string;amount:number;notes:string|null}[]>([]);
@@ -80,6 +84,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const [editCard,setEditCard]=useState("");
  const [editNotes,setEditNotes]=useState("");
  const current=days.find(d=>d.business_date===selected);
+ const attentionDays=useMemo(()=>settlementAttentionDays(days),[days]);
+ const archiveMonths=useMemo(()=>settlementArchiveMonths(days),[days]);
+ const archivedCount=days.length-attentionDays.length;
  const totals=useMemo(()=>calendarDayTotals(rows),[rows]);
  const cashExpenses=useMemo(()=>toMoney(cashExpenseRows.reduce((n,e)=>n+Number(e.amount),0)),[cashExpenseRows]);
  const cashWorkerPayouts=useMemo(()=>toMoney(cashPayoutRows.reduce((n,e)=>n+Number(e.amount),0)),[cashPayoutRows]);
@@ -99,10 +106,16 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
 
  const reloadDays=useCallback(async()=>{
   if(!navigator.onLine)return;
-  const {data,error}=await supabase.from("carwash_days")
-   .select("business_date,status,approved_at,approved_by")
-   .order("business_date",{ascending:false}).limit(90);
-  if(error){setError("تعذر قراءة الأيام: "+error.message);return;}
+  let data:Day[];
+  try{
+   data=await fetchAllRows<Day>((from,to)=>supabase.from("carwash_days")
+    .select("business_date,status,approved_at,approved_by")
+    .order("business_date",{ascending:false}).range(from,to));
+  }catch(e){
+   setLoadingDays(false);
+   setError("تعذر قراءة الأيام: "+(e instanceof Error?e.message:"خطأ الاتصال"));
+   return;
+  }
   const {data:{session}}=await supabase.auth.getSession();
   if(!session){setError("جلسة المدير غير متاحة");return;}
   const response=await fetch("/api/worker-links/day-report?list=1",{
@@ -111,14 +124,18 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   if(!response.ok){setError("تعذر قراءة حالات موازنة العمال");return;}
   const json=await response.json().catch(()=>({}));
   const reportDates=new Set<string>(Array.isArray(json.reportedDates)?json.reportedDates:[]);
-  const list=((data||[]) as Day[]).map(day=>({...day,reported:reportDates.has(day.business_date)}));
+  const list=data.map(day=>({...day,reported:reportDates.has(day.business_date)}));
+  setLoadingDays(false);
   setDays(list);
   // Deep links select a day once; routine refreshes must not reopen a closed day.
   const requested=!initialDeepLinkHandled.current
    ?new URLSearchParams(window.location.search).get("day"):null;
   initialDeepLinkHandled.current=true;
   setSelected(old=>{
-   if(requested&&list.some(d=>d.business_date===requested))return requested;
+   if(requested&&list.some(d=>d.business_date===requested)){
+    scrollToDayRef.current=true;
+    return requested;
+   }
    if(old&&list.some(d=>d.business_date===old))return old;
    return "";
   });
@@ -183,6 +200,25 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    setError("");
   }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
  },[selected,reportCorrection]);
+
+ function selectDay(date:string){
+  if(busy||reportCorrection)return;
+  if(selected===date){
+   detailsRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+   return;
+  }
+  scrollToDayRef.current=true;
+  setSelected(date);setWorkerReport(null);setManagerProof(null);
+  setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);
+ }
+ useEffect(()=>{
+  if(!selected||!scrollToDayRef.current)return;
+  scrollToDayRef.current=false;
+  const frame=window.requestAnimationFrame(()=>{
+   detailsRef.current?.scrollIntoView({behavior:"smooth",block:"start"});
+  });
+  return()=>window.cancelAnimationFrame(frame);
+ },[selected]);
 
  useEffect(()=>{setPendingDeliveries(null);},[selected]);
  useEffect(()=>{
@@ -325,28 +361,32 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <span className="txt-muted text-sm" dir="ltr">{riyadhDayKey(now)}</span>
    </div>
   </section>
-  <section className="card">
-   <h3 className="section-title">الأيام</h3>
-   <div className="flex gap-3 text-xs">
-    <span>غير معتمد: <strong>{days.filter(d=>d.status==="open"&&!d.reported).length}</strong></span>
-    <span>بانتظار الاعتماد: <strong>{days.filter(d=>d.status==="awaiting_owner"||d.reported&&d.status!=="approved").length}</strong></span>
-    <span>معتمد: <strong>{days.filter(d=>d.status==="approved").length}</strong></span>
+  <section className="card space-y-3" data-testid="settlement-attention">
+   <div className="flex items-center justify-between gap-2">
+    <h3 className="section-title mb-0">أيام بحاجة للاعتماد</h3>
+    <span className="txt-muted text-sm">{attentionDays.length} يوم</span>
    </div>
-   {days.length===0?<p className="txt-warning">لا يوجد يوم محاسبي مسجل بعد. يُنشأ يوم الرياض تلقائيًا عند أول تسجيل سيارة.</p>:
+   <div className="flex flex-wrap gap-3 text-xs">
+    <span>بانتظار الاعتماد: <strong>{attentionDays.filter(d=>d.status==="awaiting_owner"||d.reported).length}</strong></span>
+    <span>غير معتمد: <strong>{attentionDays.filter(d=>d.status==="open"&&!d.reported).length}</strong></span>
+   </div>
+   {loadingDays?<p className="txt-muted text-sm">جارٍ تحميل الأيام...</p>:
+    attentionDays.length===0?<p className="txt-cash text-sm">لا توجد أيام معلقة للاعتماد.</p>:
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-     {[...days].sort((a,b)=>Number(a.status==="approved")-Number(b.status==="approved")||
-       b.business_date.localeCompare(a.business_date)).map(d=><button type="button" key={d.business_date}
-       className={selected===d.business_date?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
-       aria-expanded={selected===d.business_date}
-       style={d.status!=="approved"&&(d.reported||d.status==="awaiting_owner")?
-        {borderColor:"#c27c14",borderWidth:2}:undefined}
-       disabled={busy||reportCorrection}
-       onClick={()=>{setSelected(old=>old===d.business_date?"":d.business_date);setWorkerReport(null);setManagerProof(null);setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);}}>
-       {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}
-      </button>)}
+     {attentionDays.map(d=><button type="button" key={d.business_date}
+      data-testid="settlement-attention-day"
+      className={selected===d.business_date?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
+      aria-pressed={selected===d.business_date}
+      style={d.reported||d.status==="awaiting_owner"?{borderColor:"#c27c14",borderWidth:2}:undefined}
+      disabled={busy||reportCorrection} onClick={()=>selectDay(d.business_date)}>
+      <span className="flex justify-between items-center gap-2">
+       <strong>{arabicDate(d.business_date)}</strong>
+       <span className="text-xs">{d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}</span>
+      </span>
+     </button>)}
     </div>}
   </section>
-  {current&&<>
+  {current&&<div ref={detailsRef} id="settlement-selected-day" className="space-y-4 scroll-mt-20" data-testid="settlement-selected-details">
    <section className="card">
     <h3 className="section-title">حسابات {selected}</h3>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -507,7 +547,37 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <strong className={d.sealed_at?"txt-cash":"txt-warning"}>{d.sealed_at?"تمت المزامنة":"لم يؤكد بعد"}</strong>
      </div>)}
    </details>
-  </>}
+  </div>}
+  <section className="card" data-testid="settlement-archive">
+   <details>
+    <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-3 py-1">
+     <span className="font-bold">الأيام المعتمدة — الأرشيف</span>
+     <span className="txt-muted text-sm">{archivedCount} يوم · {archiveMonths.length} شهر</span>
+    </summary>
+    <div className="mt-4 space-y-3">
+     {archiveMonths.length===0?<p className="txt-muted text-sm">لا توجد أيام معتمدة في الأرشيف.</p>:
+      archiveMonths.map(month=><details key={month.month} className="rounded-xl border p-3"
+       data-testid="settlement-archive-month" style={{borderColor:"var(--border)"}}>
+       <summary className="cursor-pointer flex flex-wrap justify-between items-center gap-2 font-semibold">
+        <span>{month.label}</span>
+        <span className="txt-muted text-sm">{month.days.length} يوم</span>
+       </summary>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+        {month.days.map(day=><button type="button" key={day.business_date}
+         className={selected===day.business_date?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
+         data-testid="settlement-archive-day"
+         aria-pressed={selected===day.business_date}
+         disabled={busy||reportCorrection} onClick={()=>selectDay(day.business_date)}>
+         <span className="flex items-center justify-between gap-2">
+          <span>{arabicDate(day.business_date)}</span>
+          <span className="text-xs">✓ معتمد</span>
+         </span>
+        </button>)}
+       </div>
+      </details>)}
+    </div>
+   </details>
+  </section>
   {error&&<div className="card"><p role="alert" className="txt-danger">{error}</p></div>}
   {filter&&<Modal title="تفاصيل القيود اليومية" onClose={()=>setFilter(null)}>
    {filtered.map(e=><button type="button" key={e.id} className="w-full text-start border-b py-2" onClick={()=>{setFilter(null);setDetail(e);}}>
