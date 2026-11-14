@@ -14,6 +14,20 @@ type Movement={
 type Payload={op:"move";itemId:string;kind:Movement["kind"];qty:number;
  total:number;source:string;note:string;requestId:string};
 const units=["لتر","عبوة","قطعة","كرتون","كيلو","رول"];
+// Templates are only suggestions. No stock or value is created without an
+// owner-confirmed real inventory count.
+const startingMaterials:{name:string;unit:string}[]=[
+ {name:"صابون غسيل السيارات",unit:"لتر"},
+ {name:"شامبو رغوي",unit:"لتر"},
+ {name:"واكس",unit:"لتر"},
+ {name:"ملمع إطارات",unit:"لتر"},
+ {name:"معطر سيارات",unit:"عبوة"},
+ {name:"مناشف تنظيف",unit:"قطعة"},
+ {name:"أكياس نفايات",unit:"رول"},
+ {name:"منظف زجاج",unit:"لتر"},
+ {name:"منظف داخلي",unit:"لتر"},
+ {name:"منظف بستم",unit:"لتر"}
+];
 const money=(x:number)=>new Intl.NumberFormat("ar-SA-u-nu-latn",{
  style:"currency",currency:"SAR",maximumFractionDigits:2}).format(x);
 const qtyFormat=(n:number)=>new Intl.NumberFormat("ar-SA-u-nu-latn",{
@@ -149,6 +163,16 @@ export function InventoryTab(){
   <p className="text-sm txt-muted">قيمة المخزون التقديرية بسعر التكلفة المرجح: {money(stockValue)} — ليست ربحًا إضافيًا.</p>
   <form onSubmit={create} className="card space-y-3">
    <h3 className="font-bold">إضافة مادة جديدة</h3>
+   <details className="border rounded-xl p-2" style={{borderColor:"var(--border)"}}>
+    <summary className="cursor-pointer txt-muted text-sm">أصناف مقترحة للجرد الأول (اختيارية)</summary>
+    <div className="flex flex-wrap gap-2 mt-2">
+     {startingMaterials.filter(x=>!items.some(i=>i.name===x.name)).map(x=>
+      <button key={x.name} type="button" className="btn-secondary text-xs"
+       onClick={()=>{setName(x.name);setUnit(x.unit);}}>
+       {x.name}
+      </button>)}
+    </div>
+   </details>
    <label className="block text-sm">اسم المادة
     <input className={inputClass} value={name} maxLength={100}
      onChange={e=>setName(e.target.value)} placeholder="مثال: صابون، واكس، مناشف"/>
@@ -169,6 +193,7 @@ export function InventoryTab(){
   </form>
   <form className="card space-y-3" onSubmit={submit}>
    <h3 className="font-bold">تسجيل حركة مخزون</h3>
+   <p className="txt-muted text-xs">بعد الجرد الفعلي: استخدم «زيادة رصيد» للكمية الافتتاحية وتكلفتها، مع ملاحظة «رصيد افتتاحي بعد الجرد». لا تُدخل كميات تقديرية.</p>
    <label className="block text-sm">المادة
     <select className={inputClass} value={selected} disabled={busy||unconfirmed}
      onChange={e=>setSelected(e.target.value)}>
