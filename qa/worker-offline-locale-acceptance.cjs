@@ -27,6 +27,8 @@ const assert=require("node:assert/strict");
   await route.fulfill({json});
  });
  await page.goto(url);
+ await page.getByRole("heading",{name:/Register cars/}).waitFor();
+ await page.getByRole("button",{name:"Hausa"}).click();
  await page.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
  await page.waitForFunction(async()=>{
   const req=indexedDB.open("bright-carwash-worker-encrypted-outbox-v1",2);
