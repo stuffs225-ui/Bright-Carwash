@@ -2,7 +2,7 @@
 import {useEffect,useState} from "react";
 import {workerText,workerDirection,readWorkerLocale,persistWorkerLocale,type WorkerLocale} from "@/lib/workerI18n";
 export default function WorkerLanding(){
- const [lang,setLang]=useState<WorkerLocale>("ha-NG");
+ const [lang,setLang]=useState<WorkerLocale>("en");
  useEffect(()=>{
   const saved=readWorkerLocale();setLang(saved);
   document.documentElement.lang=saved;
