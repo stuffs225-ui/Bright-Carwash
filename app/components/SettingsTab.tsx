@@ -11,6 +11,7 @@ import type { EntryPreset } from "@/lib/types";
 import { applyTheme, getTheme, setTheme, type ThemeChoice } from "@/lib/theme";
 import {CarwashPolicySettings} from "./CarwashPolicySettings";
 import {PriceHistorySuggestions} from "./PriceHistorySuggestions";
+import {Modal} from "./Modal";
 
 type Category = "operations" | "access" | "appearance" | "data" | "backup";
 
@@ -242,6 +243,32 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
   const [carType, setCarType] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [amount, setAmount] = useState("");
+  const [editingPreset,setEditingPreset]=useState<EntryPreset|null>(null);
+  const [editCar,setEditCar]=useState("");
+  const [editService,setEditService]=useState("");
+  const [editAmount,setEditAmount]=useState("");
+
+  function openEdit(p:EntryPreset){
+    setEditingPreset(p);setEditCar(p.car_type);
+    setEditService(p.service_type);setEditAmount(String(p.amount));
+  }
+  async function saveEdit(e:React.FormEvent){
+    e.preventDefault();
+    if(!editingPreset)return;
+    const value=Number(editAmount),car=editCar.trim(),service=editService.trim();
+    if(car.length<2||service.length<2||car.length>80||service.length>80||
+      !Number.isFinite(value)||value<=0||value>5000||
+      Math.abs(value*100-Math.round(value*100))>0.00001){
+      showToast("راجع نوع السيارة والخدمة والسعر (من 0.01 إلى 5000).","warning");return;
+    }
+    if(presets.some(p=>p.id!==editingPreset.id&&p.car_type===car&&p.service_type===service&&Number(p.amount)===value)){
+      showToast("هذا الزر موجود مسبقًا.", "warning");return;
+    }
+    const result=await updatePreset(editingPreset.id,{car_type:car,service_type:service,amount:value});
+    if(result.error){showToast("تعذر تعديل السعر: "+result.error.message,"error");return;}
+    setEditingPreset(null);showToast("تم تعديل السعر للتسجيلات الجديدة؛ الأسعار التاريخية محفوظة.");
+    onChanged();
+  }
 
   async function add() {
     if (!carType.trim() || !serviceType.trim() || Number(amount) <= 0) {
@@ -310,6 +337,7 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
                   <td data-label="الخدمة">{p.service_type}</td>
                   <td data-label="السعر">{formatCurrency(p.amount)}</td>
                   <td className="flex gap-1.5">
+                    <button type="button" className="action-button edit-button" onClick={()=>openEdit(p)}>تعديل</button>
                     <button type="button" className="action-button" aria-label="تقديم السعر" onClick={()=>void move(p.id,-1)}>↑</button>
                      <button type="button" className="action-button" aria-label="تأخير السعر" onClick={()=>void move(p.id,1)}>↓</button>
                      <button type="button" className="action-button delete-button" onClick={() => void remove(p.id)}>تعطيل</button>
@@ -327,6 +355,19 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
         <Field label="السعر"><input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
       </div>
       <button type="button" className="btn-primary mt-4" onClick={add}>إضافة زر</button>
+      {editingPreset&&<Modal title="تعديل زر التسجيل السريع" onClose={()=>setEditingPreset(null)}>
+       <form className="space-y-3" onSubmit={e=>void saveEdit(e)}>
+        <p className="txt-muted text-sm">التعديل يؤثر على التسجيلات الجديدة، ولا يغيّر فواتير أو أيام سابقة.</p>
+        <label className="form-label">نوع السيارة
+         <input maxLength={80} required value={editCar} onChange={e=>setEditCar(e.target.value)}/></label>
+        <label className="form-label">الخدمة
+         <input maxLength={80} required value={editService} onChange={e=>setEditService(e.target.value)}/></label>
+        <label className="form-label">السعر (ر.س)
+         <input required type="number" min="0.01" max="5000" step="0.01" inputMode="decimal"
+          value={editAmount} onChange={e=>setEditAmount(e.target.value)}/></label>
+        <button type="submit" className="btn-primary w-full">حفظ السعر الجديد</button>
+       </form>
+      </Modal>}
     </Section>
   );
 }
