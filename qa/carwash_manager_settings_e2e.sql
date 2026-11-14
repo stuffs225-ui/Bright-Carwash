@@ -67,6 +67,8 @@ select set_config('request.jwt.claim.sub',
 do $worker_denial$
 declare n int; denied boolean:=false;
 begin
+ if (select count(*) from public.workers)<>0
+ then raise exception 'Shared worker could read the private employee directory';end if;
  update public.settings set value='"worker-bypass"'::jsonb where key='backup_email';
  get diagnostics n=row_count;
  if n<>0 then raise exception 'Worker updated private settings';end if;
