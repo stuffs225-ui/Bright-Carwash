@@ -23,6 +23,11 @@ create policy manager_self_service_settings_update on public.settings
   'whatsapp_ready_text','ready_photo_retention_days'
  ));
 
+-- Prevent client-side hard deletion even when the manager is treated as
+-- owner by the existing single-manager role compatibility policy.
+-- Service-role imports remain capable of explicit maintenance when authorized.
+revoke delete on table public.workers from anon,authenticated;
+
 -- Employee changes use soft archival (workers.active=false). Never delete
 -- history, accrued costs or linked ledger entries.
 create trigger carwash_worker_profile_audit
