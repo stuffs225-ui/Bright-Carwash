@@ -11,7 +11,8 @@ const actionClass="btn-secondary text-sm";
 type Props={focusWorkerId?:string;startQuickAdd?:boolean};
 const toDraft=(w:Worker):EditableWorkerProfile=>({
  name:w.name,worker_type:w.worker_type||"worker",hourly_rate:Number(w.hourly_rate||0),
- notes:w.notes||null,sort_order:w.sort_order||0,active:w.active
+ notes:w.notes||null,phone:w.phone||null,job_title:w.job_title||null,joined_on:w.joined_on||null,
+ sort_order:w.sort_order||0,active:w.active
 });
 const changeEvent=()=>window.dispatchEvent(new Event("carwash:data-changed"));
 
@@ -29,7 +30,7 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
  const [ledgerCount,setLedgerCount]=useState<number|null>(null);
  const handledFocus=useRef<string|null>(null);
  const refresh=useCallback(async()=>{
-  const {data,error}=await supabase.from("workers").select("id,name,active,sort_order,notes,worker_type,hourly_rate")
+  const {data,error}=await supabase.from("workers").select("id,name,active,sort_order,notes,worker_type,hourly_rate,phone,job_title,joined_on")
    .order("sort_order",{ascending:true}).order("name",{ascending:true});
   if(error){setError("تعذر تحميل العمال: "+error.message);setLoading(false);return;}
   setWorkers((data||[]) as Worker[]);setError("");setLoading(false);
@@ -54,6 +55,7 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
   e.preventDefault();if(busy)return;
   const profile:EditableWorkerProfile={
    name:fullName(name),worker_type:newType,hourly_rate:0,notes:null,
+   phone:null,job_title:null,joined_on:null,
    sort_order:Math.max(0,...workers.map(w=>w.sort_order||0))+1,active:true
   };
   const invalid=validateWorkerProfile(profile);
@@ -163,6 +165,18 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
      <label className="form-label">الأجر بالساعة (ر.س)
       <input type="number" min="0" max="100000" step=".01" inputMode="decimal"
        value={draft.hourly_rate} onChange={e=>setDraft(d=>d?{...d,hourly_rate:Number(e.target.value)}:d)}/></label>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+     <label className="form-label">رقم التواصل (اختياري)
+      <input type="tel" inputMode="tel" dir="ltr" maxLength={25}
+       placeholder="+966..." value={draft.phone||""}
+       onChange={e=>setDraft(d=>d?{...d,phone:e.target.value}:d)}/></label>
+     <label className="form-label">المسمى الوظيفي
+      <input maxLength={80} placeholder="مثال: عامل غسيل" value={draft.job_title||""}
+       onChange={e=>setDraft(d=>d?{...d,job_title:e.target.value}:d)}/></label>
+     <label className="form-label">تاريخ مباشرة العمل
+      <input type="date" value={draft.joined_on||""} dir="ltr"
+       onChange={e=>setDraft(d=>d?{...d,joined_on:e.target.value}:d)}/></label>
     </div>
     <label className="form-label">الملاحظات
      <textarea rows={2} maxLength={500} value={draft.notes||""}
