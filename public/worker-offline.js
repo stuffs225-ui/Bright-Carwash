@@ -256,9 +256,6 @@
   let phone=$("phone").value.trim().replace(/[\s-]/g,"");
   if(/^05[0-9]{8}$/.test(phone))phone="+966"+phone.slice(1);
   if(phone&&!/^\+9665[0-9]{8}$/.test(phone)){notify("error.phone",true);return;}
-  // The old manager offline form has consent; the worker form uses the already
-  // approved phone-as-notification choice from online registration.
-  if(phone&&$("consent")&&!$("consent").checked){notify("error.phone",true);return;}
   const addonsSelected=Array.from($("addons").querySelectorAll("input:checked")).map(x=>x.dataset.addon);
   const payload={
    presetId:manualMode?"":$("preset").value,
@@ -280,7 +277,6 @@
     iv:Array.from(iv),cipher:Array.from(cipher)});
    await done;
    $("notes").value="";$("phone").value="";
-   if($("consent"))$("consent").checked=false;
    if(workerMode){carType="";$("service-panel").hidden=true;
     for(const btn of document.querySelectorAll("[data-car]"))btn.setAttribute("aria-pressed","false");}
    setManual(false);update();
