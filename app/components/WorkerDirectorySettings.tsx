@@ -42,7 +42,8 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
    .then(({count,error})=>{if(!error)setLedgerCount(count||0);});
  }
  useEffect(()=>{
-  if(!focusWorkerId||handledFocus.current===focusWorkerId)return;
+  if(!focusWorkerId){handledFocus.current=null;return;}
+  if(handledFocus.current===focusWorkerId)return;
   const worker=workers.find(w=>w.id===focusWorkerId);
   if(worker){handledFocus.current=focusWorkerId;edit(worker);}
  // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,6 +77,8 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
   const invalid=validateWorkerProfile(draft);
   if(invalid){setError(invalid);return;}
   const patch=cleanWorkerProfile(draft);
+  const existing=workers.find(w=>w.id===editingId);
+  if(existing?.active&&!patch.active&&!window.confirm("أرشفة هذا العامل؟ ستبقى كشوفه والدفعات محفوظة ويمكن استرجاعه."))return;
   if(workers.some(w=>w.id!==editingId&&w.name===patch.name)){
    setError("اسم العامل مستخدم مسبقًا.");return;
   }
@@ -148,6 +151,7 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
   {draft&&editingId&&<Modal title={"تعديل بيانات "+(workers.find(w=>w.id===editingId)?.name||"العامل")}
    onClose={()=>{setEditingId(null);setDraft(null);setError("");}}>
    <div className="space-y-3" data-testid="worker-profile-editor" id="worker-profile-editor">
+   {error&&<p role="alert" className="txt-danger text-sm">{error}</p>}
    <form className="space-y-3" onSubmit={e=>void save(e)}>
     <label className="form-label">اسم العامل
      <input required maxLength={80} value={draft.name} onChange={e=>setDraft(d=>d?{...d,name:e.target.value}:d)}/></label>
