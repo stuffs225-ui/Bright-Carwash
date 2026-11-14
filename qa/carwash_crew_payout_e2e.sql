@@ -7,6 +7,7 @@ declare
  b uuid;
  v_due numeric;
  v_base numeric:=0;
+ v_day date:=greatest(date '2026-11-14',(now() at time zone 'Asia/Riyadh')::date);
  v_result jsonb;
  v_count integer;
  v_refused boolean:=false;
@@ -15,34 +16,34 @@ begin
  if m is null then raise exception 'Manager fixture missing';end if;
  perform set_config('request.jwt.claim.sub',m::text,true);
  select coalesce(max(amount),0) into v_base from public.expenses
- where crew_business_date='2026-11-14' and deleted_at is null;
+ where crew_business_date=v_day and deleted_at is null;
  insert into public.entries(car_type,service_type,cash_paid,card_paid,discount_amount,
    occurred_at,client_mutation_id,created_by)
  values('سيارة صغيرة','غسيل كامل',25,0,0,
-   '2026-11-14 10:00:00+03','qa-crew-policy-small-20261114',m) returning id into a;
+   ((v_day::timestamp+interval '10 hours') at time zone 'Asia/Riyadh'),'qa-crew-policy-small-20261114',m) returning id into a;
  insert into public.entries(car_type,service_type,cash_paid,card_paid,discount_amount,
    occurred_at,client_mutation_id,created_by)
  values('شاحنة','غسيل كامل',0,55,0,
-   '2026-11-14 10:01:00+03','qa-crew-policy-truck-20261114',m) returning id into b;
+   ((v_day::timestamp+interval '10 hours 1 minute') at time zone 'Asia/Riyadh'),'qa-crew-policy-truck-20261114',m) returning id into b;
  select amount into v_due from public.expenses
-  where crew_business_date=date '2026-11-14' and deleted_at is null;
+  where crew_business_date=v_day and deleted_at is null;
  if v_due is distinct from v_base+20 then
   raise exception 'Truck and small car should add 20, from % to %',v_base,v_due;end if;
- v_result:=public.carwash_record_crew_payout(date '2026-11-14',8,12,'Manager split cash and bank');
+ v_result:=public.carwash_record_crew_payout(v_day,8,12,'Manager split cash and bank');
  if (v_result->>'remaining')::numeric<>(v_due-20) then
   raise exception 'Unexpected team payout remainder';end if;
- if (select count(*) from public.carwash_crew_payouts where business_date='2026-11-14')<>1
+ if (select count(*) from public.carwash_crew_payouts where business_date=v_day)<>1
  then raise exception 'Team payout should have exactly one record';end if;
- v_result:=public.carwash_record_crew_payout(date '2026-11-14',8,12,'Manager split cash and bank');
+ v_result:=public.carwash_record_crew_payout(v_day,8,12,'Manager split cash and bank');
  select count(*) into v_count from private.carwash_crew_payout_audit
- where business_date='2026-11-14';
+ where business_date=v_day;
  if v_count<>1 then raise exception 'Idempotent payout generated extra audit';end if;
- v_result:=public.carwash_record_crew_payout(date '2026-11-14',10,10,'Corrected split cash and bank');
+ v_result:=public.carwash_record_crew_payout(v_day,10,10,'Corrected split cash and bank');
  select count(*) into v_count from private.carwash_crew_payout_audit
- where business_date='2026-11-14';
+ where business_date=v_day;
  if v_count<>2 then raise exception 'Payout correction was not audited';end if;
  begin
-  perform public.carwash_record_crew_payout(date '2026-11-14',v_due+1,0,'Exceeds daily due');
+  perform public.carwash_record_crew_payout(v_day,v_due+1,0,'Exceeds daily due');
  exception when others then
   if position('exceeds accrued' in sqlerrm)>0 then v_refused:=true;
   else raise;end if;
@@ -54,7 +55,7 @@ begin
  exception when others then v_refused:=true;end;
  if not v_refused then raise exception 'Historic/closed day crew payout accepted';end if;
  if exists(select 1 from public.expenses
-  where crew_business_date='2026-11-14' and deleted_at is null
+  where crew_business_date=v_day and deleted_at is null
   group by crew_business_date having count(*)>1)
  then raise exception 'Duplicate crew salary expense';end if;
 end $crew_qa$;

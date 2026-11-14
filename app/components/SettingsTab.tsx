@@ -4,13 +4,14 @@ import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
-import { createPreset, deletePreset, loadPresets, updatePreset } from "@/lib/presets";
+import { createPreset, deletePreset, loadAllPresets, updatePreset } from "@/lib/presets";
 import { supabase } from "@/lib/supabaseClient";
 import { addLookup, loadLookup, renameLookup, setLookupActive, type LookupRow, type LookupTable } from "@/lib/lookups";
 import type { EntryPreset } from "@/lib/types";
 import { applyTheme, getTheme, setTheme, type ThemeChoice } from "@/lib/theme";
 import {CarwashPolicySettings} from "./CarwashPolicySettings";
 import {PriceHistorySuggestions} from "./PriceHistorySuggestions";
+import {Modal} from "./Modal";
 
 type Category = "operations" | "access" | "appearance" | "data" | "backup";
 
@@ -51,7 +52,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
 
   useEffect(() => {
     loadSettings().then(hydrate);
-    loadPresets().then(setPresets);
+    loadAllPresets().then(setPresets).catch(e=>showToast("تعذر قراءة الأسعار: "+e.message,"error"));
     setThemeState(getTheme());
   }, [hydrate]);
 
@@ -113,7 +114,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
     <div className="space-y-6">
       {section === "general" && (
         <div className="space-y-6">
-          <Section title="مخصص العمال الجماعي" hint="10 ريالات إجمالًا لفريق العمال عن كل سيارة صغيرة أو كبيرة مسجلة، وليس لكل عامل على حدة.">
+          <Section title="مخصص العمال الجماعي" hint="10 ريالات إجمالًا لفريق العمال عن كل سيارة صغيرة أو كبيرة أو شاحنة مؤهلة، وليس لكل عامل على حدة.">
             <p className="txt-muted text-sm">مكافأة ريالين عن السيارات التي تتجاوز 15 سيارة مجمّدة مؤقتًا، ولن تُحتسب أو تُدفع آليًا. يمكن للمدير إضافة مكافأة منفصلة للوردية من سجل المكافآت.</p>
           </Section>
 
@@ -150,7 +151,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
       {section === "services" && (
         <div className="space-y-6">
           <PriceHistorySuggestions/>
-          <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
+          <PresetsSection presets={presets} onChanged={() => loadAllPresets().then(setPresets).catch(e=>showToast(e.message,"error"))} />
           <CarwashAddonsSettings />
           <LookupSection table="car_types" title="أنواع السيارات" />
           <LookupSection table="service_types" title="أنواع الخدمات" />
@@ -242,6 +243,39 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
   const [carType, setCarType] = useState("");
   const [serviceType, setServiceType] = useState("");
   const [amount, setAmount] = useState("");
+  const [editingPreset,setEditingPreset]=useState<EntryPreset|null>(null);
+  const [editCar,setEditCar]=useState("");
+  const [editService,setEditService]=useState("");
+  const [editAmount,setEditAmount]=useState("");
+  const activePresets=presets.filter(p=>p.active!==false);
+  const disabledPresets=presets.filter(p=>p.active===false);
+  async function restore(id:string){
+    const result=await updatePreset(id,{active:true});
+    if(result.error){showToast("تعذر تفعيل السعر: "+result.error.message,"error");return;}
+    showToast("تمت إعادة تفعيل السعر للتسجيلات الجديدة.");onChanged();
+  }
+
+  function openEdit(p:EntryPreset){
+    setEditingPreset(p);setEditCar(p.car_type);
+    setEditService(p.service_type);setEditAmount(String(p.amount));
+  }
+  async function saveEdit(e:React.FormEvent){
+    e.preventDefault();
+    if(!editingPreset)return;
+    const value=Number(editAmount),car=editCar.trim(),service=editService.trim();
+    if(car.length<2||service.length<2||car.length>80||service.length>80||
+      !Number.isFinite(value)||value<=0||value>5000||
+      Math.abs(value*100-Math.round(value*100))>0.00001){
+      showToast("راجع نوع السيارة والخدمة والسعر (من 0.01 إلى 5000).","warning");return;
+    }
+    if(presets.some(p=>p.id!==editingPreset.id&&p.car_type===car&&p.service_type===service&&Number(p.amount)===value)){
+      showToast("هذا الزر موجود مسبقًا.", "warning");return;
+    }
+    const result=await updatePreset(editingPreset.id,{car_type:car,service_type:service,amount:value});
+    if(result.error){showToast("تعذر تعديل السعر: "+result.error.message,"error");return;}
+    setEditingPreset(null);showToast("تم تعديل السعر للتسجيلات الجديدة؛ الأسعار التاريخية محفوظة.");
+    onChanged();
+  }
 
   async function add() {
     if (!carType.trim() || !serviceType.trim() || Number(amount) <= 0) {
@@ -275,7 +309,7 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
   async function move(id:string,direction:-1|1){
     const current=presets.find(p=>p.id===id);
     if(!current)return;
-    const group=presets.filter(p=>p.car_type===current.car_type)
+    const group=activePresets.filter(p=>p.car_type===current.car_type)
       .sort((a,b)=>a.sort_order-b.sort_order);
     const pos=group.findIndex(p=>p.id===id);
     const other=group[pos+direction];
@@ -301,15 +335,16 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
             <tr><th>السيارة</th><th>الخدمة</th><th>السعر</th><th>إجراءات</th></tr>
           </thead>
           <tbody>
-            {presets.length === 0 ? (
+            {activePresets.length === 0 ? (
               <tr><td colSpan={4} className="text-center txt-muted py-5">لا توجد أزرار.</td></tr>
             ) : (
-              presets.map((p) => (
+              activePresets.map((p) => (
                 <tr key={p.id}>
                   <td data-label="السيارة">{p.car_type}</td>
                   <td data-label="الخدمة">{p.service_type}</td>
                   <td data-label="السعر">{formatCurrency(p.amount)}</td>
                   <td className="flex gap-1.5">
+                    <button type="button" className="action-button edit-button" onClick={()=>openEdit(p)}>تعديل</button>
                     <button type="button" className="action-button" aria-label="تقديم السعر" onClick={()=>void move(p.id,-1)}>↑</button>
                      <button type="button" className="action-button" aria-label="تأخير السعر" onClick={()=>void move(p.id,1)}>↓</button>
                      <button type="button" className="action-button delete-button" onClick={() => void remove(p.id)}>تعطيل</button>
@@ -321,12 +356,38 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
         </table>
       </div>
 
+      {disabledPresets.length>0&&<details className="rounded-xl border p-3 mb-4"
+       style={{borderColor:"var(--border)"}}>
+       <summary className="font-semibold cursor-pointer">الأسعار المعطلة ({disabledPresets.length})</summary>
+       <div className="space-y-2 mt-3">
+        {disabledPresets.map(p=><div key={p.id} className="flex justify-between items-center gap-2 border-b py-2">
+         <div className="text-sm min-w-0">
+          <strong className="block">{p.car_type} · {p.service_type}</strong>
+          <span className="txt-muted">{formatCurrency(p.amount)}</span>
+         </div>
+         <button type="button" className="btn-secondary text-sm" onClick={()=>void restore(p.id)}>إعادة التفعيل</button>
+        </div>)}
+       </div>
+      </details>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Field label="نوع السيارة"><input type="text" value={carType} onChange={(e) => setCarType(e.target.value)} /></Field>
         <Field label="نوع الخدمة"><input type="text" value={serviceType} onChange={(e) => setServiceType(e.target.value)} /></Field>
         <Field label="السعر"><input type="number" min="0.01" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
       </div>
       <button type="button" className="btn-primary mt-4" onClick={add}>إضافة زر</button>
+      {editingPreset&&<Modal title="تعديل زر التسجيل السريع" onClose={()=>setEditingPreset(null)}>
+       <form className="space-y-3" onSubmit={e=>void saveEdit(e)}>
+        <p className="txt-muted text-sm">التعديل يؤثر على التسجيلات الجديدة، ولا يغيّر فواتير أو أيام سابقة.</p>
+        <label className="form-label">نوع السيارة
+         <input maxLength={80} required value={editCar} onChange={e=>setEditCar(e.target.value)}/></label>
+        <label className="form-label">الخدمة
+         <input maxLength={80} required value={editService} onChange={e=>setEditService(e.target.value)}/></label>
+        <label className="form-label">السعر (ر.س)
+         <input required type="number" min="0.01" max="5000" step="0.01" inputMode="decimal"
+          value={editAmount} onChange={e=>setEditAmount(e.target.value)}/></label>
+        <button type="submit" className="btn-primary w-full">حفظ السعر الجديد</button>
+       </form>
+      </Modal>}
     </Section>
   );
 }
