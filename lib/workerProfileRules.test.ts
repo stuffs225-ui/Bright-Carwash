@@ -11,6 +11,13 @@ describe("Manager worker settings",()=>{
   expect(validateWorkerProfile({...base,hourly_rate:0.009})).toContain("الأجر");
   expect(validateWorkerProfile({...base,notes:"x".repeat(501)})).toContain("500");
  });
+ it("checks phone and optional employment metadata",()=>{
+  expect(validateWorkerProfile({...base,phone:"+966 55 123 4567",job_title:"عامل غسيل",joined_on:"2026-11-01"})).toBeNull();
+  expect(validateWorkerProfile({...base,phone:"123"})).toContain("رقم");
+  expect(validateWorkerProfile({...base,job_title:"x".repeat(81)})).toContain("المسمى");
+  expect(cleanWorkerProfile({...base,phone:"  +966 55 123 4567  ",job_title:"  مشرف  "}))
+   .toMatchObject({phone:"+966 55 123 4567",job_title:"مشرف"});
+ });
  it("normalizes names and does not rewrite archival or old profile data",()=>{
   expect(cleanWorkerProfile({...base,name:"  عامل  ",notes:" test "}))
    .toMatchObject({name:"عامل",notes:"test",active:true});
