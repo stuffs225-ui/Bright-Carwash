@@ -64,7 +64,7 @@ export async function POST(request:Request){
      const day=byDay.get(row.business_date);
      if(!day)continue;
      day.cars++;
-     if(row.car_type==='سيارة صغيرة'||row.car_type==='سيارة كبيرة')day.crew+=10;
+     if(row.car_type==='سيارة صغيرة'||row.car_type==='سيارة كبيرة'||row.car_type==='شاحنة')day.crew+=10;
      day.cash+=cents(row.cash_paid);
      day.card+=cents(row.card_paid);
     }
