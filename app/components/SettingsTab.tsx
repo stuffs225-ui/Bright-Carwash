@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/business";
 import { showToast } from "@/lib/toast";
 import { DEFAULT_SETTINGS, loadSettings, updateSetting, type AppSettings } from "@/lib/settings";
-import { createPreset, deletePreset, loadPresets, updatePreset } from "@/lib/presets";
+import { createPreset, deletePreset, loadAllPresets, updatePreset } from "@/lib/presets";
 import { supabase } from "@/lib/supabaseClient";
 import { addLookup, loadLookup, renameLookup, setLookupActive, type LookupRow, type LookupTable } from "@/lib/lookups";
 import type { EntryPreset } from "@/lib/types";
@@ -52,7 +52,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
 
   useEffect(() => {
     loadSettings().then(hydrate);
-    loadPresets().then(setPresets);
+    loadAllPresets().then(setPresets).catch(e=>showToast("تعذر قراءة الأسعار: "+e.message,"error"));
     setThemeState(getTheme());
   }, [hydrate]);
 
@@ -151,7 +151,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
       {section === "services" && (
         <div className="space-y-6">
           <PriceHistorySuggestions/>
-          <PresetsSection presets={presets} onChanged={() => loadPresets().then(setPresets)} />
+          <PresetsSection presets={presets} onChanged={() => loadAllPresets().then(setPresets).catch(e=>showToast(e.message,"error"))} />
           <CarwashAddonsSettings />
           <LookupSection table="car_types" title="أنواع السيارات" />
           <LookupSection table="service_types" title="أنواع الخدمات" />
@@ -247,6 +247,13 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
   const [editCar,setEditCar]=useState("");
   const [editService,setEditService]=useState("");
   const [editAmount,setEditAmount]=useState("");
+  const activePresets=presets.filter(p=>p.active!==false);
+  const disabledPresets=presets.filter(p=>p.active===false);
+  async function restore(id:string){
+    const result=await updatePreset(id,{active:true});
+    if(result.error){showToast("تعذر تفعيل السعر: "+result.error.message,"error");return;}
+    showToast("تمت إعادة تفعيل السعر للتسجيلات الجديدة.");onChanged();
+  }
 
   function openEdit(p:EntryPreset){
     setEditingPreset(p);setEditCar(p.car_type);
@@ -302,7 +309,7 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
   async function move(id:string,direction:-1|1){
     const current=presets.find(p=>p.id===id);
     if(!current)return;
-    const group=presets.filter(p=>p.car_type===current.car_type)
+    const group=activePresets.filter(p=>p.car_type===current.car_type)
       .sort((a,b)=>a.sort_order-b.sort_order);
     const pos=group.findIndex(p=>p.id===id);
     const other=group[pos+direction];
@@ -328,10 +335,10 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
             <tr><th>السيارة</th><th>الخدمة</th><th>السعر</th><th>إجراءات</th></tr>
           </thead>
           <tbody>
-            {presets.length === 0 ? (
+            {activePresets.length === 0 ? (
               <tr><td colSpan={4} className="text-center txt-muted py-5">لا توجد أزرار.</td></tr>
             ) : (
-              presets.map((p) => (
+              activePresets.map((p) => (
                 <tr key={p.id}>
                   <td data-label="السيارة">{p.car_type}</td>
                   <td data-label="الخدمة">{p.service_type}</td>
@@ -349,6 +356,19 @@ function PresetsSection({ presets, onChanged }: { presets: EntryPreset[]; onChan
         </table>
       </div>
 
+      {disabledPresets.length>0&&<details className="rounded-xl border p-3 mb-4"
+       style={{borderColor:"var(--border)"}}>
+       <summary className="font-semibold cursor-pointer">الأسعار المعطلة ({disabledPresets.length})</summary>
+       <div className="space-y-2 mt-3">
+        {disabledPresets.map(p=><div key={p.id} className="flex justify-between items-center gap-2 border-b py-2">
+         <div className="text-sm min-w-0">
+          <strong className="block">{p.car_type} · {p.service_type}</strong>
+          <span className="txt-muted">{formatCurrency(p.amount)}</span>
+         </div>
+         <button type="button" className="btn-secondary text-sm" onClick={()=>void restore(p.id)}>إعادة التفعيل</button>
+        </div>)}
+       </div>
+      </details>}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Field label="نوع السيارة"><input type="text" value={carType} onChange={(e) => setCarType(e.target.value)} /></Field>
         <Field label="نوع الخدمة"><input type="text" value={serviceType} onChange={(e) => setServiceType(e.target.value)} /></Field>
