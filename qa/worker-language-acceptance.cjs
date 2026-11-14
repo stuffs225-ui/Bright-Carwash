@@ -101,7 +101,7 @@ const fs=require("node:fs");
  const popupWait=fresh.waitForEvent("popup");
  await fresh.getByRole("button",{name:"Raba hoto"}).click();
  const opened=await popupWait;await opened.waitForLoadState();
- const parsed=new URL(opened.url());
+ const parsed=new (require("node:url").URL)(opened.url());
  assert.equal(parsed.hostname,"wa.me");
  assert.equal(parsed.pathname,"/966500000000");
  assert.match(parsed.searchParams.get("text")||"",/سيارتك جاهزة/);
