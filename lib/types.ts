@@ -49,6 +49,9 @@ export type Worker = {
   active: boolean;
   sort_order: number;
   notes: string | null;
+  phone?: string | null;
+  job_title?: string | null;
+  joined_on?: string | null;
 };
 
 export type LedgerEntry = {
