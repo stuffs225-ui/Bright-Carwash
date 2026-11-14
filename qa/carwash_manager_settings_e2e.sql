@@ -57,12 +57,11 @@ begin
  if v_rows<>1 then raise exception 'Single manager owner-equivalent settings access regressed';end if;
 end $qa$;
 reset role;
-insert into auth.users(id,phone) values
- ('99999999-9999-4999-8999-999999999982','+966500000082');
-insert into public.app_members(user_id,role,active) values
- ('99999999-9999-4999-8999-999999999982','worker',true);
+-- The app intentionally has only one active shared worker account.
+-- Reuse its synthetic fixture rather than creating a prohibited second account.
 set local role authenticated;
-select set_config('request.jwt.claim.sub','99999999-9999-4999-8999-999999999982',true);
+select set_config('request.jwt.claim.sub',
+ (select user_id::text from public.app_members where role='worker' and active limit 1),true);
 do $worker_denial$
 declare n int; denied boolean:=false;
 begin
