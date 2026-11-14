@@ -112,8 +112,8 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
  function share(car:Car){
   if(car.status==="delivered"||busy)return;
   setError("");setNotice("");
-  const phone=(car.phone||"").replace(/\\D/g,"");
-  if(!/^9665\\d{8}$/.test(phone)){
+  const phone=(car.phone||"").replace(/\D/g,"");
+  if(!/^9665\d{8}$/.test(phone)){
    setError("لا يوجد رقم جوال سعودي صالح لهذه السيارة؛ لا يمكن فتح محادثة العميل.");return;
   }
   // WhatsApp deep link opens the stored customer's conversation with text.
