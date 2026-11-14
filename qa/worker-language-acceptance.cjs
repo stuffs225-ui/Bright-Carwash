@@ -36,12 +36,13 @@ const fs=require("node:fs");
    window.__share={name:p.files[0].name,mime:p.files[0].type,caption:p.text};
   }});
  };
- await ctx.addInitScript(shareMock);
+ await ctx.addInitScript(()=>localStorage.setItem("bright_carwash_worker_lang_v1","ha-NG"));
+ await ctx.route("https://wa.me/**",route=>route.fulfill({status:200,contentType:"text/html",body:"WhatsApp test only"}));
  const page=await ctx.newPage();await fake(page);
  await page.goto(URL);
  await page.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
  assert.equal(await page.locator(".worker-screen").getAttribute("dir"),"ltr");
- assert.equal(await page.evaluate(()=>localStorage.getItem("bright_carwash_worker_lang_v1")),null);
+ assert.equal(await page.evaluate(()=>localStorage.getItem("bright_carwash_worker_lang_v1")),"ha-NG");
  assert.equal(await page.evaluate(()=>document.documentElement.getAttribute("data-worker-lang-pending")),null);
  assert.equal(await page.getByTestId("service-choices").count(),0);
  await page.getByRole("button",{name:/Ƙaramar mota/}).click();
@@ -71,12 +72,14 @@ const fs=require("node:fs");
  assert.equal(await page.evaluate(key=>localStorage.getItem(key),localeKey),"ar");
  await ctx.close();
  const other=await browser.newContext({...devices[device],serviceWorkers:"block"});
- await other.addInitScript(shareMock);
+ await other.route("https://wa.me/**",route=>route.fulfill({status:200,contentType:"text/html",body:"WhatsApp test only"}));
  const fresh=await other.newPage();await fake(fresh);
  await fresh.goto(URL);
- await fresh.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
+ await fresh.getByRole("heading",{name:/Register cars/}).waitFor();
  assert.equal(await fresh.evaluate(key=>localStorage.getItem(key),localeKey),null,
   "Second device must have independent preference");
+ await fresh.getByRole("button",{name:"Hausa"}).click();
+ await fresh.getByRole("heading",{name:/Rijistar motoci/}).waitFor();
  await fresh.getByRole("button",{name:/Ƙaramar mota/}).click();
  await fresh.getByTestId("service-choices").getByRole("button",{name:/Cikakken wanki/}).click();
  await fresh.getByRole("button",{name:"Biya a haɗe"}).click();
@@ -94,11 +97,14 @@ const fs=require("node:fs");
  assert.doesNotMatch(visible,/[\u0600-\u06FF]/,
   "Hausa worker page must have no hardcoded Arabic text except the Arabic language name");
  // Customer caption stays Arabic regardless of the Hausa user interface.
+ const popupWait=fresh.waitForEvent("popup");
  await fresh.getByRole("button",{name:"Raba hoto"}).click();
- await fresh.waitForFunction(()=>Boolean(window.__share));
- const shared=await fresh.evaluate(()=>window.__share);
- assert.equal(shared.mime,"image/jpeg");
- assert.match(shared.caption,/سيارتك جاهزة/);
+ const opened=await popupWait;await opened.waitForLoadState();
+ const parsed=new URL(opened.url());
+ assert.equal(parsed.hostname,"wa.me");
+ assert.equal(parsed.pathname,"/966500000000");
+ assert.match(parsed.searchParams.get("text")||"",/سيارتك جاهزة/);
+ await opened.close();
  assert.equal(await fresh.getByRole("button",{name:/Alama ta shirya/}).count(),0);
  await other.close();
  // Manager shares the JSX component but is deliberately forced to Arabic.
@@ -106,13 +112,13 @@ const fs=require("node:fs");
  assert.match(source,/manager\?"ar":language/);
  assert.match(source,/!manager&&<div className="flex gap-1/);
  console.log(JSON.stringify({browser:device,checks:[
-  "First worker defaults to Hausa LTR",
+  "Previously selected Hausa persists on device",
   "English change is instant without refetch or lost input",
   "English persists through reload",
   "Arabic becomes RTL and persists",
-  "New browser starts Hausa",
+  "New browser defaults to English until Hausa selected",
   "Hausa mixed payment preserves numeric payload and preset ID",
-  "Hausa readiness shares customer Arabic WhatsApp message",
+  "Hausa readiness opens customer WhatsApp with Arabic text",
   "Manager fixed Arabic without worker language selector"
  ]},null,2));
  await browser.close();
