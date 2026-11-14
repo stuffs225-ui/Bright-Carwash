@@ -50,15 +50,30 @@ begin
  if not exists(select 1 from public.settings
   where key='worker_manual_service_enabled' and value='false'::jsonb)
  then raise exception 'Manager settings update failed';end if;
- update public.settings set value='"stolen"'::jsonb where key='backup_email';
+ -- Existing app policy intentionally treats the single manager as owner.
+ -- It may edit broad settings, but a worker must never gain that access.
+ update public.settings set value='"manager-can-manage-settings"'::jsonb where key='backup_email';
  get diagnostics v_rows=row_count;
- if v_rows<>0 then raise exception 'Manager could change owner-only backup secrets';end if;
- begin
-  insert into public.settings(key,value)
-  values('not_allowed_settings_key','true'::jsonb);
- exception when others then v_error:=true;end;
- if not v_error then raise exception 'Manager added unapproved settings key';end if;
+ if v_rows<>1 then raise exception 'Single manager owner-equivalent settings access regressed';end if;
 end $qa$;
+reset role;
+insert into auth.users(id,phone) values
+ ('99999999-9999-4999-8999-999999999982','+966500000082');
+insert into public.app_members(user_id,role,active) values
+ ('99999999-9999-4999-8999-999999999982','worker',true);
+set local role authenticated;
+select set_config('request.jwt.claim.sub','99999999-9999-4999-8999-999999999982',true);
+do $worker_denial$
+declare n int; denied boolean:=false;
+begin
+ update public.settings set value='"worker-bypass"'::jsonb where key='backup_email';
+ get diagnostics n=row_count;
+ if n<>0 then raise exception 'Worker updated private settings';end if;
+ begin
+  insert into public.settings(key,value) values('worker_unapproved_test','true'::jsonb);
+ exception when insufficient_privilege then denied:=true;end;
+ if not denied then raise exception 'Worker inserted forbidden settings';end if;
+end $worker_denial$;
 reset role;
 do $audit$
 begin
