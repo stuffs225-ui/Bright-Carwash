@@ -361,28 +361,32 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     <span className="txt-muted text-sm" dir="ltr">{riyadhDayKey(now)}</span>
    </div>
   </section>
-  <section className="card">
-   <h3 className="section-title">الأيام</h3>
-   <div className="flex gap-3 text-xs">
-    <span>غير معتمد: <strong>{days.filter(d=>d.status==="open"&&!d.reported).length}</strong></span>
-    <span>بانتظار الاعتماد: <strong>{days.filter(d=>d.status==="awaiting_owner"||d.reported&&d.status!=="approved").length}</strong></span>
-    <span>معتمد: <strong>{days.filter(d=>d.status==="approved").length}</strong></span>
+  <section className="card space-y-3" data-testid="settlement-attention">
+   <div className="flex items-center justify-between gap-2">
+    <h3 className="section-title mb-0">أيام بحاجة للاعتماد</h3>
+    <span className="txt-muted text-sm">{attentionDays.length} يوم</span>
    </div>
-   {days.length===0?<p className="txt-warning">لا يوجد يوم محاسبي مسجل بعد. يُنشأ يوم الرياض تلقائيًا عند أول تسجيل سيارة.</p>:
+   <div className="flex flex-wrap gap-3 text-xs">
+    <span>بانتظار الاعتماد: <strong>{attentionDays.filter(d=>d.status==="awaiting_owner"||d.reported).length}</strong></span>
+    <span>غير معتمد: <strong>{attentionDays.filter(d=>d.status==="open"&&!d.reported).length}</strong></span>
+   </div>
+   {loadingDays?<p className="txt-muted text-sm">جارٍ تحميل الأيام...</p>:
+    attentionDays.length===0?<p className="txt-cash text-sm">لا توجد أيام معلقة للاعتماد.</p>:
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-     {[...days].sort((a,b)=>Number(a.status==="approved")-Number(b.status==="approved")||
-       b.business_date.localeCompare(a.business_date)).map(d=><button type="button" key={d.business_date}
-       className={selected===d.business_date?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
-       aria-expanded={selected===d.business_date}
-       style={d.status!=="approved"&&(d.reported||d.status==="awaiting_owner")?
-        {borderColor:"#c27c14",borderWidth:2}:undefined}
-       disabled={busy||reportCorrection}
-       onClick={()=>{setSelected(old=>old===d.business_date?"":d.business_date);setWorkerReport(null);setManagerProof(null);setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);}}>
-       {arabicDate(d.business_date)} · {d.status==="approved"?"✓ معتمد":d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}
-      </button>)}
+     {attentionDays.map(d=><button type="button" key={d.business_date}
+      data-testid="settlement-attention-day"
+      className={selected===d.business_date?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
+      aria-pressed={selected===d.business_date}
+      style={d.reported||d.status==="awaiting_owner"?{borderColor:"#c27c14",borderWidth:2}:undefined}
+      disabled={busy||reportCorrection} onClick={()=>selectDay(d.business_date)}>
+      <span className="flex justify-between items-center gap-2">
+       <strong>{arabicDate(d.business_date)}</strong>
+       <span className="text-xs">{d.reported||d.status==="awaiting_owner"?"⏳ بانتظار الاعتماد":"غير معتمد"}</span>
+      </span>
+     </button>)}
     </div>}
   </section>
-  {current&&<>
+  {current&&<div ref={detailsRef} id="settlement-selected-day" className="space-y-4 scroll-mt-20" data-testid="settlement-selected-details">
    <section className="card">
     <h3 className="section-title">حسابات {selected}</h3>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -543,7 +547,37 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
       <strong className={d.sealed_at?"txt-cash":"txt-warning"}>{d.sealed_at?"تمت المزامنة":"لم يؤكد بعد"}</strong>
      </div>)}
    </details>
-  </>}
+  </div>}
+  <section className="card" data-testid="settlement-archive">
+   <details>
+    <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-3 py-1">
+     <span className="font-bold">الأيام المعتمدة — الأرشيف</span>
+     <span className="txt-muted text-sm">{archivedCount} يوم · {archiveMonths.length} شهر</span>
+    </summary>
+    <div className="mt-4 space-y-3">
+     {archiveMonths.length===0?<p className="txt-muted text-sm">لا توجد أيام معتمدة في الأرشيف.</p>:
+      archiveMonths.map(month=><details key={month.month} className="rounded-xl border p-3"
+       data-testid="settlement-archive-month" style={{borderColor:"var(--border)"}}>
+       <summary className="cursor-pointer flex flex-wrap justify-between items-center gap-2 font-semibold">
+        <span>{month.label}</span>
+        <span className="txt-muted text-sm">{month.days.length} يوم</span>
+       </summary>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+        {month.days.map(day=><button type="button" key={day.business_date}
+         className={selected===day.business_date?"btn-primary text-right p-3":"btn-secondary text-right p-3"}
+         data-testid="settlement-archive-day"
+         aria-pressed={selected===day.business_date}
+         disabled={busy||reportCorrection} onClick={()=>selectDay(day.business_date)}>
+         <span className="flex items-center justify-between gap-2">
+          <span>{arabicDate(day.business_date)}</span>
+          <span className="text-xs">✓ معتمد</span>
+         </span>
+        </button>)}
+       </div>
+      </details>)}
+    </div>
+   </details>
+  </section>
   {error&&<div className="card"><p role="alert" className="txt-danger">{error}</p></div>}
   {filter&&<Modal title="تفاصيل القيود اليومية" onClose={()=>setFilter(null)}>
    {filtered.map(e=><button type="button" key={e.id} className="w-full text-start border-b py-2" onClick={()=>{setFilter(null);setDetail(e);}}>
