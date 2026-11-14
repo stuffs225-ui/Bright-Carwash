@@ -1,7 +1,7 @@
 -- Synthetic only: manager/worker report parity and no duplicate handoff.
 reset role;
 do $qa_manager_report$
-declare d date; manager_id uuid; image_path text; first_result boolean; second_result boolean; worker_id uuid;
+declare d date; manager_id uuid; image_path text; first_result boolean; second_result boolean; worker_id uuid; car_id uuid; blocked boolean:=false;
 begin
  select user_id into manager_id from public.app_members where role='manager' and active limit 1;
  if manager_id is null then raise exception 'No manager fixture';end if;
@@ -16,9 +16,18 @@ begin
    occurred_at,client_mutation_id,created_by)
  values('سيارة صغيرة','غسيل كامل',25,0,0,
    (d::timestamp+interval '12 hours') at time zone 'Asia/Riyadh',
-   'qa-manager-report-entry',manager_id);
+   'qa-manager-report-entry',manager_id) returning id into car_id;
  image_path:='day/'||d::text||'/qa-manager-report.png';
  insert into storage.objects(bucket_id,name) values('carwash-pos-evidence',image_path);
+ -- No report may be submitted while the recorded car is still being washed.
+ begin
+  perform public.carwash_submit_manager_day_report(d,25,0,0,image_path,manager_id);
+ exception when others then
+  if position('All cars must be delivered' in sqlerrm)=0 then raise;end if;
+  blocked:=true;
+ end;
+ if not blocked then raise exception 'Premature manager report was accepted';end if;
+ perform public.carwash_readiness_action(car_id,'delivered','manager',manager_id,null,null);
  first_result:=public.carwash_submit_manager_day_report(d,25,0,0,image_path,manager_id);
  if first_result is distinct from true then raise exception 'Manager report failed';end if;
  second_result:=public.carwash_submit_manager_day_report(d,25,0,0,image_path,manager_id);
