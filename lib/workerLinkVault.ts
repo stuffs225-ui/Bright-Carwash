@@ -30,11 +30,17 @@ export function revealWorkerLinkToken(ciphertext:string,managerId:string,key:Buf
  checkKey(key);
  if(!isEnvelope(ciphertext)||!managerId)throw Error("Invalid worker link envelope");
  const [,iv,tag,ciphertext64]=ciphertext.split(".");
- const decipher=createDecipheriv("aes-256-gcm",key,Buffer.from(iv,"base64url"));
+ const ivBytes=Buffer.from(iv,"base64url");
+ const tagBytes=Buffer.from(tag,"base64url");
+ const dataBytes=Buffer.from(ciphertext64,"base64url");
+ if(ivBytes.length!==12||tagBytes.length!==16||dataBytes.length!==64||
+  ivBytes.toString("base64url")!==iv||tagBytes.toString("base64url")!==tag||
+  dataBytes.toString("base64url")!==ciphertext64)
+  throw Error("Noncanonical worker link envelope");
+ const decipher=createDecipheriv("aes-256-gcm",key,ivBytes);
  decipher.setAAD(Buffer.from("worker-link:"+managerId));
- decipher.setAuthTag(Buffer.from(tag,"base64url"));
- const token=Buffer.concat([decipher.update(Buffer.from(ciphertext64,"base64url")),
-  decipher.final()]).toString("utf8");
+ decipher.setAuthTag(tagBytes);
+ const token=Buffer.concat([decipher.update(dataBytes),decipher.final()]).toString("utf8");
  if(!isToken(token))throw Error("Invalid worker token");
  return token;
 }
