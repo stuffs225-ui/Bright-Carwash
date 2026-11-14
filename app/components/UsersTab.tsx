@@ -15,6 +15,7 @@ export function UsersTab(){
  const [label,setLabel]=useState("الرابط المشترك لجميع العمال");
  const [links,setLinks]=useState<WorkerLink[]>([]);
  const [backupUrl,setBackupUrl]=useState("");
+ const [justCreatedUrl,setJustCreatedUrl]=useState("");
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
@@ -51,7 +52,8 @@ export function UsersTab(){
   ))return;
   setBusy(true);setStatus("");setError("");
   try{
-   await request("/api/worker-links","POST",{label:replace?current?.label||label:label.trim(),replace});
+   const response=await request("/api/worker-links","POST",{label:replace?current?.label||label:label.trim(),replace});
+   if(typeof response.url==="string")setJustCreatedUrl(response.url);
    setEditingName(false);
    await refresh();
    setStatus(replace
@@ -65,6 +67,7 @@ export function UsersTab(){
   setBusy(true);setError("");setStatus("");
   try{
    await request("/api/worker-links","PATCH",{id:link.id,action:"revoke"});
+   setJustCreatedUrl("");
    await refresh();setStatus("تم إلغاء الرابط؛ السجلات والعمليات السابقة محفوظة.");
   }catch(e){setError(e instanceof Error?e.message:"تعذر الإلغاء");}
   finally{setBusy(false);}
@@ -166,6 +169,14 @@ export function UsersTab(){
        onClick={()=>void revoke(current)}>إلغاء الرابط الحالي</button>
      </div>
     </details>
+   </div>}
+   {justCreatedUrl&&justCreatedUrl!==current?.url&&<div
+    className="rounded-xl border p-3 space-y-2" style={{borderColor:"var(--border)"}}>
+    <strong className="text-sm">الرابط الجديد — متاح للنسخ حتى لو تعذر تحديث القائمة</strong>
+    <input type="text" readOnly dir="ltr" aria-label="الرابط الجديد"
+     value={justCreatedUrl} onFocus={e=>e.currentTarget.select()}/>
+    <button type="button" className="btn-primary w-full"
+     onClick={()=>void copy(justCreatedUrl)}>نسخ الرابط الجديد</button>
    </div>}
    <p className="txt-muted text-xs">الرابط سري وصالح لمدة 90 يومًا عند إصداره. من يمتلكه يستطيع تسجيل السيارات فقط؛ لا ترسله لغير العمال.</p>
   </section>
