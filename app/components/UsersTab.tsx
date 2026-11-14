@@ -1,22 +1,32 @@
 "use client";
-import {useCallback,useEffect,useState} from "react";
+import {useCallback,useEffect,useMemo,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 
-type WorkerLink={id:string;label:string;created_at:string;expires_at:string;revoked_at:string|null;last_used_at:string|null;daily_limit:number};
-const date=(s:string)=>new Date(s).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{year:"numeric",month:"short",day:"numeric"});
+type WorkerLink={
+ id:string;label:string;created_at:string;expires_at:string;revoked_at:string|null;
+ last_used_at:string|null;daily_limit:number;url:string|null;
+ recoverable:boolean;recoveryFailed:boolean;
+};
+const date=(s:string)=>new Date(s).toLocaleDateString(
+ "ar-SA-u-ca-gregory-nu-latn",{year:"numeric",month:"short",day:"numeric"});
+const active=(link:WorkerLink)=>!link.revoked_at&&Date.parse(link.expires_at)>Date.now();
+
 export function UsersTab(){
  const [label,setLabel]=useState("الرابط المشترك لجميع العمال");
  const [links,setLinks]=useState<WorkerLink[]>([]);
- const [newUrl,setNewUrl]=useState("");
  const [backupUrl,setBackupUrl]=useState("");
  const [busy,setBusy]=useState(false);
+ const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
  const [status,setStatus]=useState("");
+ const [editingName,setEditingName]=useState(false);
+ const [newName,setNewName]=useState("");
  const request=useCallback(async(endpoint:string,method:"GET"|"POST"|"PATCH",payload?:object)=>{
   const {data:{session}}=await supabase.auth.getSession();
   if(!session)throw Error("جلسة الإدارة غير متاحة. افتح رابط الإدارة الخاص بجهازك.");
   const response=await fetch(endpoint,{
-   method,headers:{"authorization":"Bearer "+session.access_token,"content-type":"application/json"},
+   method,headers:{authorization:"Bearer "+session.access_token,
+    "content-type":"application/json"},
    body:payload?JSON.stringify(payload):undefined,cache:"no-store"
   });
   const data=await response.json().catch(()=>({}));
@@ -27,39 +37,58 @@ export function UsersTab(){
   try{
    const response=await request("/api/worker-links","GET");
    setLinks(response.links||[]);
+   setError("");
   }catch(e){setError(e instanceof Error?e.message:"تعذر جلب الروابط");}
+  finally{setLoading(false);}
  },[request]);
  useEffect(()=>{void refresh();},[refresh]);
-
- async function makeLink(e:React.FormEvent){
-  e.preventDefault();setBusy(true);setStatus("");setError("");
+ const current=useMemo(()=>links.find(active)||null,[links]);
+ const history=useMemo(()=>links.filter(x=>x.id!==current?.id),[links,current?.id]);
+ async function issue(replace=false){
+  if(busy)return;
+  if(replace&&!window.confirm(
+   "هل تريد استبدال الرابط المشترك؟ سيُوقف الرابط السابق عند نجاح إصدار الجديد. يجب إرسال الرابط الجديد للعمال، وستظل السيارات المسجلة محفوظة."
+  ))return;
+  setBusy(true);setStatus("");setError("");
   try{
-   const response=await request("/api/worker-links","POST",{label:label.trim()});
-   setNewUrl(response.url);
-   setStatus("تم إصدار رابط العامل. انسخه وأرسله للعامل عبر واتساب، بدون أي تسجيل دخول.");
+   await request("/api/worker-links","POST",{label:replace?current?.label||label:label.trim(),replace});
+   setEditingName(false);
    await refresh();
+   setStatus(replace
+    ?"تم إنشاء رابط جديد محفوظ في الإعدادات. الرابط السابق أُلغي؛ أرسل الرابط الجديد لجميع العمال."
+    :"تم إنشاء الرابط وحفظه مشفرًا. يمكنك الرجوع لنسخه من هذه الصفحة متى شئت.");
   }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء الرابط");}
   finally{setBusy(false);}
  }
- async function revoke(id:string){
-  if(!window.confirm("إلغاء هذا الرابط؟ لن يتمكن العامل من تسجيل سيارات جديدة باستخدامه."))return;
+ async function revoke(link:WorkerLink){
+  if(!window.confirm("إلغاء الرابط؟ لن يتمكن أي عامل من التسجيل به، وسيبقى السجل محفوظًا."))return;
   setBusy(true);setError("");setStatus("");
   try{
-   await request("/api/worker-links","PATCH",{id,action:"revoke"});
-   setNewUrl("");setStatus("تم إلغاء الرابط فورًا.");await refresh();
+   await request("/api/worker-links","PATCH",{id:link.id,action:"revoke"});
+   await refresh();setStatus("تم إلغاء الرابط؛ السجلات والعمليات السابقة محفوظة.");
   }catch(e){setError(e instanceof Error?e.message:"تعذر الإلغاء");}
   finally{setBusy(false);}
  }
- async function copy(text:string){
-  try{await navigator.clipboard.writeText(text);setStatus("تم نسخ الرابط. يمكنك إرساله في واتساب.");}
-  catch{setError("تعذر النسخ تلقائيًا؛ اضغط مطولًا على حقل الرابط وانسخه.");}
- }
- async function share(text:string){
+ async function rename(){
+  if(!current||busy||!newName.trim()||newName.trim().length>80)return;
+  setBusy(true);setError("");
   try{
-   if(typeof navigator.share==="function")await navigator.share({
-    title:"مغسلة سيارتك اللامعة — تسجيل السيارات",url:text
-   });
-   else await copy(text);
+   await request("/api/worker-links","PATCH",{id:current.id,action:"rename",label:newName.trim()});
+   await refresh();setEditingName(false);setStatus("تم تعديل اسم الرابط دون تغيير عنوانه.");
+  }catch(e){setError(e instanceof Error?e.message:"تعذر تعديل الاسم");}
+  finally{setBusy(false);}
+ }
+ async function copy(url:string){
+  try{
+   await navigator.clipboard.writeText(url);
+   setStatus("تم نسخ الرابط ويمكنك إرساله للعامل.");setError("");
+  }catch{setError("تعذر النسخ تلقائيًا؛ اضغط مطولًا على حقل الرابط وانسخه.");}
+ }
+ async function share(url:string){
+  try{
+   if(typeof navigator.share==="function")
+    await navigator.share({title:"مغسلة سيارتك اللامعة — تسجيل السيارات",url});
+   else await copy(url);
   }catch{}
  }
  async function createOwnerBackup(){
@@ -67,62 +96,106 @@ export function UsersTab(){
   try{
    const data=await request("/api/owner/invites","POST");
    setBackupUrl(data.url);
-   setStatus("تم إنشاء رابط إدارة مباشر يعمل من أي جهاز دون تفعيل، ويمكن فتحه أكثر من مرة.");
-  }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء الرابط الاحتياطي");}
+   setStatus("تم إنشاء رابط إدارة احتياطي. احتفظ به في مكان آمن.");
+  }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء رابط الإدارة");}
   finally{setBusy(false);}
  }
- return <div className="space-y-5" dir="rtl">
+ return <div className="space-y-4" dir="rtl" data-testid="worker-link-settings">
   <section className="card space-y-4">
-   <h2 className="section-title">🔗 رابط تسجيل السيارات المشترك</h2>
-   <p className="txt-muted text-sm">رابط واحد مشترك لجميع العمال. لا يفتح إلا نموذج إضافة السيارات، دون حساب أو إيميل أو PIN. شاركه مع العمال على واتساب؛ لا ترسل لهم رابط الإدارة.</p>
-   {links.some(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now())&&<p className="txt-warning text-sm">يوجد رابط نشط بالفعل. لا يمكن استرجاع نصه من قاعدة البيانات؛ استخدم الرابط الذي سبق أن نسخته، أو ألغِ الرابط القديم أولًا إذا ضاع منك وأصدر واحدًا بديلًا.</p>}
-   {!links.some(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now())&&<form onSubmit={makeLink} className="space-y-3">
-    <label className="form-label">اسم الرابط (لتمييز العامل أو الوردية)
-     <input value={label} maxLength={80} required onChange={e=>setLabel(e.target.value)}
-      placeholder="مثلًا: العامل الصباحي"/>
+   <div>
+    <h2 className="section-title mb-1">🔗 رابط تسجيل السيارات المشترك</h2>
+    <p className="txt-muted text-sm">رابط واحد تشاركه مع جميع العمال. لا يتطلب حسابًا ولا يفتح صفحة الإدارة.</p>
+   </div>
+   {loading&&<p role="status" className="txt-muted">جارٍ تحميل الرابط...</p>}
+   {!loading&&!current&&<>
+    <label className="form-label">اسم الرابط
+     <input value={label} maxLength={80} required
+      onChange={e=>setLabel(e.target.value)} placeholder="الرابط المشترك لجميع العمال"/>
     </label>
-    <button type="submit" className="btn-primary w-full" disabled={busy}>
-     {busy?"جارٍ إنشاء الرابط...":"إنشاء رابط العامل"}
+    <button type="button" className="btn-primary w-full"
+     disabled={busy||!label.trim()} onClick={()=>void issue(false)}>
+     {busy?"جارٍ الإنشاء...":"إنشاء رابط العمال وحفظه"}
     </button>
-   </form>}
-   {newUrl&&<div className="space-y-3 p-3 border rounded-xl">
-    <strong>الرابط المشترك الجديد — احتفظ به وأرسله لجميع العمال</strong>
-    <input aria-label="رابط العامل" type="text" readOnly value={newUrl} onFocus={e=>e.currentTarget.select()} dir="ltr"/>
-    <div className="grid grid-cols-2 gap-2">
-     <button type="button" className="btn-primary" onClick={()=>void copy(newUrl)}>نسخ الرابط</button>
-     <button type="button" className="btn-secondary" onClick={()=>void share(newUrl)}>مشاركة الرابط</button>
+   </>}
+   {current&&<div className="rounded-xl border p-3 space-y-3"
+    style={{borderColor:"var(--border)"}} data-testid="current-worker-link">
+    <div className="flex justify-between gap-3 items-start">
+     <div><strong className="block">{current.label}</strong>
+      <p className="txt-muted text-xs">نشط حتى {date(current.expires_at)}</p></div>
+     <span className="text-xs txt-cash font-semibold shrink-0">نشط</span>
     </div>
-    <p className="txt-muted text-xs">الرابط سري، ومن يمتلكه يستطيع تسجيل السيارات فقط. صالح لمدة 90 يومًا ويمكن إلغاؤه فورًا.</p>
+    {current.url?<>
+     <label className="form-label">رابط العامل الحالي — يمكنك الرجوع إليه دائمًا
+      <input aria-label="رابط العامل الحالي" type="text" readOnly dir="ltr"
+       autoComplete="off" value={current.url} onFocus={e=>e.currentTarget.select()}/>
+     </label>
+     <div className="grid grid-cols-2 gap-2">
+      <button type="button" className="btn-primary" onClick={()=>void copy(current.url!)}>نسخ الرابط</button>
+      <button type="button" className="btn-secondary" onClick={()=>void share(current.url!)}>مشاركة الرابط</button>
+     </div>
+     <button type="button" className="btn-secondary w-full"
+      onClick={()=>window.open(current.url!,"_blank","noopener,noreferrer")}>فتح صفحة العامل</button>
+    </>:<div className="space-y-3">
+     <p className="txt-warning text-sm" role="status">
+      {current.recoveryFailed
+       ?"تعذر فك تشفير الرابط المحفوظ. يمكن استبداله دون المساس بالسيارات المسجلة."
+       :"هذا الرابط قديم وأنشئ قبل تفعيل حفظ الروابط. لم يكن عنوانه محفوظًا، لذلك لا يمكن استرجاعه، لكنه ما زال يعمل مع العمال الذين لديهم نسخته."}
+     </p>
+     <button type="button" className="btn-primary w-full" disabled={busy}
+      onClick={()=>void issue(true)}>استبداله برابط محفوظ قابل للنسخ دائمًا</button>
+    </div>}
+    <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+     <summary className="cursor-pointer font-semibold text-sm">إدارة الرابط وتغييره</summary>
+     <div className="space-y-3 mt-3">
+      {editingName?<div className="space-y-2">
+       <label className="form-label">اسم الرابط
+        <input autoFocus value={newName} maxLength={80} onChange={e=>setNewName(e.target.value)}/>
+       </label>
+       <div className="grid grid-cols-2 gap-2">
+        <button type="button" className="btn-primary" disabled={busy||!newName.trim()}
+         onClick={()=>void rename()}>حفظ الاسم</button>
+        <button type="button" className="btn-secondary" onClick={()=>setEditingName(false)}>إلغاء</button>
+       </div>
+      </div>:<button type="button" className="btn-secondary w-full"
+       disabled={busy} onClick={()=>{setNewName(current.label);setEditingName(true);}}>
+       تعديل اسم الرابط فقط
+      </button>}
+      {current.url&&<button type="button" className="btn-secondary w-full"
+       disabled={busy} onClick={()=>void issue(true)}>استبدال الرابط بعنوان جديد</button>}
+      <button type="button" className="btn-secondary w-full" disabled={busy}
+       onClick={()=>void revoke(current)}>إلغاء الرابط الحالي</button>
+     </div>
+    </details>
    </div>}
+   <p className="txt-muted text-xs">الرابط سري وصالح لمدة 90 يومًا عند إصداره. من يمتلكه يستطيع تسجيل السيارات فقط؛ لا ترسله لغير العمال.</p>
   </section>
-  {error&&<p className="txt-danger" role="alert">{error}</p>}
-  {status&&<p role="status" className="txt-cash">{status}</p>}
-  <section className="card space-y-3">
-   <h2 className="section-title">حالة الرابط المشترك ({links.filter(l=>!l.revoked_at&&new Date(l.expires_at).getTime()>Date.now()).length} نشط)</h2>
-   {links.length===0?<p className="txt-muted text-sm">لم تُنشأ روابط حتى الآن.</p>:
-    links.map(link=>{
-     const active=!link.revoked_at&&new Date(link.expires_at).getTime()>Date.now();
-     return <div key={link.id} className="flex items-center justify-between gap-2 border rounded-xl p-3">
-      <div><strong>{link.label}</strong>
-       <p className="txt-muted text-xs">{active?"نشط":"ملغى أو منتهي"} · حتى {date(link.expires_at)}</p>
-       {link.last_used_at&&<p className="txt-muted text-xs">آخر تسجيل: {date(link.last_used_at)}</p>}
-      </div>
-      {active&&<button type="button" className="btn-secondary" disabled={busy}
-        onClick={()=>void revoke(link.id)}>إلغاء الرابط</button>}
-     </div>;
-    })}
-  </section>
-  <section className="card space-y-3">
-   <h2 className="subsection-title">رابط مباشر إضافي للإدارة</h2>
-   <p className="txt-muted text-sm">رابط الإدارة الخاص يفتح اللوحة كاملة مباشرة، دون تسجيل أو تفعيل، على أي جوال أو كمبيوتر. لا ترسله للعمال لأنه يمنح جميع صلاحيات المدير.</p>
-   <button className="btn-secondary w-full" type="button" disabled={busy}
-    onClick={()=>void createOwnerBackup()}>إنشاء رابط إدارة مباشر إضافي</button>
-   {backupUrl&&<div className="space-y-2">
-    <input aria-label="رابط الإدارة الاحتياطي" type="text" dir="ltr" readOnly value={backupUrl}
-      onFocus={e=>e.currentTarget.select()}/>
-    <button type="button" className="btn-secondary w-full" onClick={()=>void copy(backupUrl)}>نسخ الرابط الاحتياطي</button>
-    <p className="txt-warning text-xs">رابط سري يمنح جميع صلاحيات الإدارة، يمكن استخدامه عدة مرات ومن أي جهاز. احفظه بعيدًا عن الآخرين.</p>
-   </div>}
-  </section>
+  {error&&<p className="txt-danger text-sm" role="alert">{error}</p>}
+  {status&&<p className="txt-cash text-sm" role="status">{status}</p>}
+  <details className="card" data-testid="worker-link-history">
+   <summary className="font-bold cursor-pointer">سجل الروابط السابقة ({history.length})</summary>
+   <div className="space-y-2 mt-4">
+    {history.length===0?<p className="txt-muted text-sm">لا توجد روابط سابقة.</p>:
+     history.map(link=><div key={link.id}
+      className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+      <strong className="block">{link.label}</strong>
+      <p className="txt-muted text-xs">{link.revoked_at?"ملغى":"منتهي"} · حتى {date(link.expires_at)}</p>
+      {link.last_used_at&&<p className="txt-muted text-xs">آخر تسجيل: {date(link.last_used_at)}</p>}
+     </div>)}
+   </div>
+  </details>
+  <details className="card">
+   <summary className="font-bold cursor-pointer">رابط الإدارة الاحتياطي</summary>
+   <div className="space-y-3 mt-4">
+    <p className="txt-muted text-sm">رابط الإدارة يعطي كامل الصلاحيات. احتفظ به لنفسك ولا تشاركه مع العمال.</p>
+    <button className="btn-secondary w-full" type="button" disabled={busy}
+     onClick={()=>void createOwnerBackup()}>إنشاء رابط إدارة إضافي</button>
+    {backupUrl&&<div className="space-y-2">
+     <input aria-label="رابط الإدارة الاحتياطي" type="text" dir="ltr" readOnly
+      value={backupUrl} onFocus={e=>e.currentTarget.select()}/>
+     <button type="button" className="btn-secondary w-full"
+      onClick={()=>void copy(backupUrl)}>نسخ رابط الإدارة</button>
+    </div>}
+   </div>
+  </details>
  </div>;
 }
