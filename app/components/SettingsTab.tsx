@@ -113,7 +113,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
     <div className="space-y-6">
       {section === "general" && (
         <div className="space-y-6">
-          <Section title="مخصص العمال الجماعي" hint="10 ريالات إجمالًا لفريق العمال عن كل سيارة صغيرة أو كبيرة مسجلة، وليس لكل عامل على حدة.">
+          <Section title="مخصص العمال الجماعي" hint="10 ريالات إجمالًا لفريق العمال عن كل سيارة صغيرة أو كبيرة أو شاحنة مؤهلة، وليس لكل عامل على حدة.">
             <p className="txt-muted text-sm">مكافأة ريالين عن السيارات التي تتجاوز 15 سيارة مجمّدة مؤقتًا، ولن تُحتسب أو تُدفع آليًا. يمكن للمدير إضافة مكافأة منفصلة للوردية من سجل المكافآت.</p>
           </Section>
 
