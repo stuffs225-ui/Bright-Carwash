@@ -6,6 +6,7 @@ on:
       - chatgpt/carwash-independent-audit-20261114
       - chatgpt/carwash-approved-answers-20261114
       - chatgpt/carwash-settlement-navigation-20261114
+      - chatgpt/carwash-settings-control-center-20261114
       - chatgpt/carwash-v2-secure-preview-20261101
       - chatgpt/bright-carwash-approved-phases-20261107
       - chatgpt/carwash-ui-finance-governance-20261107
@@ -139,6 +140,7 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_crew_payout_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_manager_report_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_missing_membership_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_manager_settings_e2e.sql
             '
 
   focused-ui:
