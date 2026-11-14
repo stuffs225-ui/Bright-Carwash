@@ -17,12 +17,12 @@
  const workerMode=!!token;
  const supported=["ha-NG","en","ar"];
  const LOCALE_KEY="bright_carwash_worker_lang_v1";
- let lang="ha-NG";
+ let lang="en";
  try{lang=workerMode?localStorage.getItem(LOCALE_KEY)||"":"ar";}catch{}
  if(workerMode&&!supported.includes(lang)){
-  try{lang=document.cookie.match(/(?:^|; )carwash_worker_lang=(ha-NG|en|ar)(?:;|$)/)?.[1]||"ha-NG";}catch{lang="ha-NG";}
+  try{lang=document.cookie.match(/(?:^|; )carwash_worker_lang=(ha-NG|en|ar)(?:;|$)/)?.[1]||"en";}catch{lang="en";}
  }
- if(!supported.includes(lang))lang=workerMode?"ha-NG":"ar";
+ if(!supported.includes(lang))lang=workerMode?"en":"ar";
  const localeFiles=new Map(),ui={};
  let strings={},lastNotice=null,hash="",db=null,catalog=null;
  let method="cash",carType="",manualMode=false;
@@ -63,7 +63,7 @@
  }
  async function changeLang(next,save=true){
   if(!workerMode)next="ar";
-  if(!supported.includes(next))next="ha-NG";
+  if(!supported.includes(next))next="en";
   if(!localeFiles.has(next)){
    const res=await fetch("/locales/"+next+".json",{cache:"force-cache"});
    if(!res.ok)throw Error("Locale unavailable");
