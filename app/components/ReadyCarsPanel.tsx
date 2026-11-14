@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useRef,useState} from "react";
+import {useCallback,useEffect,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 import {workerText,workerMessage,workerCarName,workerServiceName,workerDirection,workerTime,type WorkerLocale} from "@/lib/workerI18n";
 type Car={id:string;carType:string;serviceType:string;date:string;occurredAt:string;
@@ -32,31 +32,6 @@ async function imageForShare(raw:File):Promise<File>{
  }finally{URL.revokeObjectURL(url);}
 }
 
-/** A ready-to-share JPEG when no real car photo has been uploaded. */
-function automaticReadyImage(car:Car):File{
- const canvas=document.createElement("canvas");
- canvas.width=1000;canvas.height=660;
- const ctx=canvas.getContext("2d");
- if(!ctx)throw Error("تعذر تجهيز صورة الجاهزية");
- const gradient=ctx.createLinearGradient(0,0,1000,660);
- gradient.addColorStop(0,"#082c4b");gradient.addColorStop(1,"#07538b");
- ctx.fillStyle=gradient;ctx.fillRect(0,0,1000,660);
- ctx.fillStyle="#dbf5ff";ctx.font="bold 43px system-ui";
- ctx.textAlign="center";ctx.fillText("مغسلة سيارتك اللامعة",500,94);
- ctx.font="124px system-ui";ctx.fillText("🚗",500,286);
- ctx.fillStyle="#ffffff";ctx.font="bold 54px system-ui";
- ctx.fillText("سيارتك جاهزة للاستلام",500,400);
- ctx.fillStyle="#d3eeff";ctx.font="30px system-ui";
- ctx.fillText(car.carType+" · "+car.serviceType,500,462);
- ctx.strokeStyle="#65b8e4";ctx.lineWidth=3;
- ctx.beginPath();ctx.moveTo(140,512);ctx.lineTo(860,512);ctx.stroke();
- ctx.font="27px system-ui";ctx.fillText("نشكركم على زيارتكم",500,569);
- const base64=canvas.toDataURL("image/jpeg",0.86).split(",")[1];
- const binary=atob(base64),bytes=new Uint8Array(binary.length);
- for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
- return new File([bytes],"carwash-ready.jpg",{type:"image/jpeg"});
-}
-
 export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
  token?:string;manager?:boolean;locale?:WorkerLocale;refreshKey?:number
 }){
@@ -67,8 +42,6 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
  const [busy,setBusy]=useState("");
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
- const [files,setFiles]=useState<Record<string,File>>({});
- const preloadAttempted=useRef(new Set<string>());
  const [truncated,setTruncated]=useState(false);
  const headers=useCallback(async(contentType=true)=>{
   const h:Record<string,string>={};
@@ -106,33 +79,6 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
   return()=>window.clearInterval(timer);
  },[open,load,refreshKey]);
 
- // Prefetch actual photos silently, never requiring a separate preparation tap.
- useEffect(()=>{
-  if(!open)return;
-  const queue=cars.filter(car=>car.status!=="delivered"&&car.photoAvailable&&
-   !preloadAttempted.current.has(car.id));
-  for(const car of queue)preloadAttempted.current.add(car.id);
-  if(!queue.length)return;
-  let cancelled=false;
-  const jobs=queue.slice();
-  async function worker(){
-   while(!cancelled){
-    const car=jobs.shift();
-    if(!car)return;
-    try{
-     const item=await call("photo",car.id);
-     const response=await fetch(item.url,{cache:"no-store"});
-     if(!response.ok)continue;
-     const blob=await response.blob();
-     const file=await imageForShare(new File([blob],"carwash-photo.jpg",{type:blob.type||"image/jpeg"}));
-     if(!cancelled)setFiles(prev=>({...prev,[car.id]:file}));
-    }catch{/* Photo sharing remains optional. */}
-   }
-  }
-  for(let i=0;i<Math.min(3,jobs.length);i++)void worker();
-  return()=>{cancelled=true;};
- },[open,cars,call]);
-
  async function deliver(car:Car){
   if(busy||car.status==="delivered")return;
   setBusy(car.id);setError("");setNotice("");
@@ -158,7 +104,6 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
    });
    const json=await result.json().catch(()=>({}));
    if(!result.ok)throw Error(json.error||"تعذر حفظ الصورة");
-   setFiles(v=>({...v,[car.id]:file}));
    setNotice("تم حفظ الصورة.");
    await load();
   }catch(e){setError(e instanceof Error?e.message:"فشل الصورة");}
@@ -167,28 +112,22 @@ export function ReadyCarsPanel({token,manager=false,locale="ar",refreshKey=0}:{
  function share(car:Car){
   if(car.status==="delivered"||busy)return;
   setError("");setNotice("");
-  // Native Web Share is the only browser-supported way to share JPEG plus
-  // a caption. It cannot force WhatsApp or preselect the recipient.
-  if(!navigator.share){setError(tt("ready.noSharing"));return;}
-  let file:File;
-  try{file=files[car.id]||automaticReadyImage(car);}
-  catch{setError(tt("ready.imageError"));return;}
-  if(navigator.canShare&&!navigator.canShare({files:[file]})){
-   setError(tt("ready.noSharing"));return;
+  const phone=(car.phone||"").replace(/\\D/g,"");
+  if(!/^9665\\d{8}$/.test(phone)){
+   setError("لا يوجد رقم جوال سعودي صالح لهذه السيارة؛ لا يمكن فتح محادثة العميل.");return;
   }
-  try{
-   // Share must run inside the original user tap (iOS user activation).
-   const pending=navigator.share({
-    files:[file],
-    text:readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.",
-    title:"مغسلة سيارتك اللامعة"
-   });
-   void call("share_opened",car.id).then(()=>load())
-    .catch(e=>setError(e instanceof Error?e.message:tt("error.cars")));
-   void pending.then(()=>setNotice(workerText("ar","ready.shareClosed"))).catch(e=>{
-    if(!(e instanceof Error&&e.name==="AbortError"))setError(tt("ready.imageError"));
-   });
-  }catch{setError(tt("ready.imageError"));}
+  // WhatsApp deep link opens the stored customer's conversation with text.
+  // Sending and photo attachment are manual and cannot be verified by a browser.
+  const text=readyMessage||"سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة.";
+  const url="https://wa.me/"+phone+"?text="+encodeURIComponent(text);
+  const popup=window.open(url,"_blank");
+  if(popup)popup.opener=null;
+  // Log only an attempted share, even if WhatsApp is canceled.
+  void call("share_opened",car.id).then(()=>{
+   setNotice("تم تسجيل محاولة مشاركة الجاهزية؛ إرسال الرسالة غير مؤكد. يمكنك إضافة الصورة يدويًا من واتساب.");
+   void load();
+   if(!popup)window.location.assign(url);
+  }).catch(err=>setError(err instanceof Error?err.message:tt("error.cars")));
  }
  return <section className="card space-y-3" dir={workerDirection(locale)} lang={locale}>
   <button type="button" className="w-full flex items-center justify-between text-start gap-2"
