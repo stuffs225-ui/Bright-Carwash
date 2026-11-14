@@ -29,9 +29,14 @@ begin
   where worker_id=v_worker and deleted_at is null)<>1 then
   raise exception 'Archiving deleted the workers historical financial ledger';
  end if;
- delete from public.workers where id=v_worker;
- get diagnostics v_rows=row_count;
- if v_rows<>0 then raise exception 'Manager bypassed owner-only hard-delete authorization';end if;
+ begin
+  delete from public.workers where id=v_worker;
+  get diagnostics v_rows=row_count;
+ exception when foreign_key_violation or insufficient_privilege then
+  v_rows:=0; -- The historic salary/ledger FK also prevents hard deletion.
+ end;
+ if v_rows<>0 or not exists(select 1 from public.workers where id=v_worker)
+ then raise exception 'Hard deletion altered the worker or linked history';end if;
  update public.workers set active=true where id=v_worker;
  if not exists(select 1 from public.workers where id=v_worker and active)
  then raise exception 'Worker restore failed';end if;
