@@ -2,6 +2,7 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
 import {showToast} from "@/lib/toast";
+import {Modal} from "./Modal";
 import type {Worker} from "@/lib/types";
 import {cleanWorkerProfile,validateWorkerProfile,type EditableWorkerProfile} from "@/lib/workerProfileRules";
 
@@ -144,12 +145,9 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
      <button type="button" className={actionClass} onClick={()=>edit(w)}>تعديل</button>
     </div>)}</div>}
   </section>
-  {draft&&editingId&&<section className="card space-y-3" data-testid="worker-profile-editor"
-   id="worker-profile-editor">
-   <div className="flex justify-between items-center gap-2">
-    <h3 className="section-title mb-0">بيانات {workers.find(w=>w.id===editingId)?.name||"العامل"}</h3>
-    <button type="button" className="btn-secondary text-sm" onClick={()=>{setEditingId(null);setDraft(null);setError("");}}>إغلاق</button>
-   </div>
+  {draft&&editingId&&<Modal title={"تعديل بيانات "+(workers.find(w=>w.id===editingId)?.name||"العامل")}
+   onClose={()=>{setEditingId(null);setDraft(null);setError("");}}>
+   <div className="space-y-3" data-testid="worker-profile-editor" id="worker-profile-editor">
    <form className="space-y-3" onSubmit={e=>void save(e)}>
     <label className="form-label">اسم العامل
      <input required maxLength={80} value={draft.name} onChange={e=>setDraft(d=>d?{...d,name:e.target.value}:d)}/></label>
@@ -186,10 +184,11 @@ export function WorkerDirectorySettings({focusWorkerId,startQuickAdd=false}:Prop
    </form>
    <button type="button" disabled={busy} className="btn-secondary w-full"
     onClick={()=>{const w=workers.find(x=>x.id===editingId);if(w)void setStatus(w,!w.active);}}>
-    {draft.active?"حذف من القائمة (أرشفة)":"استرجاع العامل"}
+    {workers.find(w=>w.id===editingId)?.active?"حذف من القائمة (أرشفة)":"استرجاع العامل"}
    </button>
    <p className="txt-muted text-xs">الحذف الآمن يُخفي العامل من القوائم النشطة فقط، ولا يمس كشوف الحساب أو العمليات السابقة.</p>
-  </section>}
+   </div>
+  </Modal>}
   {archived.length>0&&<details className="card" data-testid="archived-workers">
    <summary className="cursor-pointer font-semibold">العمال المؤرشفون ({archived.length})</summary>
    <div className="space-y-2 mt-3">{archived.map(w=><div key={w.id}
