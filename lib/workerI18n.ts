@@ -17,14 +17,14 @@ export function workerText(lang:WorkerLocale,key:WorkerKey,vars?:Record<string,s
 }
 export function workerDirection(lang:WorkerLocale):"ltr"|"rtl"{return lang==="ar"?"rtl":"ltr";}
 export function readWorkerLocale():WorkerLocale{
- if(typeof window==="undefined")return "ha-NG";
+ if(typeof window==="undefined")return "en";
  try{
   const saved=window.localStorage.getItem(WORKER_LOCALE_KEY);
   if(saved==="ha-NG"||saved==="en"||saved==="ar")return saved;
   const cookie=document.cookie.match(/(?:^|; )carwash_worker_lang=(ha-NG|en|ar)(?:;|$)/);
   if(cookie)return cookie[1] as WorkerLocale;
  }catch{/* Browsers can block storage. */}
- return "ha-NG";
+ return "en";
 }
 export function persistWorkerLocale(lang:WorkerLocale):void{
  if(typeof window==="undefined")return;

@@ -21,7 +21,7 @@ export function visibleWorkerCalendarEntries(entries:CalendarEntry[],days:Calend
  const unapproved=new Set(days.filter(d=>d.status!=="approved").map(d=>d.business_date));
  return entries.filter(e=>unapproved.has(e.business_date||riyadhDayKey(e.occurred_at)));
 }
-export function crewBonusEligible(carType:string|undefined){return carType==="سيارة صغيرة"||carType==="سيارة كبيرة";}
+export function crewBonusEligible(carType:string|undefined){return carType==="سيارة صغيرة"||carType==="سيارة كبيرة"||carType==="شاحنة";}
 export function calendarDayTotals(entries:CalendarEntry[]){
  const sum=(key:"cash_paid"|"card_paid")=>Math.round(entries.reduce(
   (a,e)=>a+Math.round(Number(e[key]||0)*100),0))/100;

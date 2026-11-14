@@ -22,7 +22,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
   ? (/^[0-9a-f-]{36}$/i.test(managerUserId)?managerUserId.toLowerCase().replace(/-/g,"").padEnd(64,"0"):"")
   :token;
  const [catalog,setCatalog]=useState<Catalog|null>(null);
- const [language,setLanguage]=useState<WorkerLocale>("ha-NG");
+ const [language,setLanguage]=useState<WorkerLocale>("en");
  const locale:WorkerLocale=manager?"ar":language;
  const tt=(key:WorkerKey,vars?:Record<string,string|number>)=>workerText(locale,key,vars);
  const money=(value:number)=>manager?sar(value):workerMoney(value);

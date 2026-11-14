@@ -47,6 +47,26 @@ begin
  if not exists(select 1 from public.carwash_entry_readiness where entry_id=car_id and status='delivered')
  then raise exception 'Direct delivery from washing did not complete';end if;
 end $qa$;
+-- An active unresolved device must prevent close, even with the old
+-- p_confirm_unsynced=true argument.
+insert into public.carwash_registered_devices(device_id,account_id)
+values('99999999-9999-4999-8999-999999999991','88888888-8888-4888-8888-888888888888');
+insert into public.carwash_day_devices(business_date,device_id,account_id)
+values('2026-01-16','99999999-9999-4999-8999-999999999991','88888888-8888-4888-8888-888888888888');
+set local role authenticated;
+do $qa$ declare refused boolean:=false; begin
+ begin
+  perform public.carwash_manager_close_day('2026-01-16',25,0,null,'Checked device',true);
+ exception when others then
+  if position('All registered devices must sync and seal' in sqlerrm)>0 then refused:=true;
+  else raise;end if;
+ end;
+ if not refused then raise exception 'Old manager sync override was still accepted';end if;
+end $qa$;
+reset role;
+update public.carwash_day_devices set sealed_at=now()
+where business_date='2026-01-16'
+ and device_id='99999999-9999-4999-8999-999999999991';
 set local role authenticated;
 do $qa$
 declare decision text;
