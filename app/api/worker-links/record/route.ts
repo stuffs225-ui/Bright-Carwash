@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {createClient} from "@supabase/supabase-js";
 import {createAdminClient} from "@/lib/supabaseAdmin";
 import {submissionInServerRiyadhDay} from "@/lib/workerSubmissionClock";
+import {acceptsNewRegistrationDiscount} from "@/lib/priceGovernance";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
 import {capabilityHash,validCapability,managerAccess,NO_STORE,requestIsSameOrigin} from "@/lib/carwashCapability";
 export const runtime="nodejs";
@@ -53,8 +54,10 @@ export async function POST(request:Request){
     (!isManual&&(typeof body?.presetId!=="string"||!uuid.test(body.presetId)))||
     (isManual&&!manual))return reply(400,"بيانات الخدمة أو السعر الاستثنائي غير صالحة");
   const cash=money(body.cash),card=money(body.card),discount=money(body.discount);
-  if(cash===null||card===null||discount===null||cash+card<=0||discount>5000)
-   return reply(400,"مبالغ الدفع أو الخصم غير صحيحة");
+  if(cash===null||card===null||discount===null||cash+card<=0)
+   return reply(400,"مبالغ الدفع غير صحيحة");
+  if(!acceptsNewRegistrationDiscount(discount))
+   return reply(409,"الخصم غير متاح للتسجيلات الجديدة. راجع المدير لتسجيل أي عملية قديمة مؤجلة.");
   const notes=typeof body.notes==="string"?body.notes.trim():"";
   if(notes.length>500)return reply(400,"الملاحظات طويلة جدًا");
   const addons=Array.isArray(body.addons)?body.addons:null;

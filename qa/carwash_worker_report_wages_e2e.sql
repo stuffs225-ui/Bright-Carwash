@@ -26,6 +26,10 @@ begin
  insert into public.carwash_worker_links(token_hash,label,created_by,expires_at) values(repeat('9',64),'QA report worker',m,now()+interval '1 day') returning id into l;
  p:='day/'||d::text||'/qa-worker-pos.jpg';
  insert into storage.objects(bucket_id,name) values('carwash-pos-evidence',p);
+ -- Final approval requires a recorded direct handover of every active car.
+ perform public.carwash_readiness_action(a,'delivered','manager',m,null,null);
+ if not exists(select 1 from public.carwash_entry_readiness where entry_id=a and status='delivered')
+ then raise exception 'Synthetic car was not delivered';end if;
  if not public.carwash_submit_worker_day_report(d,25,0,0,p,l) then raise exception 'Report not stored';end if;
  if public.carwash_submit_worker_day_report(d,25,0,0,p,l) then raise exception 'Duplicate report accepted';end if;
  -- Synthetic registered devices must be sealed before final approval.

@@ -61,6 +61,20 @@ $qa_second_device$;
 set request.jwt.claim.sub = '11111111-1111-4111-8111-111111111111';
 select public.seal_carwash_business_day(current_setting('qa.yesterday')::date,
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+-- New database-level close policy: even after all devices are sealed, cars must be delivered.
+-- Exercise the real readiness RPC with a synthetic manager before approving.
+reset role;
+do $qa_deliver_yesterday$
+declare car_id uuid;
+begin
+ select id into car_id from public.entries where client_mutation_id='calendar-prev';
+ perform public.carwash_readiness_action(
+  car_id,'delivered','manager','22222222-2222-4222-8222-222222222222',null,null);
+ if not exists(select 1 from public.carwash_entry_readiness where entry_id=car_id and status='delivered')
+ then raise exception 'Previous day car did not transition directly from washing to delivered';end if;
+end
+$qa_deliver_yesterday$;
+set role authenticated;
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
 select public.submit_carwash_day_settlement(current_setting('qa.yesterday')::date,25,0,
  'day/'||current_setting('qa.yesterday')||'/statement.jpg',null);
@@ -92,6 +106,16 @@ select public.seal_carwash_business_day(current_setting('qa.before_yesterday')::
 reset role;
 insert into storage.objects(bucket_id,name)
 values('carwash-pos-evidence','day/'||current_setting('qa.before_yesterday')||'/difference.jpg');
+do $qa_deliver_before_yesterday$
+declare car_id uuid;
+begin
+ select id into car_id from public.entries where client_mutation_id='calendar-before';
+ perform public.carwash_readiness_action(
+  car_id,'delivered','manager','22222222-2222-4222-8222-222222222222',null,null);
+ if not exists(select 1 from public.carwash_entry_readiness where entry_id=car_id and status='delivered')
+ then raise exception 'Historical synthetic car must be delivered before settlement';end if;
+end
+$qa_deliver_before_yesterday$;
 set role authenticated;
 set request.jwt.claim.sub = '22222222-2222-4222-8222-222222222222';
 select public.submit_carwash_day_settlement(current_setting('qa.before_yesterday')::date,20,0,

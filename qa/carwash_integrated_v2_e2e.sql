@@ -104,6 +104,17 @@ update public.carwash_day_devices set sealed_at=now()
  where business_date=current_setting('qa.finance_day')::date and sealed_at is null;
 insert into storage.objects(bucket_id,name)
  values('carwash-pos-evidence','day/'||current_setting('qa.finance_day')||'/qa-settlement.jpg');
+-- All active cars must be delivered before settlement. Use production-equivalent service-only RPC.
+do $qa_finance_delivered$
+declare car_id uuid;
+begin
+ select id into car_id from public.entries where client_mutation_id='synthetic-cash-settlement';
+ perform public.carwash_readiness_action(
+  car_id,'delivered','manager','22222222-2222-4222-8222-222222222222',null,null);
+ if not exists(select 1 from public.carwash_entry_readiness where entry_id=car_id and status='delivered')
+ then raise exception 'Synthetic finance car not delivered before close';end if;
+end
+$qa_finance_delivered$;
 set role authenticated;
 set request.jwt.claim.sub='22222222-2222-4222-8222-222222222222';
 select public.submit_carwash_day_settlement(

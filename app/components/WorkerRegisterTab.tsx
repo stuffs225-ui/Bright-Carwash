@@ -54,10 +54,10 @@ export function WorkerRegisterTab(){
  const [method,setMethod]=useState<"cash"|"card"|"mixed">("cash");
  const [cash,setCash]=useState("");
  const [card,setCard]=useState("");
- const [discount,setDiscount]=useState("0");
+ const discount="0";
  const [chosenAddons,setChosenAddons]=useState<string[]>([]);
  const [phone,setPhone]=useState("");
- const [consent,setConsent]=useState(false);
+ 
  const [notes,setNotes]=useState("");
  const [saving,setSaving]=useState(false);
  const [syncError,setSyncError]=useState("");
@@ -160,14 +160,13 @@ export function WorkerRegisterTab(){
   if(!isApprovedStaffPrice({
    carType:selected.car_type,serviceType:selected.service_type,cash:cashNumber,card:cardNumber,
    discount:discountNumber,presets,addons,selectedAddons:chosenAddons
-  })){showToast("السعر يجب أن يطابق الغسيل والإضافات المعتمدة، والخصم بحد أقصى 10 ريالات.","warning");return;}
+  })){showToast("السعر يجب أن يطابق الغسيل والإضافات المعتمدة، بدون خصم.","warning");return;}
   const customerPhone=phone.trim()?normalizeSaudiMobile(phone):null;
   if(phone.trim()&&!customerPhone){showToast("رقم الجوال غير صحيح.","warning");return;}
-  if(customerPhone&&!consent){showToast("الحصول على موافقة العميل لإرسال رسالة الجاهزية مطلوب.","warning");return;}
   const payload={
    car_type:selected.car_type,service_type:selected.service_type,
    cash_paid:cashNumber,card_paid:cardNumber,discount_amount:discountNumber,
-   addon_ids:chosenAddons,customer_phone:customerPhone,sms_consent:false,whatsapp_consent:!!customerPhone&&consent,
+   addon_ids:chosenAddons,customer_phone:customerPhone,sms_consent:false,whatsapp_consent:!!customerPhone,
    notes:notes||null,occurred_at:new Date().toISOString(),device_id:device,
    client_mutation_id:crypto.randomUUID()
   };
@@ -180,7 +179,7 @@ export function WorkerRegisterTab(){
    if(error){if(isNetworkError(error))locally();else{showToast("تعذر التسجيل: "+error.message,"error");return;}}
    else {showToast("سُجلت السيارة في يوم الرياض الحالي.");await reload();}
   }
-  setPhone("");setConsent(false);setNotes("");setChosenAddons([]);setDiscount("0");
+  setPhone("");setNotes("");setChosenAddons([]);
  }
 
  async function ready(entry:StaffEntry){
@@ -242,9 +241,6 @@ export function WorkerRegisterTab(){
       </label>)}
      </div>
     </div>}
-    <label className="form-label">الخصم (0 إلى 10 ر.س)
-     <input inputMode="decimal" type="number" min="0" max="10" step=".01" value={discount} onChange={e=>setDiscount(e.target.value)} />
-    </label>
     <div className="flex flex-wrap gap-2">{(["cash","card","mixed"] as const).map(x=>
      <button type="button" key={x} className={method===x?"btn-primary":"btn-secondary"} onClick={()=>setMethod(x)}>
       {x==="cash"?"كاش":x==="card"?"شبكة":"مختلط"}</button>)}
@@ -253,11 +249,8 @@ export function WorkerRegisterTab(){
      <label className="form-label">كاش<input inputMode="decimal" type="number" min="0" step=".01" value={cash} onChange={e=>setCash(e.target.value)} /></label>
      <label className="form-label">شبكة<input inputMode="decimal" type="number" min="0" step=".01" value={card} onChange={e=>setCard(e.target.value)} /></label>
     </div>
-    <p className="font-bold">السعر بعد الإضافات والخصم: {formatCurrency(actualPaid)}</p>
+    <p className="font-bold">السعر بعد الإضافات: {formatCurrency(actualPaid)}</p>
     <label className="form-label">جوال العميل — اختياري<input type="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="05XXXXXXXX" /></label>
-    {phone.trim()&&<label className="text-sm flex gap-2 items-center">
-     <input type="checkbox" checked={consent} onChange={e=>setConsent(e.target.checked)} /> وافق العميل على استلام رسالة واتساب عند جاهزية السيارة
-    </label>}
     <label className="form-label">ملاحظات (اختياري)
      <input type="text" value={notes} onChange={e=>setNotes(e.target.value)} />
     </label>

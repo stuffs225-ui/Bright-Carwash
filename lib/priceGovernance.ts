@@ -1,3 +1,7 @@
+/** New registrations do not accept discounts; historical entries remain unchanged. */
+export function acceptsNewRegistrationDiscount(value:unknown):value is 0 {
+ return typeof value==="number"&&Number.isFinite(value)&&value===0;
+}
 export type CatalogPreset={car_type:string;service_type:string;amount:number;active?:boolean};
 export type CatalogAddon={id:string;name:string;price:number;active?:boolean};
 export function selectedAddonsTotal(catalog:CatalogAddon[],selected:string[]):number {
@@ -16,7 +20,7 @@ export function isApprovedStaffPrice(input:{
 }):boolean{
  const {carType,serviceType,cash,card,discount,presets,addons,selectedAddons}=input;
  if(![cash,card,discount].every(x=>Number.isFinite(x)&&x>=0))return false;
- if(discount>10||cash+card<=0)return false;
+ if(discount!==0||cash+card<=0)return false;
  const addonCents=Math.round(selectedAddonsTotal(addons,selectedAddons)*100);
  const baseCents=Math.round((cash+card+discount)*100)-addonCents;
  return presets.some(x=>x.active!==false&&x.car_type===carType&&x.service_type===serviceType&&Math.round(x.amount*100)===baseCents);

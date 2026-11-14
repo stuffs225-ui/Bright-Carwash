@@ -45,6 +45,21 @@ end $qa_unsealed_completion$;
 reset role;
 update public.carwash_day_devices set sealed_at=now()
  where business_date=current_setting('qa.completion_day')::date and sealed_at is null;
+-- Deliver all three synthetic cash/network/mixed cars before owner approval.
+do $qa_completion_delivered$
+declare car_id uuid; n integer:=0;
+begin
+ for car_id in select id from public.entries where client_mutation_id like 'completion-%' loop
+  perform public.carwash_readiness_action(
+   car_id,'delivered','manager','22222222-2222-4222-8222-222222222222',null,null);
+  n:=n+1;
+ end loop;
+ if n<>3 or exists (
+  select 1 from public.entries e left join public.carwash_entry_readiness r on r.entry_id=e.id
+  where e.client_mutation_id like 'completion-%' and coalesce(r.status,'washing')<>'delivered'
+ ) then raise exception 'Mixed payment QA cars were not all delivered';end if;
+end
+$qa_completion_delivered$;
 set role authenticated;
 set request.jwt.claim.sub='22222222-2222-4222-8222-222222222222';
 select public.submit_carwash_day_settlement(
