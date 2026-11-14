@@ -7,7 +7,7 @@ alter table public.carwash_worker_links
 alter table public.carwash_worker_links
  add constraint carwash_worker_link_cipher_format
  check (encrypted_token is null or
-        encrypted_token ~ '^v1\\.[A-Za-z0-9_-]{16}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{86}$');
+        encrypted_token ~ '^v1[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{22}[.][A-Za-z0-9_-]{86}$');
 
 -- Only the server's service-role client can issue/reissue links.
 -- Under one transaction, the existing link is revoked only if the newly
@@ -30,7 +30,7 @@ begin
  ) then raise exception 'Manager account is not active'; end if;
  if p_token_hash is null or p_token_hash !~ '^[a-f0-9]{64}$'
   or p_encrypted_token is null
-  or p_encrypted_token !~ '^v1\\.[A-Za-z0-9_-]{16}\\.[A-Za-z0-9_-]{22}\\.[A-Za-z0-9_-]{86}$'
+  or p_encrypted_token !~ '^v1[.][A-Za-z0-9_-]{16}[.][A-Za-z0-9_-]{22}[.][A-Za-z0-9_-]{86}$'
   or p_label is null or length(trim(p_label)) not between 1 and 80
   or p_expires_at <= now() or p_expires_at > now()+interval '91 days'
  then raise exception 'Invalid worker link request';end if;
