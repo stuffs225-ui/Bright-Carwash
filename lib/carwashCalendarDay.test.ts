@@ -6,7 +6,7 @@ describe("Midnight Riyadh business dates (not old 15:00-04:00 shift)",()=>{
   expect(crewBonusEligible("سيارة كبيرة")).toBe(true);
   expect(crewBonusEligible("شاحنة")).toBe(true);
   expect(crewBonusEligible("دراجة")).toBe(false);
-  expect(calendarDayTotals([{car_type:"شاحنة",cash_paid:0,card_paid:50}]).collectiveTens).toBe(10);
+  expect(calendarDayTotals([{id:"truck-1",occurred_at:"2026-11-14T10:00:00Z",car_type:"شاحنة",cash_paid:0,card_paid:50}]).collectiveTens).toBe(10);
  });
  it("classifies 23:59:59 and 00:00:00 exactly",()=>{
   expect(riyadhDayKey("2026-11-05T20:59:59.000Z")).toBe("2026-11-05");
