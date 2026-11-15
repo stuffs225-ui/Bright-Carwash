@@ -5,6 +5,7 @@ import {createAdminClient} from "@/lib/supabaseAdmin";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
 import {encryptBackup,decryptBackup,parseBackupKey} from "@/lib/backupCrypto";
 import {mapConcurrent} from "@/lib/backupConcurrency";
+import {withinBackupDeadline,backupMediaBudgetRemaining} from "@/lib/carwashBackupBudget";
 import {
  CARWASH_BACKUP_TABLES,REQUIRED_ARCHIVE_TABLES,PRIVATE_AUDIT_BACKUP_KEY,
  backupPrimaryKeys,archiveCoverageStatus,type CarwashBackupTable
@@ -25,7 +26,7 @@ async function backupErrorStatus(code:number,error:string){
   const admin=createAdminClient();
   await admin.from("settings").upsert([
    {key:"backup_last_failed_at",value:new Date().toISOString()},
-   {key:"backup_last_failure_reason",value:"تعذر إكمال النسخ المشفر أو التحقق منه"}
+   {key:"backup_last_failure_reason",value:code===504?"تجاوزت قراءة البيانات مهلة النسخ الآمن؛ لم تكتمل النسخة":"تعذر إكمال النسخ المشفر أو التحقق منه"}
   ],{onConflict:"key"});
  }catch{/* Never block the error response if database logging is unavailable. */}
  return fail(code,error);
@@ -163,6 +164,7 @@ export async function GET(request:Request){
  const secret=process.env.CRON_SECRET;
  if(!secret||secret.length<16||request.headers.get("authorization")!=="Bearer "+secret)
   return fail(401,"Unauthorized");
+ const startedAt=Date.now();
  try{
   assertDedicatedCarwashDatabase();
   const key=parseBackupKey(process.env.CARWASH_BACKUP_KEY_BASE64||"");
@@ -176,10 +178,13 @@ export async function GET(request:Request){
   // Daily immutable filenames avoid duplicate archives and extra storage usage.
   // Bound concurrent table fetches: sequential 40+ Supabase queries can exceed
   // the 60s serverless runtime; retaining order keeps archive determinism.
-  const pairs=await mapConcurrent(TABLES,8,async table=>
-   [table,await readAll(admin,table)] as const);
-  const tables:Record<string,unknown[]>=Object.fromEntries(pairs);
-  tables[PRIVATE_AUDIT_BACKUP_KEY]=await readCrewAudit(admin);
+  const tables=await withinBackupDeadline((async()=>{
+   const pairs=await mapConcurrent(TABLES,8,async table=>
+    [table,await readAll(admin,table)] as const);
+   const snapshot:Record<string,unknown[]>=Object.fromEntries(pairs);
+   snapshot[PRIVATE_AUDIT_BACKUP_KEY]=await readCrewAudit(admin);
+   return snapshot;
+  })(),43000);
   const missing=archiveCoverageStatus(tables,Object.fromEntries(
    Object.entries(tables).map(([name,rows])=>[name,rows.length])
   ));
@@ -191,12 +196,19 @@ export async function GET(request:Request){
   let readyPhotos:Array<{path:string;mime:string;body:string}>=[];
   let mediaComplete=true;
   let mediaWarning:string|null=null;
-  try{
-   objects=await evidenceArchive(admin,"carwash-pos-evidence");
-   readyPhotos=await evidenceArchive(admin,"carwash-ready-photos");
-  }catch{
-   mediaComplete=false;mediaWarning="media_archive_limit_or_storage_error";
-   objects=[];readyPhotos=[];
+  const mediaBudget=backupMediaBudgetRemaining(startedAt,Date.now(),48000);
+  if(mediaBudget<2000){
+   mediaComplete=false;mediaWarning="media_skipped_to_preserve_financial_archive";
+  }else{
+   try{
+    [objects,readyPhotos]=await withinBackupDeadline(Promise.all([
+     evidenceArchive(admin,"carwash-pos-evidence"),
+     evidenceArchive(admin,"carwash-ready-photos")
+    ]),mediaBudget);
+   }catch{
+    mediaComplete=false;mediaWarning="media_archive_limit_or_storage_error";
+    objects=[];readyPhotos=[];
+   }
   }
   const rowCounts=Object.fromEntries(Object.entries(tables).map(([k,v])=>[k,v.length]));
   const archivedAt=new Date().toISOString();
@@ -271,7 +283,7 @@ export async function GET(request:Request){
   ],{onConflict:"key"});
   if(mediaStatus.error)return await backupErrorStatus(503,"Unable to record media backup integrity status");
   let offsiteDelivered=false;
-  if(offsiteConfigured){
+  if(offsiteConfigured&&backupMediaBudgetRemaining(startedAt,Date.now(),52000)>4000){
    const emailResult=await new Resend(resendKey!).emails.send({
     from,to:email,subject:"Bright Carwash encrypted daily backup — "+archivedAt.slice(0,10),
     html:"<p>Encrypted daily carwash archive attached. The AES-256-GCM key is kept separately on the server.</p>",
@@ -285,11 +297,11 @@ export async function GET(request:Request){
    }
   }
   // An archive must pass cryptographic verification before any image expires.
-  const retention=actualMediaComplete
+  const retention=actualMediaComplete&&backupMediaBudgetRemaining(startedAt,Date.now(),53000)>6000
    ?await cleanExpiredReadyPhotos(admin).catch(()=>({
      removed:0,failed:0,status:"cleanup_unavailable"
     }))
-   :{removed:0,failed:0,status:"skipped_media_not_archived"};
+   :{removed:0,failed:0,status:"skipped_due_to_time_or_media"};
   return NextResponse.json({ok:true,archivedAt:actualArchivedAt,
    financialArchiveVerified:true,mediaArchiveComplete:actualMediaComplete,
    mediaWarning:actualMediaComplete?null:mediaWarning||"Media not included in encrypted archive",
@@ -304,7 +316,9 @@ export async function GET(request:Request){
       "Encrypted full private-storage backup complete; external delivery may be unavailable")
     :"FINANCIAL RECORDS ONLY: Media archive incomplete. Photo deletion blocked. Operator action required."
   },{headers:NO_STORE});
- }catch{
+ }catch(e){
+  if(e instanceof Error&&e.message==="backup_financial_read_deadline")
+   return await backupErrorStatus(504,"Encrypted backup could not complete financial reads before safe timeout");
   return await backupErrorStatus(503,"Unable to produce verified encrypted backup");
  }
 }
