@@ -23,7 +23,7 @@ export async function POST(request:Request){
   const {admin,user}=access;
   if(body?.op==="list"){
    const policy=await admin.from("settings").select("value").eq("key","inventory_accounting_version").maybeSingle();
-   const [items,moves,recipes,auto]=await Promise.all([
+   const [items,moves,recipes,auto,presets]=await Promise.all([
     admin.from("carwash_inventory_items")
      .select("id,name,unit,stock_qty,min_qty,avg_unit_cost,active,updated_at")
      .order("name",{ascending:true}).limit(250),
@@ -33,13 +33,15 @@ export async function POST(request:Request){
     admin.from("carwash_inventory_recipes")
      .select("id,car_type,service_type,item_id,quantity,active,physical_count_confirmed_at")
      .order("car_type").order("service_type").limit(500),
-    admin.from("settings").select("value").eq("key","inventory_auto_materials_enabled").maybeSingle()
+    admin.from("settings").select("value").eq("key","inventory_auto_materials_enabled").maybeSingle(),
+    admin.from("entry_presets").select("car_type,service_type,sort_order")
+     .eq("active",true).order("sort_order").limit(250)
    ]);
-   if(items.error||moves.error||recipes.error||auto.error)
+   if(items.error||moves.error||recipes.error||auto.error||presets.error)
     return reply(503,"تعذر تحميل المخزون أو وصفات الاستهلاك؛ تأكد من تحديث قاعدة البيانات");
    return NextResponse.json({ok:true,accountingReady:!policy.error&&policy.data?.value===2,
     items:items.data||[],movements:moves.data||[],recipes:recipes.data||[],
-    autoEnabled:auto.data?.value===true
+    autoEnabled:auto.data?.value===true,presets:presets.data||[]
    },{headers:NO_STORE});
   }
   if(body?.op==="create"){
