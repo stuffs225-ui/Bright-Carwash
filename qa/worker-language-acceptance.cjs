@@ -93,7 +93,7 @@ const fs=require("node:fs");
  assert.equal(writes[0].presetId,preset[0].id);
  assert.equal(writes[0].oneTime,undefined);
  await fresh.getByRole("button",{name:/Motocin yau da halinsu/}).click();
- await fresh.getByText("Ta shirya a karɓa").waitFor();
+ await fresh.locator("span.txt-cash").filter({hasText:"Ta shirya a karɓa"}).first().waitFor();
  const visible=(await fresh.locator(".worker-screen").innerText()).replace("العربية","");
  assert.doesNotMatch(visible,/[\u0600-\u06FF]/,
   "Hausa worker page must have no hardcoded Arabic text except the Arabic language name");
