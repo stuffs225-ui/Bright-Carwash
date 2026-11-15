@@ -21,6 +21,9 @@ create table if not exists public.carwash_inventory_recipes(
 create index if not exists carwash_inventory_recipes_active_by_service
  on public.carwash_inventory_recipes(car_type,service_type,item_id) where active;
 alter table public.carwash_inventory_recipes enable row level security;
+create trigger carwash_material_recipe_audit
+ after insert or update on public.carwash_inventory_recipes
+ for each row execute function private.audit_row();
 revoke all on public.carwash_inventory_recipes from public,anon,authenticated;
 grant select,insert,update on public.carwash_inventory_recipes to service_role;
 alter table public.carwash_inventory_movements
