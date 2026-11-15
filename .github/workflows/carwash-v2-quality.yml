@@ -148,6 +148,14 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_privileged_rpc_access_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_expense_review_e2e.sql
             '
+      - name: Confirm encrypted backup manifest covers every public table
+        run: |
+          docker run --rm --network host \
+            -e PGPASSWORD=carwash-ci-only postgres:16 \
+            psql -h 127.0.0.1 -U postgres -d carwash_synthetic -At -c \
+            "select tablename from pg_tables where schemaname='public' order by tablename" \
+            > /tmp/carwash-schema-tables.txt
+          node scripts/check-carwash-backup-manifest.mjs /tmp/carwash-schema-tables.txt
 
   focused-ui:
     name: Focused mobile registration and settlement UI
