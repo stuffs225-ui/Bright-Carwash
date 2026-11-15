@@ -21,6 +21,25 @@ export const CARWASH_BACKUP_TABLES=[
  "ready_sms_outbox","service_types","settings","worker_ledger","workers"
 ] as const;
 export type CarwashBackupTable=(typeof CARWASH_BACKUP_TABLES)[number];
+export const PRIVATE_AUDIT_BACKUP_KEY="private_carwash_crew_payout_audit" as const;
+export const REQUIRED_ARCHIVE_TABLES=[
+ ...CARWASH_BACKUP_TABLES,PRIVATE_AUDIT_BACKUP_KEY
+] as const;
+/** Exceptions to the usual public.id primary key; covers ALL public tables at baseline. */
+export const BACKUP_KEY_EXCEPTIONS:Partial<Record<CarwashBackupTable,readonly string[]>>={
+ app_members:["user_id"],carwash_crew_payouts:["business_date"],
+ carwash_day_devices:["business_date","device_id"],
+ carwash_day_settlements:["business_date"],carwash_days:["business_date"],
+ carwash_entry_readiness:["entry_id"],
+ carwash_manager_pin_verifiers:["user_id"],
+ carwash_owner_activation_links:["token_hash"],
+ carwash_owner_devices:["token_hash"],carwash_pin_rate_limits:["key_hash"],
+ carwash_registered_devices:["device_id"],
+ carwash_worker_day_reports:["business_date"],settings:["key"]
+};
+export function backupPrimaryKeys(table:CarwashBackupTable):readonly string[]{
+ return BACKUP_KEY_EXCEPTIONS[table]||["id"];
+}
 
 export const FINANCIAL_TABLES=[
  "entries","expenses","carwash_days","carwash_day_settlements",
@@ -32,7 +51,7 @@ export const FINANCIAL_TABLES=[
 
 export function missingArchiveTables(
  tables:Record<string,unknown>|null|undefined,
- required:readonly string[]=CARWASH_BACKUP_TABLES
+ required:readonly string[]=REQUIRED_ARCHIVE_TABLES
 ):string[]{
  return required.filter(name=>!Array.isArray(tables?.[name]));
 }
