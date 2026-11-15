@@ -16,8 +16,9 @@ describe("carwash backup completeness",()=>{
   expect(archiveCoverageStatus(old,{entries:1,expenses:0}).complete).toBe(false);
  });
  it("rejects missing rows or invalid row counts, without altering input",()=>{
-  const tables=Object.fromEntries(CARWASH_BACKUP_TABLES.map(t=>[t,[]]));
-  const counts=Object.fromEntries(CARWASH_BACKUP_TABLES.map(t=>[t,0]));
+  const required=[...CARWASH_BACKUP_TABLES,"private_carwash_crew_payout_audit"];
+  const tables=Object.fromEntries(required.map(t=>[t,[]]));
+  const counts=Object.fromEntries(required.map(t=>[t,0]));
   expect(archiveCoverageStatus(tables,counts)).toEqual({complete:true,missing:[]});
   expect(validArchiveCounts(tables,{...counts,entries:1})).toBe(false);
   expect(validArchiveCounts(tables,{...counts,entries:-1})).toBe(false);
