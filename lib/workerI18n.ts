@@ -71,6 +71,7 @@ export function workerMessage(lang:WorkerLocale,raw:string,fallback:WorkerKey="e
  for(const [key,translations] of Object.entries(STRINGS)){
   if(translations.ar===raw)return workerText(lang,key as WorkerKey);
  }
+ if(/مخزون|المادة|مواد الغسيل|inventory|stock|material/i.test(raw))return workerText(lang,"error.stock");
  if(/مزامن|sync/i.test(raw))return workerText(lang,"error.sync");
  if(/السعر|price|discount|الخصم/i.test(raw))return workerText(lang,"error.payment");
  if(/رابط|link|صلاحية|authorization/i.test(raw))return workerText(lang,"error.invalidLink");
