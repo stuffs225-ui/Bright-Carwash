@@ -56,6 +56,9 @@ begin
  -- Recipe changes apply to new operations only.
  update public.carwash_inventory_recipes set quantity=1,updated_at=now()
  where item_id=material;
+ if not exists(select 1 from public.audit_events
+  where table_name='carwash_inventory_recipes' and action='UPDATE')
+ then raise exception 'Material recipe edits are not audited';end if;
  insert into public.entries(id,car_type,service_type,cash_paid,card_paid,
   discount_amount,occurred_at,created_by,client_mutation_id)
  values(gen_random_uuid(),'سيارة صغيرة','غسيل كامل',25,0,0,
