@@ -8,6 +8,7 @@ export const CARWASH_BACKUP_TABLES=[
  "audit_events","audit_log","car_types","carwash_addon_proposals",
  "carwash_addons","carwash_cash_movements","carwash_crew_payouts",
  "carwash_day_devices","carwash_day_settlements","carwash_days",
+ "carwash_expense_reviews",
  "carwash_entry_line_items","carwash_entry_readiness","carwash_import_batches",
  "carwash_inventory_items","carwash_inventory_movements",
  "carwash_manager_pin_verifiers","carwash_owner_activation_links",
@@ -42,7 +43,7 @@ export function backupPrimaryKeys(table:CarwashBackupTable):readonly string[]{
 }
 
 export const FINANCIAL_TABLES=[
- "entries","expenses","carwash_days","carwash_day_settlements",
+ "entries","expenses","carwash_expense_reviews","carwash_days","carwash_day_settlements",
  "carwash_cash_movements","carwash_crew_payouts",
  "worker_ledger","carwash_inventory_items","carwash_inventory_movements",
  "accounting_months","accounting_month_report_versions",
