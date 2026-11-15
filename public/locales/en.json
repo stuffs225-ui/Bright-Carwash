@@ -157,5 +157,6 @@
   "ready.statusAll": "All statuses",
   "ready.todayTotal": "Today's operations",
   "ready.statusMissing": "No cars with this status",
-  "ready.countsLimited": "Too many cars; totals may be incomplete"
+  "ready.countsLimited": "Too many cars; totals may be incomplete",
+  "error.stock": "Not enough measured cleaning material stock. Tell the manager to update inventory; the car was not registered."
 }
