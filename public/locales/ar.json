@@ -151,5 +151,11 @@
   "offline.noService": "اختر الخدمة أولًا.",
   "offline.failure": "تعذر حفظ العملية على هذا الجهاز.",
   "offline.queueSafe": "البيانات غير المرسلة تبقى على جهازك.",
-  "days.pendingDelivery": "باقي {n} سيارة لم تُسلّم. لا يمكن إقفال اليوم قبل تسليمها."
+  "days.pendingDelivery": "باقي {n} سيارة لم تُسلّم. لا يمكن إقفال اليوم قبل تسليمها.",
+  "ready.todayOnly": "سيارات اليوم",
+  "ready.allUnapproved": "كل الأيام غير المعتمدة",
+  "ready.statusAll": "جميع الحالات",
+  "ready.todayTotal": "ملخص تشغيل اليوم",
+  "ready.statusMissing": "لا توجد سيارات بهذه الحالة",
+  "ready.countsLimited": "عدد السيارات كبير، وقد يكون الملخص غير مكتمل"
 }
