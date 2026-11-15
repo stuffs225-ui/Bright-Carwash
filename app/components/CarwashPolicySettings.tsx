@@ -4,11 +4,13 @@ import {supabase} from "@/lib/supabaseClient";
 import {showToast} from "@/lib/toast";
 type Settings={
  worker_manual_service_enabled:boolean;
+ fast_registration_recent_enabled:boolean;
  whatsapp_ready_text:string;
  ready_photo_retention_days:number;
 };
 const DEFAULT:Settings={
  worker_manual_service_enabled:true,
+ fast_registration_recent_enabled:true,
  whatsapp_ready_text:"مرحبًا، سيارتك جاهزة للاستلام من مغسلة سيارتك اللامعة. شكرًا لزيارتك ونتشرف بخدمتك دائمًا.",
  ready_photo_retention_days:30
 };
@@ -61,6 +63,12 @@ export function CarwashPolicySettings(){
     <input type="checkbox" checked={policy.worker_manual_service_enabled}
       onChange={e=>setPolicy(p=>({...p,worker_manual_service_enabled:e.target.checked}))}/>
    </label>
+   <label className="flex items-center justify-between gap-3">
+    <span>تحديد آخر خدمة استخدمت لكل حجم سيارة تلقائيًا عند الاختيار</span>
+    <input type="checkbox" checked={policy.fast_registration_recent_enabled}
+     onChange={e=>setPolicy(p=>({...p,fast_registration_recent_enabled:e.target.checked}))}/>
+   </label>
+   <p className="txt-muted text-xs">يحفظ الجهاز آخر اختيار للخدمة فقط، دون نقل أسعار قديمة؛ السعر المعتمد يؤخذ دائمًا من القائمة الحالية ويمكن تغييره قبل الحفظ.</p>
    <label className="form-label">نص جاهزية السيارة (مشاركة واتساب)
     <textarea rows={3} maxLength={350} value={policy.whatsapp_ready_text}
      onChange={e=>setPolicy(p=>({...p,whatsapp_ready_text:e.target.value}))}/>
