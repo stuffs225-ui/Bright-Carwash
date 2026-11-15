@@ -31,7 +31,7 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
   const [threshold, setThreshold] = useState("");
   const [rate, setRate] = useState("");
   const [dailyTarget, setDailyTarget] = useState("");
-  const [backupStatus,setBackupStatus]=useState<{lastSavedAt:string|null;lastSentAt:string|null;lastVerifiedAt?:string|null;lastFailedAt?:string|null;lastVerifiedMatchesChecksum?:boolean;latestArchive:string|null;archivedFilesShown:number;offsiteConfigured:boolean;checksumAvailable:boolean;encryptionConfigured:boolean;coverageVerified:boolean;coverageKnown:boolean;coveredTableCount:number;expectedTableCount:number;missingTables:string[]}|null>(null);
+  const [backupStatus,setBackupStatus]=useState<{lastSavedAt:string|null;lastSentAt:string|null;lastVerifiedAt?:string|null;lastFailedAt?:string|null;lastVerifiedMatchesChecksum?:boolean;latestArchive:string|null;archivedFilesShown:number;offsiteConfigured:boolean;checksumAvailable:boolean;encryptionConfigured:boolean;coverageVerified:boolean;coverageKnown:boolean;coveredTableCount:number;expectedTableCount:number;missingTables:string[];backupHealth:string;backupAgeHours:number|null}|null>(null);
   const [backupError,setBackupError]=useState("");
   const [backupVerifying,setBackupVerifying]=useState(false);
   const [backupVerifyResult,setBackupVerifyResult]=useState<{
@@ -188,6 +188,10 @@ export function SettingsTab({section="general"}:{section?:"general"|"services"|"
              <p className="txt-danger text-sm mt-3" role="alert">
               تعذر النسخ مؤخرًا: {new Date(backupStatus.lastFailedAt).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"})}. راجع إعدادات النسخ واتصال الخادم.
              </p>}
+            {backupStatus&&backupStatus.backupHealth!=="fresh"&&<p className="txt-danger text-sm mt-3" role="alert">
+             ⚠️ النسخ الاحتياطية غير حديثة أو لم تُسجَّل نسخة صالحة بعد. لا تعتمد على آخر نسخة قبل التحقق منها.
+             {typeof backupStatus.backupAgeHours==="number"?" مضى "+backupStatus.backupAgeHours+" ساعة على آخر نجاح.":""}
+            </p>}
             {backupStatus&&!backupStatus.coverageVerified&&<p className="txt-warning text-sm mt-3" role="alert">
              {backupStatus.coverageKnown
               ?"تنبيه: النسخة الأخيرة لا تتضمن جميع الجداول الأساسية ("+backupStatus.missingTables.length+" ناقصة). لا تعتمد عليها للاستعادة الكاملة."
