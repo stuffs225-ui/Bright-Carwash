@@ -151,5 +151,11 @@
   "offline.noService": "Select a service first.",
   "offline.failure": "Could not save on this device.",
   "offline.queueSafe": "Unsent entries remain on this device.",
-  "days.pendingDelivery": "{n} cars still need delivery before day closing."
+  "days.pendingDelivery": "{n} cars still need delivery before day closing.",
+  "ready.todayOnly": "Today's cars",
+  "ready.allUnapproved": "All unapproved days",
+  "ready.statusAll": "All statuses",
+  "ready.todayTotal": "Today's operations",
+  "ready.statusMissing": "No cars with this status",
+  "ready.countsLimited": "Too many cars; totals may be incomplete"
 }
