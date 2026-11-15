@@ -37,7 +37,7 @@ export async function POST(request:Request){
   ]);
   if(presets.error||addons.error)return deny(503,"تعذر تحميل الخدمات");
   const policy=await admin.from("settings").select("key,value").in("key",[
-    "worker_manual_service_enabled","worker_manual_addon_enabled","worker_discount_max"
+    "worker_manual_service_enabled","worker_manual_addon_enabled","worker_discount_max","fast_registration_recent_enabled"
   ]);
   if(policy.error)return deny(503,"تعذر تحميل صلاحيات الأسعار");
   const conf=Object.fromEntries((policy.data||[]).map(p=>[p.key,p.value]));
@@ -45,7 +45,8 @@ export async function POST(request:Request){
   const discountLimit=Number.isFinite(rawLimit)?Math.max(0,Math.min(1000,rawLimit)):10;
   return NextResponse.json({label,
    presets:presets.data||[],addons:addons.data||[],
-   discountLimit,manualServiceEnabled:conf.worker_manual_service_enabled!==false,
+   discountLimit,fastRecentEnabled:conf.fast_registration_recent_enabled!==false,
+   manualServiceEnabled:conf.worker_manual_service_enabled!==false,
    manualAddonEnabled:conf.worker_manual_addon_enabled!==false
   },{headers:NO_STORE});
  }catch{return deny(503,"الخدمة غير متاحة");}
