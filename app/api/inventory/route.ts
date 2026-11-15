@@ -25,7 +25,7 @@ export async function POST(request:Request){
    const policy=await admin.from("settings").select("value").eq("key","inventory_accounting_version").maybeSingle();
    const [items,moves,recipes,auto,presets]=await Promise.all([
     admin.from("carwash_inventory_items")
-     .select("id,name,unit,stock_qty,min_qty,avg_unit_cost,active,updated_at")
+     .select("id,name,unit,stock_qty,min_qty,avg_unit_cost,inventory_value,active,updated_at")
      .order("name",{ascending:true}).limit(250),
     admin.from("carwash_inventory_movements")
      .select("id,item_id,kind,quantity,total_cost,payment_source,note,occurred_at,expense_id")
