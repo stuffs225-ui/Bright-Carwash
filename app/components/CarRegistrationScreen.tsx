@@ -491,8 +491,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    </button>
 
   </form>}
+  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} locale={locale} refreshKey={summaryVersion}/>}
   {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token}
    manager={manager} locale={locale} refreshKey={summaryVersion} queued={queued}/>}
-  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} locale={locale} refreshKey={summaryVersion}/>}
  </main>;
 }
