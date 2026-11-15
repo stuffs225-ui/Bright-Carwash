@@ -1,6 +1,7 @@
 import {NextResponse} from "next/server";
 import {managerAccess,NO_STORE} from "@/lib/carwashCapability";
 import {REQUIRED_ARCHIVE_TABLES} from "@/lib/carwashBackupCatalog";
+import {evaluateBackupHealth} from "@/lib/carwashBackupHealth";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
@@ -19,7 +20,11 @@ export async function GET(request:Request){
    ?map.backup_last_table_names.filter((name:unknown)=>typeof name==="string") as string[]
    :null;
   const missingTables=REQUIRED_ARCHIVE_TABLES.filter(name=>!inventory?.includes(name));
+  const health=evaluateBackupHealth(
+   typeof map.backup_last_saved_at==="string"?map.backup_last_saved_at:null
+  );
   return NextResponse.json({ok:true,
+   backupHealth:health.state,backupAgeHours:health.ageHours,
    coverageVerified:!!inventory&&missingTables.length===0,
    coverageKnown:!!inventory,
    coveredTableCount:inventory?.length||0,
