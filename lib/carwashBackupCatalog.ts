@@ -11,6 +11,7 @@ export const CARWASH_BACKUP_TABLES=[
  "carwash_expense_reviews",
  "carwash_entry_line_items","carwash_entry_readiness","carwash_import_batches",
  "carwash_inventory_items","carwash_inventory_movements",
+ "carwash_inventory_recipes",
  "carwash_manager_pin_verifiers","carwash_owner_activation_links",
  "carwash_owner_devices","carwash_photo_cleanup_log","carwash_pin_rate_limits",
  "carwash_readiness_events","carwash_registered_devices",
