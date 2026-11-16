@@ -49,6 +49,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const scrollToDayRef=useRef(false);
  const varianceReviewRef=useRef<HTMLDetailsElement>(null);
  const [dayDataReady,setDayDataReady]=useState(false);
+ // Ignore previous-day responses when rapidly switching between settlements.
+ const dayReadVersion=useRef(0);
+ const selectedDateRef=useRef("");
  const [loadingDays,setLoadingDays]=useState(true);
  const [rows,setRows]=useState<Entry[]>([]);
  const [cashExpenseRows,setCashExpenseRows]=useState<{id:string;amount:number;expense_type:string;notes:string|null}[]>([]);
@@ -145,6 +148,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   initialDeepLinkHandled.current=true;
   setSelected(old=>{
    if(requested&&list.some(d=>d.business_date===requested)){
+    if(selectedDateRef.current!==requested){
+     selectedDateRef.current=requested;
+     dayReadVersion.current++;
+    }
     scrollToDayRef.current=true;
     return requested;
    }
@@ -156,6 +163,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const reloadDay=useCallback(async()=>{
   if(reportCorrection)return;
   if(!selected||!navigator.onLine)return;
+  const requestedDay=selected;
+  const version=++dayReadVersion.current;
+  const stillSelected=()=>dayReadVersion.current===version&&selectedDateRef.current===requestedDay;
   try{
    const start=new Date(selected+"T00:00:00+03:00").toISOString();
    const end=new Date(new Date(selected+"T00:00:00+03:00").getTime()+86400000).toISOString();
@@ -178,6 +188,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     supabase.from("carwash_crew_payouts").select("cash_paid,bank_paid,note")
      .eq("business_date",selected).maybeSingle(),
    ]);
+   if(!stillSelected())return;
    if(deviceList.error||proof.error||expenses.error||payouts.error||cashMoves.error||crewPayment.error)
     throw deviceList.error||proof.error||expenses.error||payouts.error||cashMoves.error||crewPayment.error;
    setRows(loaded);setDevices((deviceList.data||[]) as Device[]);
@@ -194,6 +205,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},
     body:"{}",cache:"no-store"
    });
+   if(!stillSelected())return;
    if(!summaryResponse.ok)throw Error("تعذر فحص السيارات التي لم تُسلّم");
    const summaryJson=await summaryResponse.json().catch(()=>({}));
    const pending=(Array.isArray(summaryJson.days)?summaryJson.days:[])
@@ -203,6 +215,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    setPendingDeliveries(typeof pending==="number"?pending:0);
    const response=await fetch("/api/worker-links/day-report?date="+encodeURIComponent(selected),{headers:{authorization:"Bearer "+session.access_token},cache:"no-store"});
    const json=await response.json().catch(()=>({}));
+   if(!stillSelected())return;
    if(!response.ok)throw Error(json.error||"تعذر تحميل تقرير العامل");
    setWorkerReport(json.report||null);setCorrections(json.corrections||[]);setCorrectionsReady(json.correctionsReady===true);
    setDayDataReady(true);
@@ -212,10 +225,12 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    }
    setError("");
   }catch(e){
-   setDayDataReady(false);
-   setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));
+   if(stillSelected()){
+    setDayDataReady(false);
+    setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));
+   }
   }
- },[selected,reportCorrection]);
+ },[selected,reportCorrection,current?.status]);
 
  function selectDay(date:string){
   if(busy||reportCorrection)return;
@@ -224,7 +239,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    return;
   }
   scrollToDayRef.current=true;
+  selectedDateRef.current=date;dayReadVersion.current++;
   setDayDataReady(false);
+  setRows([]);setDevices([]);setCrewPayout(null);setMovements([]);
+  setSettlement(null);setPendingDeliveries(null);setCashExpenseRows([]);setCashPayoutRows([]);
   setSelected(date);setWorkerReport(null);setManagerProof(null);
   setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);
  }
