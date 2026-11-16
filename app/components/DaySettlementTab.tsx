@@ -4,6 +4,8 @@ import {supabase} from "@/lib/supabaseClient";
 import {fetchAllRows} from "@/lib/fetchAll";
 import {formatCurrency} from "@/lib/business";
 import {settlementAttentionDays,settlementArchiveMonths} from "@/lib/daySettlementNavigation";
+import {dayCloseChecks} from "@/lib/carwashCloseReadiness";
+import {isCurrentDayRead} from "@/lib/carwashDayReadGuard";
 import {dayIsFinished,riyadhDayKey,calendarDayTotals} from "@/lib/carwashCalendarDay";
 import {Modal} from "./Modal";
 import {arabicDate} from "./ArabicDateField";
@@ -46,6 +48,11 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const initialDeepLinkHandled=useRef(false);
  const detailsRef=useRef<HTMLDivElement>(null);
  const scrollToDayRef=useRef(false);
+ const varianceReviewRef=useRef<HTMLDetailsElement>(null);
+ const [dayDataReady,setDayDataReady]=useState(false);
+ // Ignore previous-day responses when rapidly switching between settlements.
+ const dayReadVersion=useRef(0);
+ const selectedDateRef=useRef("");
  const [loadingDays,setLoadingDays]=useState(true);
  const [rows,setRows]=useState<Entry[]>([]);
  const [cashExpenseRows,setCashExpenseRows]=useState<{id:string;amount:number;expense_type:string;notes:string|null}[]>([]);
@@ -103,6 +110,15 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const filtered=rows.filter(e=>filter==="all"||filter==="crew"||
   (filter==="cash"&&Number(e.cash_paid)>0)||(filter==="card"&&Number(e.card_paid)>0));
  const incomplete=devices.filter(d=>!d.sealed_at);
+ const closeChecks=dayCloseChecks({
+  dayFinished:dayIsFinished(selected,now),dataLoaded:dayDataReady,
+  undelivered:pendingDeliveries,registeredDevices:devices.length,
+  unsealedDevices:incomplete.length,actualCash:cashActual,
+  actualNetwork:posActual,cashMismatch,
+  cardMismatch:cardDiff!==null&&cardDiff!==0,differenceReason:reason
+ });
+ const pendingCloseChecks=closeChecks.filter(c=>c.state!=="passed");
+ const readyToClose=pendingCloseChecks.length===0;
 
  const reloadDays=useCallback(async()=>{
   if(!navigator.onLine)return;
@@ -133,6 +149,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   initialDeepLinkHandled.current=true;
   setSelected(old=>{
    if(requested&&list.some(d=>d.business_date===requested)){
+    if(selectedDateRef.current!==requested){
+     selectedDateRef.current=requested;
+     dayReadVersion.current++;
+    }
     scrollToDayRef.current=true;
     return requested;
    }
@@ -144,6 +164,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
  const reloadDay=useCallback(async()=>{
   if(reportCorrection)return;
   if(!selected||!navigator.onLine)return;
+  const requestedDay=selected;
+  const version=++dayReadVersion.current;
+  const stillSelected=()=>isCurrentDayRead(requestedDay,version,selectedDateRef.current,dayReadVersion.current);
   try{
    const start=new Date(selected+"T00:00:00+03:00").toISOString();
    const end=new Date(new Date(selected+"T00:00:00+03:00").getTime()+86400000).toISOString();
@@ -166,6 +189,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     supabase.from("carwash_crew_payouts").select("cash_paid,bank_paid,note")
      .eq("business_date",selected).maybeSingle(),
    ]);
+   if(!stillSelected())return;
    if(deviceList.error||proof.error||expenses.error||payouts.error||cashMoves.error||crewPayment.error)
     throw deviceList.error||proof.error||expenses.error||payouts.error||cashMoves.error||crewPayment.error;
    setRows(loaded);setDevices((deviceList.data||[]) as Device[]);
@@ -182,6 +206,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},
     body:"{}",cache:"no-store"
    });
+   if(!stillSelected())return;
    if(!summaryResponse.ok)throw Error("تعذر فحص السيارات التي لم تُسلّم");
    const summaryJson=await summaryResponse.json().catch(()=>({}));
    const pending=(Array.isArray(summaryJson.days)?summaryJson.days:[])
@@ -191,15 +216,22 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    setPendingDeliveries(typeof pending==="number"?pending:0);
    const response=await fetch("/api/worker-links/day-report?date="+encodeURIComponent(selected),{headers:{authorization:"Bearer "+session.access_token},cache:"no-store"});
    const json=await response.json().catch(()=>({}));
+   if(!stillSelected())return;
    if(!response.ok)throw Error(json.error||"تعذر تحميل تقرير العامل");
    setWorkerReport(json.report||null);setCorrections(json.corrections||[]);setCorrectionsReady(json.correctionsReady===true);
+   setDayDataReady(true);
    if(json.report){
     setCashActual(old=>old||String(json.report.actual_cash));
     setPosActual(old=>old||String(json.report.terminal_total));
    }
    setError("");
-  }catch(e){setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));}
- },[selected,reportCorrection]);
+  }catch(e){
+   if(stillSelected()){
+    setDayDataReady(false);
+    setError("تعذر استكمال معلومات اليوم: "+(e instanceof Error?e.message:"خطأ اتصال"));
+   }
+  }
+ },[selected,reportCorrection,current?.status]);
 
  function selectDay(date:string){
   if(busy||reportCorrection)return;
@@ -208,6 +240,10 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    return;
   }
   scrollToDayRef.current=true;
+  selectedDateRef.current=date;dayReadVersion.current++;
+  setDayDataReady(false);
+  setRows([]);setDevices([]);setCrewPayout(null);setMovements([]);
+  setSettlement(null);setPendingDeliveries(null);setCashExpenseRows([]);setCashPayoutRows([]);
   setSelected(date);setWorkerReport(null);setManagerProof(null);
   setCashActual("");setPosActual("");setReason("");setError("");setDetail(null);
  }
@@ -320,6 +356,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    if(error)throw Error(error.message);
    if(data!=="approved")throw Error("لم يتأكد إقفال اليوم");
    setManagerProof(null);setCashActual("");setPosActual("");setReason("");
+   // Closing the day invalidates any in-flight detail or device read.
+   selectedDateRef.current="";dayReadVersion.current++;
+   setDayDataReady(false);setRows([]);setDevices([]);
    setSelected("");window.dispatchEvent(new Event("carwash:data-changed"));
    await reloadDays();
   }catch(e){setError(e instanceof Error?e.message:"فشل اعتماد الموازنة.");}
@@ -437,6 +476,26 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    {current.status==="open"?(dayIsFinished(selected,now)?
     <section className="card space-y-4">
      <h3 className="section-title">اعتماد يوم {selected}</h3>
+     <div className="rounded-xl border p-3 space-y-2" style={{borderColor:"var(--border)"}}
+      data-testid="day-close-checklist">
+      <div className="flex items-center justify-between gap-2">
+       <strong className="text-sm">فحص جاهزية الإقفال</strong>
+       <span className={readyToClose?"txt-cash text-xs":"txt-warning text-xs"}>
+        {closeChecks.length-pendingCloseChecks.length} / {closeChecks.length} مكتمل
+       </span>
+      </div>
+      {pendingCloseChecks.length===0?<p className="text-sm txt-cash">✓ اكتملت فحوص الواجهة؛ سيعيد الخادم التحقق عند الاعتماد.</p>:
+       pendingCloseChecks.map(check=><p key={check.id} className="text-xs txt-warning">
+        {check.state==="checking"?"⏳":"⚠️"} {check.label}: {check.message}
+       </p>)}
+      <details>
+       <summary className="cursor-pointer txt-muted text-xs">عرض جميع شروط الإقفال</summary>
+       <div className="mt-2 space-y-2">{closeChecks.map(check=>
+        <p key={check.id} className="text-xs">
+         {check.state==="passed"?"✓":check.state==="checking"?"⏳":"⚠️"} {check.label}
+        </p>)}</div>
+      </details>
+     </div>
      {pendingDeliveries===null?<p className="txt-muted text-sm">جارٍ فحص تسليم السيارات...</p>:
       pendingDeliveries>0?<p role="alert" className="txt-danger font-bold">
        يجب تسليم {pendingDeliveries} سيارة قبل إقفال اليوم. افتح قائمة السيارات وسجّل «تم التسليم» أولًا.
@@ -463,10 +522,17 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
        <strong>{cardDiff===null?"—":formatCurrency(cardDiff)}</strong>
       </div>
      </div>
-     {(cashDiff!==null&&cashDiff!==0||cardDiff!==null&&cardDiff!==0)&&
+     {(cashDiff!==null&&cashDiff!==0||cardDiff!==null&&cardDiff!==0)&&<>
+      <button type="button" className="btn-secondary w-full text-sm"
+       onClick={()=>{
+        if(varianceReviewRef.current){
+         varianceReviewRef.current.open=true;
+         varianceReviewRef.current.scrollIntoView({behavior:"smooth",block:"start"});
+        }
+       }}>مراجعة العمليات التي قد تفسر الفرق</button>
       <label className="form-label">سبب فرق الموازنة
        <textarea rows={2} value={reason} onChange={e=>setReason(e.target.value)}/>
-      </label>}
+      </label></>}
      {incomplete.length>0&&<p role="alert" className="txt-warning text-sm">
       يوجد {incomplete.length} جهاز لم يؤكد المزامنة. الإغلاق متوقف حتى تكتمل المزامنة.</p>}
      <label className="form-label">صورة تقرير الشبكة (اختيارية)
@@ -474,7 +540,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
        onChange={e=>setManagerProof(e.currentTarget.files?.[0]||null)}/>
      </label>
      <button type="button" className="btn-primary w-full py-3"
-      disabled={busy||crewSaving||reportCorrection||pendingDeliveries!==0||incomplete.length>0} onClick={()=>void closeDay()}>
+      disabled={busy||crewSaving||reportCorrection||!readyToClose} onClick={()=>void closeDay()}>
       {busy?"جارٍ الاعتماد":"اعتماد وإقفال اليوم"}
      </button>
      {reportForDay&&<details className="border rounded-xl p-3" style={{borderColor:"var(--border)"}}>
@@ -503,8 +569,12 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
      {current.status==="awaiting_owner"&&canApproveVariance&&
       <button className="btn-primary w-full" type="button" disabled={busy} onClick={()=>void managerApproveDifference()}>اعتماد فرق اليوم كمدير</button>}
     </section>}
-   <details className="card space-y-3">
-    <summary className="cursor-pointer font-bold">حركة الصندوق والمصروفات</summary>
+   <details ref={varianceReviewRef} className="card space-y-3 scroll-mt-20" data-testid="cash-variance-review">
+    <summary className="cursor-pointer font-bold">مراجعة الفروقات وحركة الصندوق والمصروفات</summary>
+    <p className="text-xs txt-muted mt-2">
+     هذه عمليات للمراجعة وليست إثباتًا لسبب الفرق. الكاش المتوقع =
+     كاش السيارات − المصروفات النقدية − دفعات العمال النقدية − العشرات المصروفة من الكاش + صافي حركات الصندوق.
+    </p>
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
      <MetricCard tone="green" label="الكاش المحصل" value={formatCurrency(totals.cash)} onClick={()=>setFilter("cash")}/>
      <MetricCard tone="red" label="مصروفات مدفوعة كاش" value={formatCurrency(cashExpenses)}/>
@@ -540,11 +610,20 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
     </form>}
    </details>
    <details className="card">
-    <summary className="cursor-pointer font-bold">أجهزة اليوم ({devices.length})</summary>
-    {devices.length===0?<p className="txt-muted">لم تُسجل أجهزة لهذا اليوم.</p>:devices.map(d=>
+    <summary className="cursor-pointer font-bold">أجهزة اليوم المسجلة ({devices.length}) · {incomplete.length} غير مغلق</summary>
+    <p className="text-xs txt-muted mt-2">يشمل العرض الأجهزة المسجلة فقط. لا يمكن التحقق من جهاز لم يُسجَّل وهو غير متصل.</p>
+    {!dayDataReady?<p className="txt-muted text-sm">جارٍ التحقق من الأجهزة...</p>:
+     devices.length===0?<p className="txt-muted text-sm">لم تُسجل أجهزة لهذا اليوم.</p>:devices.map(d=>
      <div key={d.device_id} className="border-b flex justify-between py-2 gap-2">
-      <span>جهاز {d.device_id.slice(0,8)}</span>
-      <strong className={d.sealed_at?"txt-cash":"txt-warning"}>{d.sealed_at?"تمت المزامنة":"لم يؤكد بعد"}</strong>
+      <div className="min-w-0">
+       <span className="block text-sm">جهاز {d.device_id.slice(0,8)}</span>
+       <span className="txt-muted text-xs">
+        آخر اتصال: {d.last_seen_at?new Date(d.last_seen_at).toLocaleString("ar-SA-u-ca-gregory-nu-latn",{timeZone:"Asia/Riyadh"}):"غير متوفر"}
+       </span>
+      </div>
+      <strong className={d.sealed_at?"txt-cash text-sm":"txt-warning text-sm"}>
+       {d.sealed_at?"مغلق ومؤكد":"بانتظار المزامنة"}
+      </strong>
      </div>)}
    </details>
   </div>}

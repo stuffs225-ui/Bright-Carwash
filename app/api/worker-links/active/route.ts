@@ -1,6 +1,8 @@
 import {NextResponse} from "next/server";
 import {resolveCarwashActor} from "@/lib/carwashActiveActor";
 import {NO_STORE} from "@/lib/carwashCapability";
+import {riyadhDayKey} from "@/lib/carwashCalendarDay";
+import {todayOperationsSummary,type CarwashStatus,type TodayEntry} from "@/lib/carwashTodayOperations";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 const reply=(status:number,error:string)=>NextResponse.json({error},{status,headers:NO_STORE});
@@ -13,6 +15,40 @@ export async function POST(request:Request){
   if(!auth)return reply(403,"رابط العامل أو جلسة المدير غير نشطة");
   const {admin,actor,userId,linkId}=auth;
   const operation=body?.op??"list";
+  if(operation==="today_summary"){
+   const today=riyadhDayKey(new Date());
+   const current=await admin.from("carwash_days").select("status")
+    .eq("business_date",today).maybeSingle();
+   if(current.error)return reply(503,"تعذر قراءة حالة اليوم");
+   if(current.data?.status==="approved")
+    return NextResponse.json({ok:true,today,archived:true,
+     ...todayOperationsSummary([],new Map()),truncated:false,updatedAt:new Date().toISOString()},{headers:NO_STORE});
+   const rows:TodayEntry[]=[];
+   let truncated=false;
+   for(let from=0;from<5000;from+=500){
+    const {data,error}=await admin.from("entries")
+     .select("id,car_type,cash_paid,card_paid").eq("business_date",today)
+     .is("deleted_at",null).order("id",{ascending:true}).range(from,from+499);
+    if(error)return reply(503,"تعذر قراءة ملخص سيارات اليوم");
+    rows.push(...(data||[]));
+    if((data||[]).length<500)break;
+    if(from>=4500)truncated=true;
+   }
+   const statuses=new Map<string,CarwashStatus>();
+   for(let i=0;i<rows.length;i+=150){
+    const batch=rows.slice(i,i+150).map(x=>x.id);
+    const {data,error}=await admin.from("carwash_entry_readiness")
+     .select("entry_id,status").in("entry_id",batch);
+    if(error)return reply(503,"تعذر قراءة حالات سيارات اليوم");
+    for(const x of data||[]){
+     if(x.status==="washing"||x.status==="ready"||x.status==="delivered")
+      statuses.set(x.entry_id,x.status);
+    }
+   }
+   return NextResponse.json({ok:true,today,archived:false,
+    ...todayOperationsSummary(rows,statuses),truncated,updatedAt:new Date().toISOString()
+   },{headers:NO_STORE});
+  }
   if(operation==="list"){
    const {data:days,error:daysError}=await admin.from("carwash_days")
     .select("business_date").in("status",["open","awaiting_owner"])

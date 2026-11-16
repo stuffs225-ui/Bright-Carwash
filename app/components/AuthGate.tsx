@@ -17,6 +17,7 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
  const [identity,setIdentity]=useState<AppIdentity|null>(null);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
+ const [alternateHost,setAlternateHost]=useState(false);
  const refreshing=useRef(false);
  const initialFinished=useRef(false);
  const timeout=<T,>(work:PromiseLike<T>,ms=10000):Promise<T>=>new Promise((resolve,reject)=>{
@@ -69,6 +70,23 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
   }
  },[]);
  useEffect(()=>{
+  const host=window.location.hostname;
+  // The production cookie cannot be reused on a different Vercel preview
+  // hostname. Redirect this manager-only entrypoint to the official domain,
+  // without exposing any manager access credential.
+  if(host.startsWith("bright-carwash-v2-preview-")&&host.endsWith(".vercel.app")){
+   const url=new URL("https://bright-carwash-v2-preview.vercel.app/");
+   const query=new URLSearchParams(window.location.search);
+   for(const key of ["tab","section","day"]){
+    const value=query.get(key);
+    if(value&&value.length<100)url.searchParams.set(key,value);
+   }
+   window.location.replace(url.toString());
+   return;
+  }
+  setAlternateHost(host!=="bright-carwash-v2-preview.vercel.app");
+ },[]);
+ useEffect(()=>{
   if(!supabaseConfigured){setLoading(false);return;}
   void refresh();
   const {data:subscription}=supabase.auth.onAuthStateChange((event)=>{
@@ -103,7 +121,14 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
   <div className="card w-full max-w-md space-y-4 text-center">
    <h1 className="section-title">مغسلة سيارتك اللامعة</h1>
    <h2 className="subsection-title">لوحة الإدارة الخاصة</h2>
-   <p className="txt-muted">لا تحتاج إيميل أو كلمة مرور أو تفعيل. افتح رابط الإدارة المباشر الخاص بك من أي جهاز لفتح اللوحة تلقائيًا.</p>
+   <p className="txt-muted">
+    {alternateHost?"هذا عنوان نسخة تجريبية؛ جلسة جهاز المدير على الموقع الرسمي لا تنتقل تلقائيًا إلى نطاق التجربة.":
+    "تفتح لوحة الإدارة تلقائيًا على الجهاز المرتبط. ولأول فتح على جهاز جديد استخدم رابط الإدارة السري المحفوظ في الإعدادات، دون كلمة مرور."}
+   </p>
+   {alternateHost&&<a className="btn-primary w-full inline-flex justify-center"
+    href="https://bright-carwash-v2-preview.vercel.app">
+    فتح المغسلة على الرابط الرسمي
+   </a>}
    {error&&<p className="txt-warning text-sm">{error}</p>}
    <button className="btn-secondary w-full" onClick={()=>void refresh()}>إعادة محاولة فتح الإدارة</button>
    <p className="txt-muted text-xs">رابط العامل يفتح تسجيل السيارات فقط، بينما رابط الإدارة يفتح جميع صلاحيات المدير.</p>

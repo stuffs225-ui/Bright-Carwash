@@ -23,16 +23,26 @@ export async function POST(request:Request){
   const {admin,user}=access;
   if(body?.op==="list"){
    const policy=await admin.from("settings").select("value").eq("key","inventory_accounting_version").maybeSingle();
-   const [items,moves]=await Promise.all([
+   const [items,moves,recipes,auto,presets]=await Promise.all([
     admin.from("carwash_inventory_items")
-     .select("id,name,unit,stock_qty,min_qty,avg_unit_cost,active,updated_at")
+     .select("id,name,unit,stock_qty,min_qty,avg_unit_cost,inventory_value,active,updated_at")
      .order("name",{ascending:true}).limit(250),
     admin.from("carwash_inventory_movements")
      .select("id,item_id,kind,quantity,total_cost,payment_source,note,occurred_at,expense_id")
-     .order("occurred_at",{ascending:false}).limit(100)
+     .order("occurred_at",{ascending:false}).limit(100),
+    admin.from("carwash_inventory_recipes")
+     .select("id,car_type,service_type,item_id,quantity,active,physical_count_confirmed_at")
+     .order("car_type").order("service_type").limit(500),
+    admin.from("settings").select("value").eq("key","inventory_auto_materials_enabled").maybeSingle(),
+    admin.from("entry_presets").select("car_type,service_type,sort_order")
+     .eq("active",true).order("sort_order").limit(250)
    ]);
-   if(items.error||moves.error)return reply(503,"تعذر تحميل المخزون؛ تأكد من تحديث قاعدة البيانات");
-   return NextResponse.json({ok:true,accountingReady:!policy.error&&policy.data?.value===2,items:items.data||[],movements:moves.data||[]},{headers:NO_STORE});
+   if(items.error||moves.error||recipes.error||auto.error||presets.error)
+    return reply(503,"تعذر تحميل المخزون أو وصفات الاستهلاك؛ تأكد من تحديث قاعدة البيانات");
+   return NextResponse.json({ok:true,accountingReady:!policy.error&&policy.data?.value===2,
+    items:items.data||[],movements:moves.data||[],recipes:recipes.data||[],
+    autoEnabled:auto.data?.value===true,presets:presets.data||[]
+   },{headers:NO_STORE});
   }
   if(body?.op==="create"){
    const name=typeof body.name==="string"?body.name.trim():"";
@@ -60,6 +70,70 @@ export async function POST(request:Request){
     .eq("id",body.id).select("id").single();
    if(error||!data)return reply(409,error?.code==="23505"?"الصنف موجود مسبقًا":"تعذر تعديل الصنف");
    return NextResponse.json({ok:true,id:data.id},{headers:NO_STORE});
+  }
+  if(body?.op==="recipe_upsert"){
+   const carType=typeof body.carType==="string"?body.carType.trim():"";
+   const service=typeof body.service==="string"?body.service.trim():"";
+   const itemId=body.itemId;
+   const quantity=body.quantity;
+   const active=body.active===true;
+   if(carType.length<2||carType.length>80||service.length<2||service.length>80||
+    typeof itemId!=="string"||!uuid.test(itemId)||!validQty(quantity)||
+    typeof body.active!=="boolean")
+    return reply(400,"وصفة استهلاك غير صحيحة");
+   const [preset,item]=await Promise.all([
+    admin.from("entry_presets").select("id").eq("car_type",carType)
+     .eq("service_type",service).eq("active",true).limit(1),
+    admin.from("carwash_inventory_items")
+     .select("id,active,stock_qty,inventory_value").eq("id",itemId).maybeSingle()
+   ]);
+   if(preset.error||item.error||!preset.data?.length||!item.data?.active)
+    return reply(409,"يجب اختيار خدمة رسمية نشطة ومادة نشطة");
+   if(active){
+    if(body.confirmedPhysicalCount!==true)
+     return reply(409,"تفعيل الوصفة يتطلب تأكيد الجرد الفعلي لمادة الغسيل");
+    const movement=await admin.from("carwash_inventory_movements")
+     .select("id").eq("item_id",itemId).in("kind",["purchase","adjust_in"]).limit(1);
+    if(movement.error||!movement.data?.length||
+     Number(item.data.stock_qty)<quantity||Number(item.data.inventory_value)<=0)
+     return reply(409,"أدخل جردًا فعليًا وقيمة مخزون مناسبة قبل تفعيل الخصم التلقائي");
+   }
+   const {data,error}=await admin.from("carwash_inventory_recipes").upsert({
+    car_type:carType,service_type:service,item_id:itemId,quantity,active,
+    physical_count_confirmed_at:active?new Date().toISOString():null,
+    physical_count_confirmed_by:active?user.id:null,updated_at:new Date().toISOString()
+   },{onConflict:"car_type,service_type,item_id"}).select("id").single();
+   if(error||!data)return reply(409,"لم تُحفظ الوصفة؛ لم تتأثر السيارات والمخزون");
+   return NextResponse.json({ok:true,id:data.id},{headers:NO_STORE});
+  }
+  if(body?.op==="auto_toggle"){
+   if(typeof body.enabled!=="boolean")return reply(400,"حالة الأتمتة غير صالحة");
+   if(body.enabled){
+    const policy=await admin.from("settings").select("value")
+     .eq("key","inventory_accounting_version").maybeSingle();
+    if(policy.error||policy.data?.value!==2)
+     return reply(409,"محاسبة المخزون لم تُجهَّز بعد");
+    if(body.confirmedPhysicalCount!==true)
+     return reply(409,"أكد الجرد الفعلي لجميع المواد قبل تفعيل الاستهلاك الآلي");
+    const [recipes,items]=await Promise.all([
+     admin.from("carwash_inventory_recipes").select("id,item_id,quantity,physical_count_confirmed_at")
+      .eq("active",true).limit(500),
+     admin.from("carwash_inventory_items").select("id,stock_qty,inventory_value,active")
+      .eq("active",true).limit(500)
+    ]);
+    if(recipes.error||items.error||!recipes.data?.length)
+     return reply(409,"يجب إعداد وصفة استهلاك واحدة على الأقل قبل التفعيل");
+    const stock=new Map((items.data||[]).map(x=>[x.id,x]));
+    if(recipes.data.some(x=>!x.physical_count_confirmed_at||
+      !stock.get(x.item_id)||Number(stock.get(x.item_id)?.stock_qty)<Number(x.quantity)||
+      Number(stock.get(x.item_id)?.inventory_value)<=0))
+     return reply(409,"إحدى الوصفات لا تملك جردًا وقيمة مخزون كافيين");
+   }
+   const {error}=await admin.from("settings").upsert({
+    key:"inventory_auto_materials_enabled",value:body.enabled
+   },{onConflict:"key"});
+   if(error)return reply(503,"لم تتغير حالة الأتمتة");
+   return NextResponse.json({ok:true,enabled:body.enabled},{headers:NO_STORE});
   }
   if(body?.op==="move"){
    const policy=await admin.from("settings").select("value").eq("key","inventory_accounting_version").maybeSingle();

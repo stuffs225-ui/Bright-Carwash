@@ -5,29 +5,19 @@ import {createAdminClient} from "@/lib/supabaseAdmin";
 import {assertDedicatedCarwashDatabase} from "@/lib/carwashPinPassword";
 import {encryptBackup,decryptBackup,parseBackupKey} from "@/lib/backupCrypto";
 import {mapConcurrent} from "@/lib/backupConcurrency";
+import {withinBackupDeadline,backupMediaBudgetRemaining} from "@/lib/carwashBackupBudget";
+import {
+ CARWASH_BACKUP_TABLES,REQUIRED_ARCHIVE_TABLES,PRIVATE_AUDIT_BACKUP_KEY,
+ backupPrimaryKeys,archiveCoverageStatus,type CarwashBackupTable
+} from "@/lib/carwashBackupCatalog";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export const maxDuration=60;
 const NO_STORE={"Cache-Control":"no-store, private"};
-// Explicit allowlist: business records, supporting ledgers, audit history, and link metadata.
+// The versioned manifest is audited in lib/carwashBackupCatalog.ts.
 // No Supabase Auth passwords or service-role credentials are exported.
-const TABLES=[
- "carwash_inventory_items","carwash_inventory_movements","carwash_worker_day_reports",
- "car_types","service_types","expense_types","settings","entries","expenses",
- "audit_log","error_log","entry_presets","workers","worker_ledger","app_members",
- "audit_events","legacy_source_rows","legacy_import_issues","ready_sms_outbox",
- "crew_shift_bonuses","accounting_months","accounting_month_report_versions",
- "carwash_shifts","carwash_shift_devices","carwash_shift_settlements","carwash_addons",
- "carwash_days","carwash_registered_devices","carwash_day_devices",
- "carwash_day_settlements","carwash_import_batches","carwash_pin_rate_limits",
- "carwash_manager_pin_verifiers","carwash_worker_links",
- "carwash_worker_link_submissions","carwash_owner_activation_links",
- "carwash_owner_devices",
- "carwash_entry_line_items","carwash_entry_readiness",
- "carwash_readiness_events","carwash_cash_movements",
- "carwash_photo_cleanup_log","carwash_addon_proposals"
-] as const;
+const TABLES=CARWASH_BACKUP_TABLES;
 const MAX_ARCHIVE_BYTES=42*1024*1024;
 const MAX_EVIDENCE_FILES=500;
 const fail=(code:number,error:string)=>NextResponse.json({ok:false,error},{status:code,headers:NO_STORE});
@@ -36,20 +26,74 @@ async function backupErrorStatus(code:number,error:string){
   const admin=createAdminClient();
   await admin.from("settings").upsert([
    {key:"backup_last_failed_at",value:new Date().toISOString()},
-   {key:"backup_last_failure_reason",value:"تعذر إكمال النسخ المشفر أو التحقق منه"}
+   {key:"backup_last_failure_reason",value:code===504?"تجاوزت قراءة البيانات مهلة النسخ الآمن؛ لم تكتمل النسخة":"تعذر إكمال النسخ المشفر أو التحقق منه"}
   ],{onConflict:"key"});
  }catch{/* Never block the error response if database logging is unavailable. */}
  return fail(code,error);
 }
 
-async function readAll(admin:ReturnType<typeof createAdminClient>,table:string){
- const rows:unknown[]=[];
- for(let from=0;;from+=500){
-  const {data,error}=await admin.from(table).select("*").range(from,from+499);
+/**
+ * Stable keyset reads prevent pagination from skipping/doubling records when
+ * new rows arrive between pages. The day-device composite key uses ordered
+ * offset paging and is checked again through the archive integrity validation.
+ * A consistent cross-table DB snapshot remains a future prerequisite for
+ * claiming full disaster-recovery certification.
+ */
+async function readAll(admin:ReturnType<typeof createAdminClient>,table:CarwashBackupTable){
+ const rows:Record<string,unknown>[]=[];
+ const keys=backupPrimaryKeys(table);
+ const pageSize=1000;
+ if(keys.length>1){
+  for(let from=0;;from+=pageSize){
+   let query=admin.from(table).select("*");
+   for(const key of keys)query=query.order(key,{ascending:true});
+   const {data,error}=await query.range(from,from+pageSize-1);
+   if(error)throw Error("Unable to read backup table "+table);
+   rows.push(...(data||[]));
+   if(rows.length>1000000)throw Error("Backup record limit exceeded");
+   if((data||[]).length<pageSize)break;
+  }
+  return rows;
+ }
+ const key=keys[0];
+ let cursor:string|number|null=null;
+ for(;;){
+  let query=admin.from(table).select("*").order(key,{ascending:true}).limit(pageSize);
+  if(cursor!==null)query=query.gt(key,cursor);
+  const {data,error}=await query;
   if(error)throw Error("Unable to read backup table "+table);
-  rows.push(...(data||[]));
-  if((data||[]).length<500)break;
+  const page=(data||[]) as Record<string,unknown>[];
+  if(page.length){
+   const last=page[page.length-1][key];
+   if(typeof last!=="string"&&typeof last!=="number")
+    throw Error("Missing backup primary key "+table+"."+key);
+   if(cursor!==null&&String(last)===String(cursor))
+    throw Error("Backup pagination did not advance "+table);
+   cursor=last;
+   rows.push(...page);
+  }
   if(rows.length>1000000)throw Error("Backup record limit exceeded");
+  if(page.length<pageSize)break;
+ }
+ return rows;
+}
+async function readCrewAudit(admin:ReturnType<typeof createAdminClient>){
+ const rows:Record<string,unknown>[]=[];
+ let cursor=0;
+ for(;;){
+  const {data,error}=await admin.rpc("carwash_backup_crew_payout_audit",{
+   p_after_id:cursor,p_limit:1000
+  });
+  if(error)throw Error("Unable to read private crew payout audit");
+  const page=(data||[]) as Record<string,unknown>[];
+  if(page.length){
+   const id=Number(page[page.length-1].id);
+   if(!Number.isSafeInteger(id)||id<=cursor)
+    throw Error("Private audit backup pagination failed");
+   rows.push(...page);cursor=id;
+  }
+  if(rows.length>1000000)throw Error("Private audit backup record limit exceeded");
+  if(page.length<1000)break;
  }
  return rows;
 }
@@ -120,6 +164,7 @@ export async function GET(request:Request){
  const secret=process.env.CRON_SECRET;
  if(!secret||secret.length<16||request.headers.get("authorization")!=="Bearer "+secret)
   return fail(401,"Unauthorized");
+ const startedAt=Date.now();
  try{
   assertDedicatedCarwashDatabase();
   const key=parseBackupKey(process.env.CARWASH_BACKUP_KEY_BASE64||"");
@@ -133,12 +178,17 @@ export async function GET(request:Request){
   // Daily immutable filenames avoid duplicate archives and extra storage usage.
   // Bound concurrent table fetches: sequential 40+ Supabase queries can exceed
   // the 60s serverless runtime; retaining order keeps archive determinism.
-  const pairs=await mapConcurrent(TABLES,4,async table=>
-   [table,await readAll(admin,table)] as const);
-  const tables:Record<string,unknown[]>=Object.fromEntries(pairs);
-  const correctionSchema=await admin.from("carwash_report_corrections").select("id").limit(1);
-  if(!correctionSchema.error)tables.carwash_report_corrections=await readAll(admin,"carwash_report_corrections");
-  else if(!["42P01","PGRST205"].includes(correctionSchema.error.code))throw Error("Unable to inspect correction archive");
+  const tables=await withinBackupDeadline((async()=>{
+   const pairs=await mapConcurrent(TABLES,8,async table=>
+    [table,await readAll(admin,table)] as const);
+   const snapshot:Record<string,unknown[]>=Object.fromEntries(pairs);
+   snapshot[PRIVATE_AUDIT_BACKUP_KEY]=await readCrewAudit(admin);
+   return snapshot;
+  })(),43000);
+  const missing=archiveCoverageStatus(tables,Object.fromEntries(
+   Object.entries(tables).map(([name,rows])=>[name,rows.length])
+  ));
+  if(!missing.complete)throw Error("Critical backup tables unavailable: "+missing.missing.join(","));
   // Financial records take priority. When evidence exceeds the free-function
   // budget, save a VERIFIED financial archive instead of losing ALL backups.
   // Media is explicitly marked unprotected and retention cleanup is forbidden.
@@ -146,12 +196,19 @@ export async function GET(request:Request){
   let readyPhotos:Array<{path:string;mime:string;body:string}>=[];
   let mediaComplete=true;
   let mediaWarning:string|null=null;
-  try{
-   objects=await evidenceArchive(admin,"carwash-pos-evidence");
-   readyPhotos=await evidenceArchive(admin,"carwash-ready-photos");
-  }catch{
-   mediaComplete=false;mediaWarning="media_archive_limit_or_storage_error";
-   objects=[];readyPhotos=[];
+  const mediaBudget=backupMediaBudgetRemaining(startedAt,Date.now(),48000);
+  if(mediaBudget<2000){
+   mediaComplete=false;mediaWarning="media_skipped_to_preserve_financial_archive";
+  }else{
+   try{
+    [objects,readyPhotos]=await withinBackupDeadline(Promise.all([
+     evidenceArchive(admin,"carwash-pos-evidence"),
+     evidenceArchive(admin,"carwash-ready-photos")
+    ]),mediaBudget);
+   }catch{
+    mediaComplete=false;mediaWarning="media_archive_limit_or_storage_error";
+    objects=[];readyPhotos=[];
+   }
   }
   const rowCounts=Object.fromEntries(Object.entries(tables).map(([k,v])=>[k,v.length]));
   const archivedAt=new Date().toISOString();
@@ -200,11 +257,8 @@ export async function GET(request:Request){
   };
   if(restored.format!=="bright-carwash-v2"||restored.version!==1||
      restored.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF||
-     !restored.tables||!restored.rowCounts||
-     !Object.keys(restored.rowCounts).every(table=>
-       Array.isArray(restored.tables?.[table])&&
-       restored.tables?.[table].length===restored.rowCounts?.[table]))
-   return await backupErrorStatus(503,"Encrypted archive integrity verification failed");
+     !archiveCoverageStatus(restored.tables,restored.rowCounts).complete)
+   return await backupErrorStatus(503,"Encrypted archive lacks complete required table coverage");
   const hash=createHash("sha256").update(stored).digest("hex");
   // The archive may preexist from an earlier daily CRON run: never claim
   // a fresh snapshot if this was only a duplicate-archive verification.
@@ -213,9 +267,11 @@ export async function GET(request:Request){
    (restored.mediaComplete===undefined&&
     Array.isArray(restored.storage?.["carwash-pos-evidence"])&&
     Array.isArray(restored.storage?.["carwash-ready-photos"]));
-  const saved=await admin.from("settings").upsert({
-   key:"backup_last_saved_at",value:actualArchivedAt
-  },{onConflict:"key"});
+  const saved=await admin.from("settings").upsert([
+   {key:"backup_last_saved_at",value:actualArchivedAt},
+   {key:"backup_last_table_names",value:[...REQUIRED_ARCHIVE_TABLES]},
+   {key:"backup_last_coverage_checked_at",value:new Date().toISOString()}
+  ],{onConflict:"key"});
   if(saved.error)return await backupErrorStatus(503,"Archive saved but status update failed");
   const checksum=await admin.from("settings").upsert({
    key:"backup_last_sha256",value:hash
@@ -227,7 +283,7 @@ export async function GET(request:Request){
   ],{onConflict:"key"});
   if(mediaStatus.error)return await backupErrorStatus(503,"Unable to record media backup integrity status");
   let offsiteDelivered=false;
-  if(offsiteConfigured){
+  if(offsiteConfigured&&backupMediaBudgetRemaining(startedAt,Date.now(),52000)>4000){
    const emailResult=await new Resend(resendKey!).emails.send({
     from,to:email,subject:"Bright Carwash encrypted daily backup — "+archivedAt.slice(0,10),
     html:"<p>Encrypted daily carwash archive attached. The AES-256-GCM key is kept separately on the server.</p>",
@@ -241,11 +297,11 @@ export async function GET(request:Request){
    }
   }
   // An archive must pass cryptographic verification before any image expires.
-  const retention=actualMediaComplete
+  const retention=actualMediaComplete&&backupMediaBudgetRemaining(startedAt,Date.now(),53000)>6000
    ?await cleanExpiredReadyPhotos(admin).catch(()=>({
      removed:0,failed:0,status:"cleanup_unavailable"
     }))
-   :{removed:0,failed:0,status:"skipped_media_not_archived"};
+   :{removed:0,failed:0,status:"skipped_due_to_time_or_media"};
   return NextResponse.json({ok:true,archivedAt:actualArchivedAt,
    financialArchiveVerified:true,mediaArchiveComplete:actualMediaComplete,
    mediaWarning:actualMediaComplete?null:mediaWarning||"Media not included in encrypted archive",
@@ -260,7 +316,9 @@ export async function GET(request:Request){
       "Encrypted full private-storage backup complete; external delivery may be unavailable")
     :"FINANCIAL RECORDS ONLY: Media archive incomplete. Photo deletion blocked. Operator action required."
   },{headers:NO_STORE});
- }catch{
+ }catch(e){
+  if(e instanceof Error&&e.message==="backup_financial_read_deadline")
+   return await backupErrorStatus(504,"Encrypted backup could not complete financial reads before safe timeout");
   return await backupErrorStatus(503,"Unable to produce verified encrypted backup");
  }
 }

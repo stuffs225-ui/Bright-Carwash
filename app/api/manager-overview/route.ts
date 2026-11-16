@@ -2,19 +2,21 @@ import {NextResponse} from "next/server";
 import {managerAccess,NO_STORE} from "@/lib/carwashCapability";
 import {riyadhDayKey} from "@/lib/carwashCalendarDay";
 import {pendingNetworkDifference} from "@/lib/carwashPendingVariances";
+import {evaluateBackupHealth} from "@/lib/carwashBackupHealth";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
  try{
   const access=await managerAccess(request);
   if(!access)return NextResponse.json({error:"صلاحية المدير مطلوبة"},{status:403,headers:NO_STORE});
   const {admin}=access;
-  const [days,reports,variances,items]=await Promise.all([
+  const [days,reports,variances,items,backup]=await Promise.all([
    admin.from("carwash_days").select("business_date,status").order("business_date",{ascending:false}).limit(1000),
    admin.from("carwash_worker_day_reports").select("business_date,actual_card,terminal_total").order("business_date",{ascending:false}).limit(1000),
    admin.from("carwash_day_settlements").select("business_date,cash_difference,card_difference").order("business_date",{ascending:false}).limit(1000),
-   admin.from("carwash_inventory_items").select("id,name,stock_qty,min_qty").eq("active",true).gt("min_qty",0).order("id").limit(1000)
+   admin.from("carwash_inventory_items").select("id,name,stock_qty,min_qty").eq("active",true).gt("min_qty",0).order("id").limit(1000),
+   admin.from("settings").select("value").eq("key","backup_last_saved_at").maybeSingle()
   ]);
-  if([days,reports,variances,items].some(r=>r.error))throw Error("Read failed");
+  if([days,reports,variances,items,backup].some(r=>r.error))throw Error("Read failed");
   const submitted=new Set((reports.data||[]).map(r=>r.business_date));
   const unresolved=new Set((days.data||[]).filter(d=>d.status!=="approved").map(d=>d.business_date));
   const alerts:Array<{id:string;kind:string;label:string;href:string}>=[];
@@ -35,6 +37,15 @@ export async function GET(request:Request){
   }
   for(const i of items.data||[]){
    if(Number(i.stock_qty)<=Number(i.min_qty))alerts.push({id:"stock:"+i.id,kind:"stock",label:"مخزون منخفض: "+i.name,href:"/?tab=expenses&section=inventory#item-"+i.id});
+  }
+  const backupHealth=evaluateBackupHealth(
+   typeof backup.data?.value==="string"?backup.data.value:null
+  );
+  if(backupHealth.state!=="fresh"){
+   const label=backupHealth.state==="overdue"?
+    "⚠️ النسخ الاحتياطي متأخر؛ آخر نسخة ناجحة منذ "+backupHealth.ageHours+" ساعة":
+    "⚠️ النسخ الاحتياطي غير مؤكد؛ تحقق من آخر نسخة مشفرة";
+   alerts.unshift({id:"backup:overdue",kind:"backup",label,href:"/?tab=settings&section=backup"});
   }
   const today=riyadhDayKey(new Date()),day=days.data?.find(d=>d.business_date===today);
   return NextResponse.json({alerts,todayStatus:day?.status==="approved"?"معتمد":day?.status==="awaiting_owner"||submitted.has(today)?"بانتظار الاعتماد":"غير معتمد",updatedAt:new Date().toISOString(),truncated:[days,reports,variances,items].some(r=>(r.data?.length||0)>=1000)},{headers:NO_STORE});

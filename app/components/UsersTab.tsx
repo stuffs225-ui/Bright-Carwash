@@ -14,7 +14,10 @@ const active=(link:WorkerLink)=>!link.revoked_at&&Date.parse(link.expires_at)>Da
 export function UsersTab(){
  const [label,setLabel]=useState("الرابط المشترك لجميع العمال");
  const [links,setLinks]=useState<WorkerLink[]>([]);
- const [backupUrl,setBackupUrl]=useState("");
+ const [ownerUrl,setOwnerUrl]=useState("");
+ const [ownerLoading,setOwnerLoading]=useState(true);
+ const [ownerLegacy,setOwnerLegacy]=useState(0);
+ const [ownerRecoveryFailed,setOwnerRecoveryFailed]=useState(false);
  const [justCreatedUrl,setJustCreatedUrl]=useState("");
  const [busy,setBusy]=useState(false);
  const [loading,setLoading]=useState(true);
@@ -90,20 +93,71 @@ export function UsersTab(){
  async function share(url:string){
   try{
    if(typeof navigator.share==="function")
-    await navigator.share({title:"مغسلة سيارتك اللامعة — تسجيل السيارات",url});
+    await navigator.share({title:"مغسلة سيارتك اللامعة — رابط خاص",url});
    else await copy(url);
   }catch{}
  }
- async function createOwnerBackup(){
+ const refreshOwner=useCallback(async()=>{
+  try{
+   const data=await request("/api/owner/invites","GET");
+   setOwnerUrl(typeof data.url==="string"?data.url:"");
+   setOwnerLegacy(Number(data.legacyActiveCount||0));
+   setOwnerRecoveryFailed(data.recoveryFailed===true);
+  }catch(e){setError(e instanceof Error?e.message:"تعذر قراءة رابط الإدارة");}
+  finally{setOwnerLoading(false);}
+ },[request]);
+ useEffect(()=>{void refreshOwner();},[refreshOwner]);
+ async function createOwnerLink(replace=false){
+  if(busy)return;
+  if(replace&&!window.confirm(
+   "استبدال روابط الإدارة السابقة؟ سيتم إلغاء الروابط القديمة ولن تعمل على الأجهزة الجديدة. ستبقى الجلسات المرتبطة سابقًا والعمليات المالية دون تغيير. احفظ الرابط الجديد جيدًا."
+  ))return;
   setBusy(true);setError("");setStatus("");
   try{
-   const data=await request("/api/owner/invites","POST");
-   setBackupUrl(data.url);
-   setStatus("تم إنشاء رابط إدارة احتياطي. احتفظ به في مكان آمن.");
-  }catch(e){setError(e instanceof Error?e.message:"تعذر إنشاء رابط الإدارة");}
+   const data=await request("/api/owner/invites","POST",{replace});
+   setOwnerUrl(data.url);
+   await refreshOwner();
+   setStatus(replace?"تم استبدال الروابط القديمة وحفظ رابط إدارة واحد قابل للاسترجاع.":"الرابط الحالي محفوظ؛ يمكنك نسخه وفتحه من أي جهاز.");
+  }catch(e){setError(e instanceof Error?e.message:"تعذر حفظ رابط الإدارة");}
   finally{setBusy(false);}
  }
  return <div className="space-y-4" dir="rtl" data-testid="worker-link-settings">
+  <section className="card space-y-3" data-testid="saved-manager-link">
+   <div>
+    <h2 className="section-title mb-1">🔐 رابط الإدارة الثابت</h2>
+    <p className="txt-muted text-xs">رابط خاص بالمدير، يفتح جميع الصلاحيات على أي جهاز دون كتابة إيميل أو كلمة مرور. احتفظ به لنفسك؛ من يمتلكه يستطيع الدخول للإدارة.</p>
+   </div>
+   {ownerLoading?<p className="txt-muted text-sm">جارٍ استرجاع رابط الإدارة...</p>:
+    ownerUrl?<div className="space-y-3">
+     <label className="form-label">رابط الإدارة الحالي — محفوظ ويمكن نسخه دائمًا
+      <input readOnly type="text" dir="ltr" aria-label="رابط الإدارة الحالي"
+       autoComplete="off" value={ownerUrl} onFocus={e=>e.currentTarget.select()}/>
+     </label>
+     <div className="grid grid-cols-2 gap-2">
+      <button type="button" className="btn-primary" onClick={()=>void copy(ownerUrl)}>نسخ رابط الإدارة</button>
+      <button type="button" className="btn-secondary" onClick={()=>void share(ownerUrl)}>مشاركة الرابط</button>
+     </div>
+     <button type="button" className="btn-secondary w-full"
+      onClick={()=>window.open(ownerUrl,"_blank","noopener,noreferrer")}>فتح لوحة الإدارة من الرابط</button>
+    </div>:<div className="space-y-2">
+     <p className="txt-warning text-sm">
+      {ownerRecoveryFailed?"تعذر فك تشفير رابط الإدارة السابق.":
+       ownerLegacy>0?"روابط الإدارة القديمة كانت محفوظة كبصمة فقط، ولا يمكن استرجاع عنوانها.":"لا يوجد رابط إدارة محفوظ حتى الآن."}
+     </p>
+     <button className="btn-primary w-full" type="button" disabled={busy}
+      onClick={()=>void createOwnerLink(ownerLegacy>0||ownerRecoveryFailed)}>
+      {ownerLegacy>0||ownerRecoveryFailed?"استبدال الروابط القديمة برابط إدارة محفوظ":"إنشاء رابط إدارة ثابت"}
+     </button>
+    </div>}
+   <details className="rounded-xl border p-3" style={{borderColor:"var(--border)"}}>
+    <summary className="cursor-pointer font-semibold text-sm">إدارة الرابط وتغييره</summary>
+    <div className="space-y-2 mt-3">
+     <p className="txt-muted text-xs">لا تحتاج إلى استبدال الرابط لمجرد ضياعه؛ استخدم النسخ من أعلى. استبدله فقط إذا وصل لشخص آخر.</p>
+     {ownerUrl&&<button className="btn-secondary w-full" type="button" disabled={busy}
+      onClick={()=>void createOwnerLink(true)}>إلغاء الروابط القديمة وإصدار رابط جديد</button>}
+    </div>
+   </details>
+  </section>
   <section className="card space-y-4">
    <div>
     <h2 className="section-title mb-1">🔗 رابط تسجيل السيارات المشترك</h2>
@@ -192,20 +246,6 @@ export function UsersTab(){
       <p className="txt-muted text-xs">{link.revoked_at?"ملغى":"منتهي"} · حتى {date(link.expires_at)}</p>
       {link.last_used_at&&<p className="txt-muted text-xs">آخر تسجيل: {date(link.last_used_at)}</p>}
      </div>)}
-   </div>
-  </details>
-  <details className="card">
-   <summary className="font-bold cursor-pointer">رابط الإدارة الاحتياطي</summary>
-   <div className="space-y-3 mt-4">
-    <p className="txt-muted text-sm">رابط الإدارة يعطي كامل الصلاحيات. احتفظ به لنفسك ولا تشاركه مع العمال.</p>
-    <button className="btn-secondary w-full" type="button" disabled={busy}
-     onClick={()=>void createOwnerBackup()}>إنشاء رابط إدارة إضافي</button>
-    {backupUrl&&<div className="space-y-2">
-     <input aria-label="رابط الإدارة الاحتياطي" type="text" dir="ltr" readOnly
-      value={backupUrl} onFocus={e=>e.currentTarget.select()}/>
-     <button type="button" className="btn-secondary w-full"
-      onClick={()=>void copy(backupUrl)}>نسخ رابط الإدارة</button>
-    </div>}
    </div>
   </details>
  </div>;

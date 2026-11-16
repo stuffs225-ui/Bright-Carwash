@@ -24,9 +24,13 @@ const assert=require('node:assert/strict');
   else if(url.endsWith('/summary'))json={days:[{date:today,status:'open',cars:recorded.size,cash:25*recorded.size,card:0,crew:10*recorded.size}],today};
   else if(url.endsWith('/record')){writes++;recorded.set(body.mutationId,body);json={ok:true,id:body.mutationId};}
   else if(url.endsWith('/active')){
+   if(body.op==='today_summary')json={ok:true,today,counts:{washing:car.status==='washing'?1:0,
+    ready:car.status==='ready'?1:0,delivered:car.status==='delivered'?1:0},
+    cash:25*recorded.size,card:0,crew:10*recorded.size,cars:recorded.size,truncated:false};
    if(body.op==='share_opened')car.status='ready';
    if(body.op==='delivered')car.status='delivered';
-   json=body.op==='list'?{cars:[car],readyMessage:'سيارتك جاهزة للاستلام'}:{ok:true};
+   if(body.op!=='today_summary')
+    json=body.op==='list'?{cars:[car],readyMessage:'سيارتك جاهزة للاستلام'}:{ok:true};
   }
   await route.fulfill({json});
  });
@@ -74,6 +78,14 @@ const assert=require('node:assert/strict');
  await page.getByLabel('المبلغ شبكة',{exact:true}).fill('15');
  await page.getByRole('button',{name:'تسجيل السيارة',exact:true}).click();
  await page.getByText('تم تسجيل السيارة بنجاح.',{exact:true}).waitFor();assert.equal(recorded.size,1);checks.push('Mixed payment saved once');
+ await page.getByRole('button',{name:'سيارة صغيرة'}).click();
+ assert.equal(await page.getByTestId('service-choices').getByRole('button',{name:/غسيل كامل/}).first().getAttribute('aria-pressed'),'true',
+  'Successful last service must preselect only for its own car size');
+ checks.push('Recent successful service is preselected with current official price');
+ await page.getByTestId('today-status-summary').waitFor();
+ assert.equal(await page.getByTestId('today-status-summary').locator('button').count(),3,
+  'Current-day center must show three clickable car status counters');
+ checks.push('Current-day operations center renders tappable car statuses');
  await context.setOffline(true);
  await page.getByRole('button',{name:'كاش',exact:true}).click();
  await page.getByRole('button',{name:'سيارة صغيرة'}).click();

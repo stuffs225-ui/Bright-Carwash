@@ -151,5 +151,12 @@
   "offline.noService": "Da farko zaɓi aiki.",
   "offline.failure": "Ba a iya ajiye bayanan a wayar ba.",
   "offline.queueSafe": "Bayanan da ba a tura ba suna nan a wayarka.",
-  "days.pendingDelivery": "Akwai motoci {n} da ba a miƙa ba. Ba za a iya rufe ranar ba."
+  "days.pendingDelivery": "Akwai motoci {n} da ba a miƙa ba. Ba za a iya rufe ranar ba.",
+  "ready.todayOnly": "Motocin yau",
+  "ready.allUnapproved": "Duk ranakun da ba a amince ba",
+  "ready.statusAll": "Duk halaye",
+  "ready.todayTotal": "Ayyukan yau",
+  "ready.statusMissing": "Babu mota da wannan hali",
+  "ready.countsLimited": "Motoci suna da yawa; ƙididdigar ba ta cika ba",
+  "error.stock": "Kayan wanki a ajiya ba su isa ba. Ka sanar da manaja; ba a yi rijistar motar ba."
 }

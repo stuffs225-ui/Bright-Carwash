@@ -4,6 +4,8 @@ import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {storeWorkerCatalog,loadWorkerCatalog,queueWorkerRecord,listWorkerRecords,deleteWorkerRecord,storeWorkerDraft,loadWorkerDraft,deleteWorkerDraft,type WorkerSubmission,type WorkerDraft} from "@/lib/workerOfflineQueue";
 import {normalizeSaudiMobile} from "@/lib/phone";
 import {supabase} from "@/lib/supabaseClient";
+import {RECENT_SERVICE_STORAGE_KEY,parseRecentByCar,recommendedForCar,recentPresetForCar,type RecentByCar}
+ from "@/lib/carwashQuickService";
 import {WorkerDailySummary} from "@/app/components/WorkerDailySummary";
 import {ReadyCarsPanel} from "./ReadyCarsPanel";
 import {workerText,workerCarName,workerServiceName,workerAddonName,workerMessage,workerMoney,readWorkerLocale,persistWorkerLocale,workerDirection,type WorkerLocale,type WorkerKey} from "@/lib/workerI18n";
@@ -11,7 +13,7 @@ import {workerText,workerCarName,workerServiceName,workerAddonName,workerMessage
 type Preset={id:string;car_type:string;service_type:string;amount:number;sort_order?:number};
 type Addon={id:string;name:string;price:number};
 type Catalog={label:string;presets:Preset[];addons:Addon[];
- discountLimit?:number;manualServiceEnabled?:boolean;manualAddonEnabled?:boolean};
+ discountLimit?:number;manualServiceEnabled?:boolean;manualAddonEnabled?:boolean;fastRecentEnabled?:boolean};
 const sar=(value:number)=>new Intl.NumberFormat("ar-SA-u-nu-latn",{maximumFractionDigits:2,minimumFractionDigits:2}).format(value)+" ر.س";
 const rounded=(n:number)=>Math.round(n*100)/100;
 
@@ -50,6 +52,11 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const [draftReady,setDraftReady]=useState(false);
  const [presetId,setPresetId]=useState("");
  const [carType,setCarType]=useState("");
+ const [recentByCar,setRecentByCar]=useState<RecentByCar>({});
+ useEffect(()=>{
+  try{setRecentByCar(parseRecentByCar(localStorage.getItem(RECENT_SERVICE_STORAGE_KEY)));}
+  catch{setRecentByCar({});}
+ },[]);
  const [showMoreServices,setShowMoreServices]=useState(false);
  const [manualMode,setManualMode]=useState(false);
  const [manualService,setManualService]=useState("");
@@ -221,11 +228,20 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
  const carChoices=[{name:"سيارة صغيرة",icon:"🚗"},{name:"سيارة كبيرة",icon:"🚙"},{name:"شاحنة",icon:"🚚"}] as const;
  const otherCarTypes=Array.from(new Set((catalog?.presets||[]).map(p=>p.car_type)))
   .filter(name=>!carChoices.some(c=>c.name===name));
- const filteredPresets=(catalog?.presets||[]).filter(p=>p.car_type===carType);
+ const filteredPresets=recommendedForCar(catalog?.presets||[],carType,recentByCar);
  const serviceSuggestions=Array.from(new Set((catalog?.presets||[]).map(p=>p.service_type)));
  function chooseCarType(name:string){
-  setCarType(name);setPresetId("");setManualMode(false);setShowMoreServices(false);
+  const last=catalog?.fastRecentEnabled===false?null:
+   recentPresetForCar(catalog?.presets||[],name,recentByCar);
+  setCarType(name);setPresetId(last?.id||"");
+  setManualMode(false);setShowMoreServices(false);
   setManualPrice("");setManualService("");setPriceReason("");setSelectedAddons([]);
+ }
+ function rememberServiceChoice(){
+  if(manualMode||!preset)return;
+  const next={...recentByCar,[carType]:preset.id};
+  setRecentByCar(next);
+  try{localStorage.setItem(RECENT_SERVICE_STORAGE_KEY,JSON.stringify(next));}catch{}
  }
  const manualServiceAllowed=manager||catalog?.manualServiceEnabled!==false;
  const useException=manualMode;
@@ -307,6 +323,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     if(result.ok!==true||!result.id)
      throw Error("لم يتأكد استلام التسجيل؛ أعد المحاولة من نفس الصفحة.");
     directPending.current=null;
+    rememberServiceChoice();
     await deleteWorkerDraft(outboxKey).catch(()=>{});
     setNotes("");setSelectedAddons([]);
     setManualMode(false);setPriceReason("");setCarType("");setPresetId("");
@@ -318,6 +335,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
     return;
    }
    setQueued((await listWorkerRecords(outboxKey)).length);
+   rememberServiceChoice();
    await deleteWorkerDraft(outboxKey).catch(()=>{});
    setStatus("العملية محفوظة على هذا الجهاز؛ ستُرسل عند توفر الإنترنت.");
    setNotes("");setSelectedAddons([]);
@@ -381,7 +399,7 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
       aria-pressed={!manualMode&&presetId===p.id}
       onClick={()=>{setPresetId(p.id);setManualMode(false);setManualService("");setManualPrice("");
        try{localStorage.setItem("carwash_last_preset_v1",p.id);}catch{}}}>
-      <span className="block font-bold">{workerServiceName(locale,p.service_type)}</span>
+      <span className="block font-bold">{recentByCar[carType]===p.id?"⭐ ":""}{workerServiceName(locale,p.service_type)}</span>
       <strong className="block text-lg" dir="ltr">{money(Number(p.amount))}</strong>
      </button>)}
     </div>:<div className="grid grid-cols-2 gap-2">
@@ -473,8 +491,8 @@ export function CarRegistrationScreen({token="",manager=false,managerUserId=""}:
    </button>
 
   </form>}
+  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} locale={locale} refreshKey={summaryVersion}/>}
   {safeToken&&!invalid&&<WorkerDailySummary token={manager?undefined:token}
    manager={manager} locale={locale} refreshKey={summaryVersion} queued={queued}/>}
-  {safeToken&&!invalid&&<ReadyCarsPanel token={manager?undefined:token} manager={manager} locale={locale} refreshKey={summaryVersion}/>}
  </main>;
 }

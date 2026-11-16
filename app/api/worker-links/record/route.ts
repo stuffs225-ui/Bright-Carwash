@@ -132,6 +132,8 @@ export async function POST(request:Request){
       .eq("created_by",access.user.id).eq("client_mutation_id",body.mutationId).maybeSingle();
      if(found.data?.id)return NextResponse.json({ok:true,id:found.data.id,duplicate:true},{headers:NO_STORE});
     }
+    if(/Insufficient measured material stock|Configured automatic material unavailable|Automatic material accounting not ready/i.test(error.message||""))
+     return reply(409,"مخزون المادة المطلوبة للخدمة غير كافٍ. أبلغ المدير لتحديث الجرد أو تعطيل الوصفة قبل إعادة التسجيل.");
     return reply(409,"تعذر تسجيل السيارة: تأكد من السعر وحالة اليوم. "+error.message.slice(0,120));
    }
    return NextResponse.json({ok:true,id:data?.id,duplicate:false},{headers:NO_STORE});
@@ -178,6 +180,8 @@ export async function POST(request:Request){
     return reply(410,"رابط العامل انتهى أو أُلغي. اطلب رابطًا جديدًا.");
    if(/limit reached|rate limit|Too many new registrations/i.test(msg))
     return reply(429,"تجاوز عدد المحاولات المسموح مؤقتًا؛ انتظر ثم أعد المزامنة.");
+   if(/Insufficient measured material stock|Configured automatic material unavailable|Automatic material accounting not ready/i.test(msg))
+    return reply(409,"مخزون المواد المقاسة لهذه الخدمة غير كافٍ. العملية لم تُسجَّل وتبقى محفوظة للمراجعة.");
    if(/approved|price|discount|payment|addon|manual|not open|review/i.test(msg))
     return reply(409,"السعر أو حالة اليوم غير معتمدة؛ احتفظ بالعملية على الجهاز وراجع المدير.");
    return reply(503,"لم ينجح الحفظ؛ أعد المحاولة بنفس العملية دون تسجيل جديد.");

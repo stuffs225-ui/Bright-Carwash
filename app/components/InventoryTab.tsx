@@ -1,6 +1,7 @@
 "use client";
 import {useCallback,useEffect,useMemo,useRef,useState} from "react";
 import {supabase} from "@/lib/supabaseClient";
+import {InventoryRecipesSettings} from "./InventoryRecipesSettings";
 
 type Item={
  id:string;name:string;unit:string;stock_qty:number;min_qty:number;
@@ -236,6 +237,7 @@ export function InventoryTab(){
    </button>}
    {kind==="purchase"&&<p className="txt-muted text-xs">تُسجل قيمة الشراء في المخزون، ويُسجل المصروف عند الصرف. لا تعِد تسجيل فاتورة الشراء في المصروفات.</p>}
   </form>
+  <InventoryRecipesSettings/>
   <section className="card space-y-3">
    <div className="flex justify-between items-center">
     <h3 className="font-bold">الأرصدة الحالية</h3>

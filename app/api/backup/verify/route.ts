@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {createHash} from "node:crypto";
 import {managerAccess,NO_STORE} from "@/lib/carwashCapability";
 import {decryptBackup,parseBackupKey} from "@/lib/backupCrypto";
+import {archiveCoverageStatus} from "@/lib/carwashBackupCatalog";
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
 export const maxDuration=60;
@@ -31,6 +32,11 @@ export async function GET(request:Request){
   if(archive.format!=="bright-carwash-v2"||archive.version!==1||
     archive.projectRef!==process.env.CARWASH_DATABASE_PROJECT_REF||
     !archive.tables||!archive.rowCounts)throw Error("Backup payload structure does not match carwash");
+  const coverage=archiveCoverageStatus(archive.tables,archive.rowCounts);
+  if(!coverage.complete)return NextResponse.json({
+   ok:false,coverageComplete:false,missingTables:coverage.missing,
+   error:"النسخة المشفرة لا تشمل كل الجداول المطلوبة؛ لا يمكن اعتمادها كنسخة استعادة كاملة."
+  },{status:409,headers:NO_STORE});
   const tableNames=Object.keys(archive.rowCounts);
   for(const name of tableNames){
    const rows=archive.tables[name];
