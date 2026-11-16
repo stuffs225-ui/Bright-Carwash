@@ -5,6 +5,7 @@ import {fetchAllRows} from "@/lib/fetchAll";
 import {formatCurrency} from "@/lib/business";
 import {settlementAttentionDays,settlementArchiveMonths} from "@/lib/daySettlementNavigation";
 import {dayCloseChecks} from "@/lib/carwashCloseReadiness";
+import {isCurrentDayRead} from "@/lib/carwashDayReadGuard";
 import {dayIsFinished,riyadhDayKey,calendarDayTotals} from "@/lib/carwashCalendarDay";
 import {Modal} from "./Modal";
 import {arabicDate} from "./ArabicDateField";
@@ -165,7 +166,7 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
   if(!selected||!navigator.onLine)return;
   const requestedDay=selected;
   const version=++dayReadVersion.current;
-  const stillSelected=()=>dayReadVersion.current===version&&selectedDateRef.current===requestedDay;
+  const stillSelected=()=>isCurrentDayRead(requestedDay,version,selectedDateRef.current,dayReadVersion.current);
   try{
    const start=new Date(selected+"T00:00:00+03:00").toISOString();
    const end=new Date(new Date(selected+"T00:00:00+03:00").getTime()+86400000).toISOString();
