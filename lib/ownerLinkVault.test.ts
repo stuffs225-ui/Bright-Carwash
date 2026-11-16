@@ -17,7 +17,11 @@ describe("one recoverable private manager URL",()=>{
  });
  it("rejects ciphertext edits without returning the manager secret",()=>{
   const key=ownerLinkKey(secret,project),saved=sealOwnerLink(token,owner,key);
-  expect(()=>revealOwnerLink(saved.slice(0,-1)+"A",owner,key)).toThrow();
+  // Mutate the first encrypted byte, not the final base64url character:
+  // the last sextet can contain unused bits (or already equal "A").
+  const fields=saved.split(".");
+  fields[3]=(fields[3][0]==="A"?"B":"A")+fields[3].slice(1);
+  expect(()=>revealOwnerLink(fields.join("."),owner,key)).toThrow();
   expect(()=>revealOwnerLink("v1.bad",owner,key)).toThrow();
  });
  it("refuses use without a valid server encryption secret",()=>{
