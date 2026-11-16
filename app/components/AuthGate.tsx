@@ -114,7 +114,7 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    {alternateHost&&<a className="btn-primary w-full inline-flex justify-center"
     href="https://bright-carwash-v2-preview.vercel.app">
     فتح المغسلة على الرابط الرسمي
-   </a>
+   </a>}
    {error&&<p className="txt-warning text-sm">{error}</p>}
    <button className="btn-secondary w-full" onClick={()=>void refresh()}>إعادة محاولة فتح الإدارة</button>
    <p className="txt-muted text-xs">رابط العامل يفتح تسجيل السيارات فقط، بينما رابط الإدارة يفتح جميع صلاحيات المدير.</p>
