@@ -144,6 +144,7 @@ jobs:
               psql -v ON_ERROR_STOP=1 -f qa/carwash_missing_membership_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_manager_settings_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_worker_link_vault_e2e.sql
+              psql -v ON_ERROR_STOP=1 -f qa/carwash_owner_saved_link_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_backup_private_audit_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_privileged_rpc_access_e2e.sql
               psql -v ON_ERROR_STOP=1 -f qa/carwash_expense_review_e2e.sql
