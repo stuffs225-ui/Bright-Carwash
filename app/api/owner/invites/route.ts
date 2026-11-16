@@ -2,6 +2,7 @@ import {NextResponse} from "next/server";
 import {managerAccess,createCapability,capabilityHash,NO_STORE,requestIsSameOrigin}
  from "@/lib/carwashCapability";
 import {revealOwnerLink,sealOwnerLink,serverOwnerLinkKey} from "@/lib/ownerLinkVault";
+import {createAdminClient} from "@/lib/supabaseAdmin";
 
 export const runtime="nodejs";
 export const dynamic="force-dynamic";
@@ -17,7 +18,7 @@ function recover(link:OwnerSaved,userId:string,key:Buffer):string{
  if(capabilityHash(token)!==link.token_hash)throw Error("Manager URL digest mismatch");
  return new URL("/admin/"+token,canonicalOrigin).toString();
 }
-async function readOwnerLinks(admin:Awaited<ReturnType<typeof managerAccess>> extends infer A ? A extends {admin:infer X}?X:never:never,userId:string){
+async function readOwnerLinks(admin:ReturnType<typeof createAdminClient>,userId:string){
  const {data,error}=await admin.from("carwash_owner_activation_links")
   .select("token_hash,encrypted_token,expires_at,created_at")
   .eq("owner_user_id",userId).is("used_at",null)
