@@ -355,6 +355,9 @@ export function DaySettlementTab({canApproveVariance}:{canApproveVariance:boolea
    if(error)throw Error(error.message);
    if(data!=="approved")throw Error("لم يتأكد إقفال اليوم");
    setManagerProof(null);setCashActual("");setPosActual("");setReason("");
+   // Closing the day invalidates any in-flight detail or device read.
+   selectedDateRef.current="";dayReadVersion.current++;
+   setDayDataReady(false);setRows([]);setDevices([]);
    setSelected("");window.dispatchEvent(new Event("carwash:data-changed"));
    await reloadDays();
   }catch(e){setError(e instanceof Error?e.message:"فشل اعتماد الموازنة.");}
