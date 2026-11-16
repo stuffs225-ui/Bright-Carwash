@@ -58,11 +58,17 @@ begin
  if not exists(select 1 from public.settings
   where key='inventory_accounting_version' and value='2'::jsonb)
  then raise exception 'Automatic material accounting not ready';end if;
- -- Record accountability under the manager who owns this installation.
+ -- Prefer the authenticated manager already credited with this entry;
+ -- worker-link entries may still use their issuing manager as created_by.
  select m.user_id into v_actor
  from public.app_members m
- where m.role='manager' and m.active
- order by m.user_id limit 1;
+ where m.user_id=new.created_by and m.role='manager' and m.active;
+ if v_actor is null then
+  select m.user_id into v_actor
+  from public.app_members m
+  where m.role='manager' and m.active
+  order by m.user_id limit 1;
+ end if;
  if v_actor is null then raise exception 'Inventory manager unavailable';end if;
  for v_recipe in
   select r.item_id,r.quantity from public.carwash_inventory_recipes r
