@@ -69,9 +69,23 @@ export function AuthGate({children}:{children:(identity:AppIdentity)=>React.Reac
    setLoading(false);refreshing.current=false;
   }
  },[]);
- useEffect(()=>{setAlternateHost(
-  window.location.hostname!=="bright-carwash-v2-preview.vercel.app"
- );},[]);
+ useEffect(()=>{
+  const host=window.location.hostname;
+  // The production cookie cannot be reused on a different Vercel preview
+  // hostname. Redirect this manager-only entrypoint to the official domain,
+  // without exposing any manager access credential.
+  if(host.startsWith("bright-carwash-v2-preview-")&&host.endsWith(".vercel.app")){
+   const url=new URL("https://bright-carwash-v2-preview.vercel.app/");
+   const query=new URLSearchParams(window.location.search);
+   for(const key of ["tab","section","day"]){
+    const value=query.get(key);
+    if(value&&value.length<100)url.searchParams.set(key,value);
+   }
+   window.location.replace(url.toString());
+   return;
+  }
+  setAlternateHost(host!=="bright-carwash-v2-preview.vercel.app");
+ },[]);
  useEffect(()=>{
   if(!supabaseConfigured){setLoading(false);return;}
   void refresh();
